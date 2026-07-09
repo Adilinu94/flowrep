@@ -1,0 +1,31 @@
+name: Firmware CI
+
+on:
+  push:
+    paths:
+      - 'firmware/**'
+      - '.github/workflows/firmware-ci.yml'
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: firmware
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install PlatformIO
+        run: pip install -U platformio
+
+      # Build only, never upload/flash - there is no attached hardware in
+      # CI. This verifies the code compiles against the ESP32 toolchain and
+      # the M5StickCPlus2 library API, which is exactly what could not be
+      # checked in the sandbox this code was originally written in.
+      - name: Build firmware
+        run: pio run

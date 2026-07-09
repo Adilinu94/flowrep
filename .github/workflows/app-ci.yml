@@ -1,0 +1,39 @@
+name: App CI
+
+on:
+  push:
+    paths:
+      - 'app/**'
+      - '.github/workflows/app-ci.yml'
+  workflow_dispatch: {}
+
+jobs:
+  analyze-and-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      # lib/ and test/ already exist in the repo (written before hardware
+      # arrived, see README.md). flutter create only needs to fill in the
+      # missing platform folders - it must not overwrite existing files.
+      - name: Generate missing platform folders
+        run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web --overwrite=false
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate Drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Static analysis
+        run: flutter analyze
+
+      - name: Run unit tests
+        run: flutter test
