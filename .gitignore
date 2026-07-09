@@ -1,0 +1,20 @@
+# Flutter/Dart
+app/.dart_tool/
+app/.packages
+app/build/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+**/*.g.dart
+app/android/
+app/ios/
+app/web/
+app/linux/
+app/macos/
+app/windows/
+
+# PlatformIO
+firmware/.pio/
+firmware/.vscode/
+
+# OS
+.DS_Store

@@ -1,0 +1,35 @@
+name: flowrep
+description: >
+  FlowRep - BLE/IMU-basiertes automatisches Wiederholungszaehlen fuer
+  Krafttraining. Siehe docs/GYM_TRACKER_ARCHITEKTUR.md fuer die vollstaendige
+  Architekturdokumentation.
+publish_to: 'none'
+version: 0.1.0
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  # BLE - final choice, siehe ADR-002. Version bewusst nicht eng gepinnt,
+  # da die Entscheidung an die zum Zeitpunkt der Installation aktuelle
+  # stabile Version delegiert war (siehe 06_SETUP_ANLEITUNG.md).
+  flutter_blue_plus: ^1.32.0
+
+  # DB - finale Wahl Drift statt Isar, siehe ADR-006.
+  drift: ^2.20.0
+  sqlite3_flutter_libs: ^0.5.24
+  path_provider: ^2.1.4
+  path: ^1.9.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  test: ^1.25.0
+  drift_dev: ^2.20.0
+  build_runner: ^2.4.11
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true

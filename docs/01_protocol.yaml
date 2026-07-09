@@ -1,0 +1,130 @@
+# protocol.yaml
+# Kanonische, maschinenlesbare BLE-Protokoll-Referenz für den Gym Tracker.
+# Diese Datei ist die EINZIGE Quelle für das Byte-Format. Sowohl der C++-Firmware-Code
+# als auch der Dart-Parser MÜSSEN exakt gegen diese Struktur validiert werden.
+# Ändert sich hier etwas, ändert sich das Protokoll überall gleichzeitig - nicht in Prosa
+# an zwei Stellen getrennt beschreiben.
+
+service:
+  name: "GymTracker"
+  characteristics:
+
+    - name: "SensorData"
+      properties: [notify]
+      payload:
+        total_bytes: 52
+        byte_order: little_endian
+        fields:
+          - name: timestamp
+            type: uint32
+            offset: 0
+            length: 4
+            unit: milliseconds
+          - name: samples
+            type: array
+            count: 4
+            item_length: 12
+            start_offset: 4
+            item_fields:
+              - name: accel_x
+                type: int16
+                offset: 0
+                scale: 0.001
+                unit: g
+              - name: accel_y
+                type: int16
+                offset: 2
+                scale: 0.001
+                unit: g
+              - name: accel_z
+                type: int16
+                offset: 4
+                scale: 0.001
+                unit: g
+              - name: gyro_x
+                type: int16
+                offset: 6
+                scale: 0.01
+                unit: degrees_per_second
+              - name: gyro_y
+                type: int16
+                offset: 8
+                scale: 0.01
+                unit: degrees_per_second
+              - name: gyro_z
+                type: int16
+                offset: 10
+                scale: 0.01
+                unit: degrees_per_second
+
+    - name: "ControlPoint"
+      properties: [write]
+      commands:
+        - value: 0x01
+          name: START_STREAM
+          effect: "Firmware aktiviert IMU, beginnt 50-Hz-Sampling"
+        - value: 0x02
+          name: STOP_STREAM
+          effect: "Firmware reduziert Sampling, geht Richtung Wake-on-Motion"
+        - value: 0x03
+          name: REQUEST_BATTERY
+          effect: "Einmalige Akkustand-Abfrage"
+
+    - name: "BatteryLevel"
+      properties: [read, notify]
+      payload:
+        total_bytes: 1
+        fields:
+          - name: percent
+            type: uint8
+            offset: 0
+            range: [0, 100]
+
+    - name: "DeviceStatus"
+      properties: [read, notify]
+      payload:
+        total_bytes: 1
+        fields:
+          - name: state
+            type: uint8
+            offset: 0
+            enum:
+              0: DISCONNECTED
+              1: IDLE
+              2: STREAMING
+              3: LOW_POWER_SLEEP
+
+# --- Verbindliche Rahmenbedingungen, nicht verhandelbar ohne ADR-Update ---
+constraints:
+  ble_mtu:
+    minimum_required: 55
+    reason: >
+      Standard-ATT-MTU ist 23 Byte (20 Byte Nutzlast). Der 52-Byte-Payload
+      passt darin NICHT. MTU muss beim Verbindungsaufbau explizit auf
+      mindestens 55 Byte verhandelt werden (requestMtu() auf Android).
+      Ohne diese Verhandlung schlägt die Notification fehl oder wird fragmentiert.
+    verify_in_phase: 0
+
+  package_choice:
+    app_side: flutter_blue_plus
+    not: flutter_reactive_ble
+    reason: "Siehe ADR-002 in ARCHITECTURE_DECISION_RECORDS.md"
+
+  superseded_specs:
+    - description: "30-Byte / 5-Samples-Format ohne Gyroskop und ohne Timestamp"
+      found_in: "bauplan_projektgym.md, Phase 4"
+      status: OBSOLET — nicht implementieren
+
+  gyro_usage_note: >
+    Gyroskop-Daten werden übertragen und für Segmentierung/State-Transitions
+    genutzt, NICHT zwingend für den reinen Peak-Zähl-Algorithmus selbst
+    (siehe RecoFit-Paper-Analyse: Gyro half dort primär bei Segmentierung/
+    Erkennung, nicht bei der Zählung).
+
+# --- Validierungshinweis für die ausführende KI ---
+validation:
+  instruction: >
+    Vor Implementierung von Phase 0: Firmware-seitiges struct (C++, #pragma pack(1))
+    UND Dart-seitigen Parser gegen genau diese Datei generieren oder manuell abgleichen.
+    Bei jeder Abweichung: STOPPEN und Rückfrage stellen, nicht selbst entscheiden
+    (siehe ESKALATIONS_PLAYBOOK.md, Regel 1).
