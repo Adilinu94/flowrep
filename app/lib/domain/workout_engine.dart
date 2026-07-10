@@ -46,6 +46,22 @@ class WorkoutEngineEvent {
 /// a rep on every sample above threshold, which would massively overcount.
 /// Here a rep is counted exactly once, on the falling edge, using a small
 /// hysteresis band to avoid noise re-triggering right at the boundary.
+///
+/// IMPORTANT - calibration formula fixed after Python simulation testing
+/// (tools/workout_engine_simulation.py, run before hardware arrived): the
+/// first version of this class computed the post-calibration threshold as
+/// `_runningEnvelope * 0.6` at the moment the 3rd calibration rep
+/// completed. Since the envelope decays during the rest between reps,
+/// by that moment it had already decayed back down close to resting
+/// baseline - producing a threshold BELOW resting baseline, which meant
+/// the "above threshold" state never cleared again and the engine
+/// silently stopped counting after exactly `calibrationReps` reps, every
+/// single time, for every session. This was caught by simulation, not by
+/// reasoning about the pseudocode - see the simulation script for the
+/// reproduction. The fix: track a separate slow-moving baseline estimate,
+/// and calibrate the threshold from the actual recorded peak magnitudes of
+/// the calibration reps (anchored against that baseline), not from the
+/// instantaneous envelope value at an arbitrary later moment.
 class WorkoutEngine {
   WorkoutEngine({
     required this.exerciseId,
@@ -54,6 +70,8 @@ class WorkoutEngine {
     this.pauseAfter = const Duration(seconds: 4),
     this.calibrationReps = 3,
     this.fallingEdgeRatio = 0.7,
+    this.baselineEmaAlpha = 0.01,
+    this.minThresholdAboveBaseline = 0.10,
   });
 
   final String exerciseId;
@@ -67,6 +85,20 @@ class WorkoutEngine {
   /// threshold can trigger multiple false rising/falling transitions for
   /// a single real rep.
   final double fallingEdgeRatio;
+
+  /// How quickly the resting-baseline estimate adapts. Small on purpose -
+  /// it should track "what does quiet look like" over seconds, not react
+  /// to every sample.
+  final double baselineEmaAlpha;
+
+  /// Safety floor: the calibrated threshold is never allowed to sit closer
+  /// than this to the resting baseline, regardless of what the calibration
+  /// reps looked like. Without this, if a user's very first movements are
+  /// themselves small/marginal, the engine calibrates to accept that
+  /// marginal signal as "normal" from then on. This floor is a starting
+  /// point, not yet validated against real hardware - see
+  /// 09_TESTPROTOKOLL_TEMPLATE.md for where that validation belongs.
+  final double minThresholdAboveBaseline;
 
   final _controller = StreamController<WorkoutEngineEvent>.broadcast();
   Stream<WorkoutEngineEvent> get events => _controller.stream;
@@ -82,12 +114,25 @@ class WorkoutEngine {
   double _currentExcursionPeak = 0.0;
   DateTime? _lastMovementAt;
 
+  /// Slow-moving estimate of the resting ("quiet") signal level. Only
+  /// updated from samples that are NOT part of an above-threshold
+  /// excursion, so a long set does not slowly drag the baseline upward.
+  double? _baselineLevel;
+  double get baselineLevel => _baselineLevel ?? 1.0;
+
   final List<Rep> _repsInSet = [];
   int _setCounter = 0;
 
   void processSample(SensorSample s) {
     final combinedSignal = s.accelMagnitude + (s.gyroMagnitude * gyroWeight);
     _runningEnvelope = max(combinedSignal, _runningEnvelope * envelopeDecayRate);
+
+    if (_baselineLevel == null) {
+      _baselineLevel = combinedSignal;
+    } else if (!_aboveThreshold) {
+      _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
+          combinedSignal * baselineEmaAlpha;
+    }
 
     switch (_state) {
       case WorkoutState.idle:
@@ -103,7 +148,13 @@ class WorkoutEngine {
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
         if (_repsInSet.length >= calibrationReps) {
-          _peakThreshold = _runningEnvelope * 0.6;
+          final avgCalibrationPeak =
+              _repsInSet.map((r) => r.peakMagnitude).reduce((a, b) => a + b) /
+                  _repsInSet.length;
+          final calibrated =
+              baselineLevel + (avgCalibrationPeak - baselineLevel) * 0.5;
+          _peakThreshold =
+              max(calibrated, baselineLevel + minThresholdAboveBaseline);
           _state = WorkoutState.active;
           _emitStateEvent();
         }

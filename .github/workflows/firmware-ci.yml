@@ -23,6 +23,14 @@ jobs:
       - name: Install PlatformIO
         run: pip install -U platformio
 
+      # This sandbox this code was authored in could not reach
+      # api.registry.platformio.org, so the exact board ID for the M5StickC
+      # Plus2 in platformio.ini was never verified against the real
+      # registry. This step surfaces the actual available options directly
+      # in the CI log so the correct ID can be confirmed or corrected.
+      - name: List available M5Stack board definitions (diagnostic)
+        run: pio boards espressif32 | grep -i "m5stick\|m5stack" || echo "No M5 boards matched - check platform install"
+
       # Build only, never upload/flash - there is no attached hardware in
       # CI. This verifies the code compiles against the ESP32 toolchain and
       # the M5StickCPlus2 library API, which is exactly what could not be

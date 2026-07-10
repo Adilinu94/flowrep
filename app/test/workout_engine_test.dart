@@ -141,5 +141,34 @@ void main() {
       expect(finishedSet!.countedReps, greaterThan(0));
       engine.dispose();
     });
+
+    test(
+        'regression: counting must continue AFTER the calibration reps, not '
+        'stop there (see workout_engine.dart class doc for the bug this '
+        'guards against - found via tools/workout_engine_simulation.py '
+        'before hardware arrived)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+
+      // Deliberately more reps than calibrationReps (default 3), well
+      // beyond it, so a regression back to "stops counting after
+      // calibration" would be obvious rather than hidden by a tolerance
+      // band.
+      final samples = _generateSyntheticReps(repCount: 12);
+      for (final s in samples) {
+        engine.processSample(s);
+      }
+      engine.endSetManually();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, greaterThan(6),
+          reason: 'If this is <= calibrationReps (3), counting stopped '
+              'right after calibration - that is the exact bug this test '
+              'guards against.');
+      engine.dispose();
+    });
   });
 }

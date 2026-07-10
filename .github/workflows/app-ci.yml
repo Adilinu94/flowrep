@@ -22,9 +22,11 @@ jobs:
 
       # lib/ and test/ already exist in the repo (written before hardware
       # arrived, see README.md). flutter create only needs to fill in the
-      # missing platform folders - it must not overwrite existing files.
+      # missing platform folders. Without --overwrite, flutter create
+      # does not touch files that already exist (pubspec.yaml, lib/, test/),
+      # it only adds the platform folders that are missing.
       - name: Generate missing platform folders
-        run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web --overwrite=false
+        run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web
 
       - name: Install dependencies
         run: flutter pub get
