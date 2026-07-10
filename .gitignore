@@ -5,7 +5,6 @@ app/build/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
 **/*.g.dart
-app/android/
 app/ios/
 app/web/
 app/linux/
