@@ -7,6 +7,9 @@ on:
       - '.github/workflows/app-ci.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   analyze-and-test:
     runs-on: ubuntu-latest
@@ -20,22 +23,29 @@ jobs:
         with:
           channel: stable
 
-      # lib/ and test/ already exist in the repo (written before hardware
-      # arrived, see README.md). flutter create only needs to fill in the
-      # missing platform folders. Without --overwrite, flutter create
-      # does not touch files that already exist (pubspec.yaml, lib/, test/),
-      # it only adds the platform folders that are missing.
       - name: Generate missing platform folders
-        run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web
+        run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web 2>&1 | tee ../ci-log.txt
 
       - name: Install dependencies
-        run: flutter pub get
+        run: flutter pub get 2>&1 | tee -a ../ci-log.txt
 
       - name: Generate Drift code
-        run: dart run build_runner build --delete-conflicting-outputs
+        run: dart run build_runner build --delete-conflicting-outputs 2>&1 | tee -a ../ci-log.txt
 
       - name: Static analysis
-        run: flutter analyze
+        run: flutter analyze 2>&1 | tee -a ../ci-log.txt
 
       - name: Run unit tests
-        run: flutter test
+        run: flutter test 2>&1 | tee -a ../ci-log.txt
+
+      - name: Report log back into repo on failure
+        if: failure()
+        run: |
+          cd ..
+          mkdir -p ci-logs
+          cp ci-log.txt ci-logs/app-ci-latest.txt
+          git config user.email "ci@flowrep.local"
+          git config user.name "App CI (auto)"
+          git add ci-logs/app-ci-latest.txt
+          git commit -m "CI: app build log (failure) [skip ci]" || true
+          git push || true

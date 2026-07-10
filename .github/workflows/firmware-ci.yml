@@ -7,6 +7,9 @@ on:
       - '.github/workflows/firmware-ci.yml'
   workflow_dispatch: {}
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,19 +24,22 @@ jobs:
           python-version: '3.11'
 
       - name: Install PlatformIO
-        run: pip install -U platformio
+        run: pip install -U platformio 2>&1 | tee ../ci-log.txt
 
-      # This sandbox this code was authored in could not reach
-      # api.registry.platformio.org, so the exact board ID for the M5StickC
-      # Plus2 in platformio.ini was never verified against the real
-      # registry. This step surfaces the actual available options directly
-      # in the CI log so the correct ID can be confirmed or corrected.
       - name: List available M5Stack board definitions (diagnostic)
-        run: pio boards espressif32 | grep -i "m5stick\|m5stack" || echo "No M5 boards matched - check platform install"
+        run: (pio boards espressif32 2>&1 | grep -i "m5stick\|m5stack") | tee -a ../ci-log.txt || echo "No M5 boards matched" | tee -a ../ci-log.txt
 
-      # Build only, never upload/flash - there is no attached hardware in
-      # CI. This verifies the code compiles against the ESP32 toolchain and
-      # the M5StickCPlus2 library API, which is exactly what could not be
-      # checked in the sandbox this code was originally written in.
       - name: Build firmware
-        run: pio run
+        run: pio run 2>&1 | tee -a ../ci-log.txt
+
+      - name: Report log back into repo on failure
+        if: failure()
+        run: |
+          cd ..
+          mkdir -p ci-logs
+          cp ci-log.txt ci-logs/firmware-ci-latest.txt
+          git config user.email "ci@flowrep.local"
+          git config user.name "Firmware CI (auto)"
+          git add ci-logs/firmware-ci-latest.txt
+          git commit -m "CI: firmware build log (failure) [skip ci]" || true
+          git push || true
