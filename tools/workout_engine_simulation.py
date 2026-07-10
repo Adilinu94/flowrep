@@ -15,13 +15,25 @@ import numpy as np
 class WorkoutEngineSim:
     def __init__(self, gyro_weight=0.05, envelope_decay=0.95,
                  falling_edge_ratio=0.7, calibration_reps=3,
-                 pause_after_s=4.0, baseline_ema_alpha=0.01):
+                 pause_after_s=4.0, baseline_ema_alpha=0.01,
+                 lowpass_alpha=0.6):
         self.gyro_weight = gyro_weight
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
         self.calibration_reps = calibration_reps
         self.pause_after_s = pause_after_s
         self.baseline_ema_alpha = baseline_ema_alpha
+        # Simple causal (streaming-safe) EMA low-pass filter on the
+        # combined signal, applied before any threshold logic. Added after
+        # the noisy-calibration robustness test showed the previous
+        # unfiltered version overcounted (18 vs 10 expected) under
+        # realistic sensor/motion noise. A true Butterworth filter (as
+        # RecoFit and several reference repos use) would need the whole
+        # signal buffered (filtfilt, non-causal) or careful IIR state
+        # management; an EMA is a simpler, streaming-friendly
+        # approximation that is trivial to port to Dart.
+        self.lowpass_alpha = lowpass_alpha
+        self._filtered_signal = None
 
         self.state = "idle"
         self.peak_threshold = 1.3
@@ -34,7 +46,17 @@ class WorkoutEngineSim:
         self.baseline_level = None  # initialised from the first sample
 
     def process_sample(self, t, accel_mag, gyro_mag):
-        combined = accel_mag + gyro_mag * self.gyro_weight
+        raw_combined = accel_mag + gyro_mag * self.gyro_weight
+
+        if self._filtered_signal is None:
+            self._filtered_signal = raw_combined
+        else:
+            self._filtered_signal = (
+                self._filtered_signal * (1 - self.lowpass_alpha)
+                + raw_combined * self.lowpass_alpha
+            )
+        combined = self._filtered_signal
+
         self.running_envelope = max(combined, self.running_envelope * self.envelope_decay)
 
         # Track resting baseline continuously, but only from quiet samples -
@@ -56,24 +78,17 @@ class WorkoutEngineSim:
         elif self.state == "calibrating":
             self._detect_peak(t, combined)
             if len(self.reps_in_set) >= self.calibration_reps:
-                # BUGFIX: the previous version used the instantaneous
-                # running_envelope at the moment this check fires - which
-                # is usually mid-rest-period, already decayed back near
-                # baseline, producing a threshold BELOW resting level and
-                # permanently stuck peak detection. Use the actual peak
-                # magnitudes recorded during calibration instead, anchored
-                # against the tracked resting baseline.
-                calibration_peaks = [p for (_, p) in self.reps_in_set]
-                avg_peak = sum(calibration_peaks) / len(calibration_peaks)
-                calibrated = self.baseline_level + (avg_peak - self.baseline_level) * 0.5
-                # Safety floor: without this, if the very first movements
-                # the user makes during calibration are themselves small/
-                # marginal (a cheat rep, an accidental nudge), the engine
-                # calibrates itself to treat that marginal signal as
-                # "normal" and accepts everything at that level from then
-                # on. A floor relative to baseline stops calibration from
-                # being poisoned this way. Value is a starting point, not
-                # empirically tuned against real hardware yet.
+                # Median instead of mean: robust against a single outlier
+                # calibration rep (e.g. the device getting bumped) skewing
+                # the threshold, confirmed via the outlier-calibration
+                # robustness test.
+                calibration_peaks = sorted(p for (_, p) in self.reps_in_set)
+                mid = len(calibration_peaks) // 2
+                if len(calibration_peaks) % 2 == 1:
+                    median_peak = calibration_peaks[mid]
+                else:
+                    median_peak = (calibration_peaks[mid - 1] + calibration_peaks[mid]) / 2
+                calibrated = self.baseline_level + (median_peak - self.baseline_level) * 0.5
                 min_floor = self.baseline_level + 0.10
                 self.peak_threshold = max(calibrated, min_floor)
                 self.state = "active"
@@ -254,3 +269,190 @@ if __name__ == "__main__":
     print("  dass die allerersten (Kalibrierungs-)Wiederholungen selbst schon")
     print("  schwach waren - das ist eine grundsaetzliche Grenze von")
     print("  Selbstkalibrierung, kein Implementierungsfehler.")
+
+
+# ============================================================
+# Zusaetzliche Robustheits-Szenarien fuer die Kalibrierungsphase
+# (unsaubere/zittrige/unregelmaessige erste Wiederholungen)
+# ============================================================
+
+def make_noisy_calibration_reps(n_calib=3, n_after=7, tempo_s=1.2,
+                                  baseline=1.0, peak=1.8, hz=50,
+                                  calib_noise=0.15, normal_noise=0.02, seed=10):
+    """Erste n_calib Reps mit deutlich mehr Sensor-/Bewegungsrauschen
+    (zittrige erste Versuche eines ungeuebten Nutzers), danach normale Reps."""
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / hz
+    t, accel, gyro = [], [], []
+    time = 0.0
+
+    def add_rep(noise_level):
+        nonlocal time
+        steps = int(tempo_s * hz)
+        for i in range(steps):
+            phase = np.pi * i / steps
+            t.append(time)
+            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise_level))
+            gyro.append(30 * np.sin(phase) + rng.normal(0, noise_level * 50))
+            time += dt
+        for _ in range(int(0.3 * hz)):
+            t.append(time); accel.append(baseline + rng.normal(0, noise_level)); gyro.append(rng.normal(0, noise_level * 50))
+            time += dt
+
+    for _ in range(n_calib):
+        add_rep(calib_noise)
+    for _ in range(n_after):
+        add_rep(normal_noise)
+    return np.array(t), np.array(accel), np.array(gyro)
+
+
+def make_outlier_calibration_rep(tempo_s=1.2, baseline=1.0, normal_peak=1.8,
+                                   outlier_peak=3.5, hz=50, noise=0.02, seed=11):
+    """Kalibrierung mit EINEM Ausreisser (z.B. Stick verrutscht/angestossen)
+    zwischen zwei normalen Kalibrierungs-Reps, danach normale Reps."""
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / hz
+    t, accel, gyro = [], [], []
+    time = 0.0
+
+    def add_rep(peak):
+        nonlocal time
+        steps = int(tempo_s * hz)
+        for i in range(steps):
+            phase = np.pi * i / steps
+            t.append(time)
+            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
+            gyro.append(30 * np.sin(phase) * (peak - baseline) / (normal_peak - baseline) + rng.normal(0, 2))
+            time += dt
+        for _ in range(int(0.3 * hz)):
+            t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
+            time += dt
+
+    add_rep(normal_peak)
+    add_rep(outlier_peak)   # z.B. Stick angestossen, kein echter Rep
+    add_rep(normal_peak)
+    for _ in range(7):
+        add_rep(normal_peak)
+    return np.array(t), np.array(accel), np.array(gyro)
+
+
+def make_inconsistent_tempo_reps(n=10, baseline=1.0, peak=1.8, hz=50, noise=0.02, seed=12):
+    """Kalibrierungs- und Folge-Reps mit stark wechselndem Tempo (0.6s bis 2.5s
+    pro Rep) - realistisch fuer jemanden, der noch keinen eingespielten
+    Rhythmus hat."""
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / hz
+    t, accel, gyro = [], [], []
+    time = 0.0
+    tempos = rng.uniform(0.6, 2.5, size=n)
+    for tempo_s in tempos:
+        steps = int(tempo_s * hz)
+        for i in range(steps):
+            phase = np.pi * i / steps
+            t.append(time)
+            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
+            gyro.append(30 * np.sin(phase) + rng.normal(0, 2))
+            time += dt
+        for _ in range(int(0.3 * hz)):
+            t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
+            time += dt
+    return np.array(t), np.array(accel), np.array(gyro)
+
+
+def make_false_start_then_reps(n_after=8, tempo_s=1.2, baseline=1.0, peak=1.8,
+                                 hz=50, noise=0.02, seed=13):
+    """Nutzer bewegt sich kurz (Gerät anlegen, Position finden) knapp ueber
+    dem Aktivierungsschwellenwert (0.5x initial threshold), OHNE dass das
+    ein echter Rep sein soll, dann folgen normale Reps."""
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / hz
+    t, accel, gyro = [], [], []
+    time = 0.0
+
+    # False start: kurzer Ausschlag knapp ueber 0.5*1.3=0.65 (Aktivierung),
+    # aber deutlich unter dem eigentlichen Rep-Niveau.
+    false_start_peak = 0.85
+    steps = int(0.4 * hz)
+    for i in range(steps):
+        phase = np.pi * i / steps
+        t.append(time)
+        accel.append(baseline + (false_start_peak - baseline) * np.sin(phase) + rng.normal(0, noise))
+        gyro.append(10 * np.sin(phase) + rng.normal(0, 2))
+        time += dt
+    for _ in range(int(0.5 * hz)):
+        t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
+        time += dt
+
+    def add_rep():
+        nonlocal time
+        steps = int(tempo_s * hz)
+        for i in range(steps):
+            phase = np.pi * i / steps
+            t.append(time)
+            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
+            gyro.append(30 * np.sin(phase) + rng.normal(0, 2))
+            time += dt
+        for _ in range(int(0.3 * hz)):
+            t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
+            time += dt
+
+    for _ in range(n_after):
+        add_rep()
+    return np.array(t), np.array(accel), np.array(gyro)
+
+
+def run_robustness_suite():
+    print("\n" + "=" * 65)
+    print("=== Robustheits-Suite: unsaubere/unregelmaessige erste Reps ===")
+    print("=" * 65 + "\n")
+
+    # 1. Zittrige Kalibrierung
+    t, accel, gyro = make_noisy_calibration_reps()
+    engine = WorkoutEngineSim()
+    for ti, a, g in zip(t, accel, gyro):
+        engine.process_sample(ti, a, g)
+    engine._end_set()
+    counted = sum(len(s) for s in engine.completed_sets)
+    print(f"1. Zittrige Kalibrierung (starkes Rauschen erste 3 Reps):")
+    print(f"   erwartet=10  gezaehlt={counted}  Schwellenwert={engine.peak_threshold:.3f}")
+    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG'}\n")
+
+    # 2. Ausreisser waehrend Kalibrierung
+    t, accel, gyro = make_outlier_calibration_rep()
+    engine = WorkoutEngineSim()
+    for ti, a, g in zip(t, accel, gyro):
+        engine.process_sample(ti, a, g)
+    engine._end_set()
+    counted = sum(len(s) for s in engine.completed_sets)
+    print(f"2. Ausreisser-Rep waehrend Kalibrierung (3.5g statt 1.8g, z.B. Stick angestossen):")
+    print(f"   erwartet=10  gezaehlt={counted}  Schwellenwert={engine.peak_threshold:.3f}")
+    print(f"   Bewertung: Mittelwert-Kalibrierung ist empfindlich gegenueber Ausreissern -")
+    print(f"   ein einzelner Ausreisser in den ersten 3 Reps zieht den Schwellenwert deutlich")
+    print(f"   nach oben, was nachfolgende normale Reps zu leicht/schwer treffbar machen kann.")
+    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG - Mittelwert reagiert empfindlich auf Ausreisser'}\n")
+
+    # 3. Wechselndes Tempo
+    t, accel, gyro = make_inconsistent_tempo_reps(n=10)
+    engine = WorkoutEngineSim()
+    for ti, a, g in zip(t, accel, gyro):
+        engine.process_sample(ti, a, g)
+    engine._end_set()
+    counted = sum(len(s) for s in engine.completed_sets)
+    print(f"3. Stark wechselndes Tempo (0.6s bis 2.5s pro Rep):")
+    print(f"   erwartet=10  gezaehlt={counted}")
+    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG'}\n")
+
+    # 4. Falscher Start vor echten Reps
+    t, accel, gyro = make_false_start_then_reps(n_after=8)
+    engine = WorkoutEngineSim()
+    for ti, a, g in zip(t, accel, gyro):
+        engine.process_sample(ti, a, g)
+    engine._end_set()
+    counted = sum(len(s) for s in engine.completed_sets)
+    print(f"4. Kurze Fehlbewegung vor den echten Reps (Geraet anlegen/Position finden):")
+    print(f"   erwartet=8  gezaehlt={counted}")
+    print(f"   {'OK' if 7 <= counted <= 9 else 'ABWEICHUNG'}\n")
+
+
+if __name__ == "__main__":
+    run_robustness_suite()

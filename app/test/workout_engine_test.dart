@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:test/test.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 
@@ -168,6 +170,55 @@ void main() {
           reason: 'If this is <= calibrationReps (3), counting stopped '
               'right after calibration - that is the exact bug this test '
               'guards against.');
+      engine.dispose();
+    });
+
+    test(
+        'does not wildly overcount under noisy/shaky input (regression for '
+        'the pre-lowpass-filter behaviour, which counted 18 for 10 actual '
+        'reps under realistic sensor noise - see '
+        'tools/workout_engine_simulation.py, make_noisy_calibration_reps)',
+        () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+
+      final rng = Random(42);
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 20);
+      const repCount = 10;
+      const samplesPerRep = 30;
+
+      for (var rep = 0; rep < repCount; rep++) {
+        for (var i = 0; i < samplesPerRep; i++) {
+          final phase = (i / samplesPerRep) * 3.14159265;
+          final magnitude = 1.0 + 0.8 * _sin(phase);
+          // Substantially more noise than the clean-signal tests, to
+          // approximate a nervous/unpracticed first-time user.
+          final noise = (rng.nextDouble() - 0.5) * 0.3;
+          engine.processSample(SensorSample(
+            timestamp: t,
+            ax: 0, ay: magnitude + noise, az: 0,
+            gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 5; i++) {
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+      }
+      engine.endSetManually();
+
+      expect(finishedSet, isNotNull);
+      // Wide but meaningful band: catches the 18-for-10 failure mode
+      // without demanding hardware-validated precision from a synthetic
+      // test.
+      expect(finishedSet!.countedReps, inInclusiveRange(7, 14));
       engine.dispose();
     });
   });

@@ -62,6 +62,16 @@ class WorkoutEngineEvent {
 /// and calibrate the threshold from the actual recorded peak magnitudes of
 /// the calibration reps (anchored against that baseline), not from the
 /// instantaneous envelope value at an arbitrary later moment.
+///
+/// FOLLOW-UP ROBUSTNESS PASS (same simulation script, extended suite): a
+/// noisy-calibration scenario (nervous/unpracticed first-time user) showed
+/// significant overcounting (18 vs 10 expected) without any signal
+/// filtering, and a single outlier calibration rep (e.g. device bumped)
+/// could skew a mean-based threshold. Both addressed here: a causal EMA
+/// low-pass filter (`lowPassAlpha`) now runs before any threshold logic,
+/// and calibration uses the median of recorded peaks instead of the mean.
+/// Both parameter choices are simulation-tuned starting points, not
+/// validated against real hardware yet.
 class WorkoutEngine {
   WorkoutEngine({
     required this.exerciseId,
@@ -72,6 +82,7 @@ class WorkoutEngine {
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
+    this.lowPassAlpha = 0.6,
   });
 
   final String exerciseId;
@@ -100,6 +111,18 @@ class WorkoutEngine {
   /// 09_TESTPROTOKOLL_TEMPLATE.md for where that validation belongs.
   final double minThresholdAboveBaseline;
 
+  /// Streaming (causal) EMA low-pass filter strength applied to the
+  /// combined signal before any threshold logic, 0 < alpha <= 1 (higher =
+  /// less smoothing/lag, closer to raw signal). Added + tuned via
+  /// tools/workout_engine_simulation.py after a robustness test showed the
+  /// unfiltered engine overcounted (18 vs 10 expected) under realistic
+  /// sensor/motion noise during calibration. 0.6 was chosen as a balance:
+  /// it fixed the noisy-calibration case without materially breaking fast
+  /// or variable-tempo reps in the same test suite - it is a starting
+  /// point for the real Milestone-2 hardware test to refine, not a final
+  /// tuned value.
+  final double lowPassAlpha;
+
   final _controller = StreamController<WorkoutEngineEvent>.broadcast();
   Stream<WorkoutEngineEvent> get events => _controller.stream;
 
@@ -113,6 +136,7 @@ class WorkoutEngine {
   bool _aboveThreshold = false;
   double _currentExcursionPeak = 0.0;
   DateTime? _lastMovementAt;
+  double? _filteredSignal;
 
   /// Slow-moving estimate of the resting ("quiet") signal level. Only
   /// updated from samples that are NOT part of an above-threshold
@@ -124,7 +148,13 @@ class WorkoutEngine {
   int _setCounter = 0;
 
   void processSample(SensorSample s) {
-    final combinedSignal = s.accelMagnitude + (s.gyroMagnitude * gyroWeight);
+    final rawCombined = s.accelMagnitude + (s.gyroMagnitude * gyroWeight);
+
+    _filteredSignal = _filteredSignal == null
+        ? rawCombined
+        : _filteredSignal! * (1 - lowPassAlpha) + rawCombined * lowPassAlpha;
+    final combinedSignal = _filteredSignal!;
+
     _runningEnvelope = max(combinedSignal, _runningEnvelope * envelopeDecayRate);
 
     if (_baselineLevel == null) {
@@ -148,11 +178,18 @@ class WorkoutEngine {
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
         if (_repsInSet.length >= calibrationReps) {
-          final avgCalibrationPeak =
-              _repsInSet.map((r) => r.peakMagnitude).reduce((a, b) => a + b) /
-                  _repsInSet.length;
+          // Median rather than mean: robust against a single outlier
+          // calibration rep (e.g. the device getting bumped) skewing the
+          // threshold - confirmed via the outlier-calibration robustness
+          // test in tools/workout_engine_simulation.py.
+          final sortedPeaks = _repsInSet.map((r) => r.peakMagnitude).toList()
+            ..sort();
+          final mid = sortedPeaks.length ~/ 2;
+          final medianPeak = sortedPeaks.length.isOdd
+              ? sortedPeaks[mid]
+              : (sortedPeaks[mid - 1] + sortedPeaks[mid]) / 2;
           final calibrated =
-              baselineLevel + (avgCalibrationPeak - baselineLevel) * 0.5;
+              baselineLevel + (medianPeak - baselineLevel) * 0.5;
           _peakThreshold =
               max(calibrated, baselineLevel + minThresholdAboveBaseline);
           _state = WorkoutState.active;
