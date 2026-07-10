@@ -23,44 +23,7 @@ jobs:
         run: flutter create . --project-name flowrep --org com.flowrep --platforms android,web
 
       - name: Patch AndroidManifest.xml with required BLE permissions
-        run: |
-          python3 - << 'PYEOF'
-          import re
-
-          path = "android/app/src/main/AndroidManifest.xml"
-          with open(path) as f:
-              content = f.read()
-
-          permissions = '''    <!-- BLE permissions - see docs/06_SETUP_ANLEITUNG.md and ADR-007.
-                 neverForLocation: this app scans for a known, specific
-                 service/name and does not use scan results to infer
-                 location, so no ACCESS_FINE_LOCATION is requested on
-                 Android 12+ (API 31+). -->
-          <uses-permission android:name="android.permission.BLUETOOTH_SCAN"
-                            android:usesPermissionFlags="neverForLocation" />
-          <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-          <!-- Legacy path for Android 11 (API 30) and below. -->
-          <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
-          <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
-
-          <!-- Android 15+ background BLE - see ADR-008. NOTE: the
-               <service> declaration itself is intentionally NOT added
-               here yet, since it must point to a real BleForegroundService
-               class that does not exist yet (Phase 2, not Phase 0). Adding
-               a <service> tag pointing to a non-existent class would break
-               the build. This permission alone is safe to declare now. -->
-          <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
-
-          '''
-
-          if "BLUETOOTH_SCAN" not in content:
-              content = re.sub(r"(<manifest[^>]*>)", r"\1\n" + permissions, content, count=1)
-              with open(path, "w") as f:
-                  f.write(content)
-              print("Manifest patched.")
-          else:
-              print("Manifest already contains BLE permissions, skipping patch.")
-          PYEOF
+        run: python3 ../tools/patch_android_manifest.py
 
       - name: Show resulting manifest for verification
         run: cat android/app/src/main/AndroidManifest.xml
@@ -70,15 +33,7 @@ jobs:
           cd ..
           git config user.email "ci@flowrep.local"
           git config user.name "Bootstrap Android (auto)"
-          # Remove the old blanket excludes for platform folders now that
-          # android/ is meant to be committed with our specific patches.
           sed -i '/^app\/android\//d' .gitignore
           git add app/android .gitignore
-          git commit -m "Bootstrap android/ folder with BLE permissions patched in
-
-Generated via flutter create, then patched with the permissions
-documented in docs/06_SETUP_ANLEITUNG.md and ADR-007/ADR-008. The
-foreground service <service> tag is deliberately NOT added yet - it
-needs a real BleForegroundService class first (Phase 2 work), not a
-dangling reference to a class that does not exist."
+          git commit -m "Bootstrap android/ folder with BLE permissions patched in (see docs/06_SETUP_ANLEITUNG.md, ADR-007, ADR-008)"
           git push
