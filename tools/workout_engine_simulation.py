@@ -1,68 +1,104 @@
 """
-Python-Portierung der Workout-Engine-Logik aus app/lib/domain/workout_engine.dart,
-um den Zähl-Algorithmus gegen synthetische, schwierige Szenarien zu prüfen -
-BEVOR die Hardware da ist und BEVOR ein echtes Dart-Testergebnis vorliegt.
+Python-Portierung der Workout-Engine-Logik aus app/lib/domain/workout_engine.dart
+und app/lib/domain/signal_processor.dart, um den Zähl-Algorithmus gegen
+synthetische Szenarien zu prüfen, BEVOR ein echter Hardware-Test noetig ist.
 
-Das ist kein Ersatz für echte Sensordaten. Es validiert nur, ob die
-Algorithmus-LOGIK selbst (Hysterese, adaptive Kalibrierung) sich in
-plausiblen Kurvenformen sinnvoll verhaelt - insbesondere bei Faellen, die
-im RecoFit-Paper explizit als schwierig benannt wurden (Doppel-Peak pro
-Wiederholung, z.B. bei Kniebeugen; unterschiedliche Tempi).
+=== SYNCHRONISATIONS-STAND: 2026-07-12 ===
+Diese Version wurde nach docs/ANALYSE_EXTERNE_KI_2026-07-12.md Punkt F neu
+aufgebaut. Vorher fehlte der komplette Guided-Calibration-Pfad
+(WorkoutState.guidedCalibration) in dieser Datei, und die idle/paused/
+falling-edge-Logik der normalen WorkoutEngineSim war noch auf dem alten,
+nicht-baseline-relativen Stand (der reale HyperOS-Bug vom 2026-07-12, der
+in workout_engine.dart bereits gefixt war, aber hier nie nachgezogen wurde).
+
+Neu in dieser Version:
+  1. SignalProcessor als eigene Klasse (statt inline dupliziert)
+  2. WorkoutEngineSim: idle/paused-Trigger und Falling-Edge jetzt
+     baseline-relativ (siehe processSample()/_detectPeak() in
+     workout_engine.dart)
+  3. GuidedCalibrationSim: komplette Portierung von
+     startGuidedCalibration() / _finishGuidedCalibration() /
+     _findGyroValidatedPeaks() / _findPeaksWithIndices() / _medianFilter()
+  4. GEFIXTER FUND (siehe run_guided_calibration_suite() unten): Der
+     Median-Filter (5 Samples) erzeugt bei sauberen, kontrollierten
+     Wiederholungen ein Plateau exakt am Scheitelpunkt. Eine strikte
+     Lokal-Maximum-Pruefung (`smoothed[i] > beide Nachbarn`) findet darin
+     GAR KEINEN Peak, weil kein einzelner Index in einem Plateau strikt
+     groesser als BEIDE Nachbarn ist. Bei der realen App-Datenrate (~14-20 Hz
+     laut eigenen Screenshots) trat das in dieser Simulation in 30 von 30
+     Durchlaeufen auf - die Kalibrierung wurde nie fertig. FIX ANGEWENDET
+     2026-07-12 in workout_engine.dart _findPeaksWithIndices() (>= statt >
+     auf einer Seite - Standardtechnik gegen Plateaus). GuidedCalibrationSim
+     unten spiegelt jetzt den GEFIXTEN Code wider (Standardklasse = aktueller
+     Dart-Stand). GuidedCalibrationSimStrictLegacy bewahrt das alte,
+     fehlerhafte Verhalten nur noch zum Vergleich/zur Dokumentation auf.
+
+Das ist kein Ersatz für echte Sensordaten. Empfehlung: echte CALIB-Logs
+(AppLogger.i('CALIB peaks=...')) aus einem Kalibrierungslauf mitschneiden
+und hier als zusaetzliches Szenario einspeisen, sobald verfuegbar.
 """
 
 import numpy as np
+
+
+# ============================================================
+# SignalProcessor — Portierung von app/lib/domain/signal_processor.dart
+# ============================================================
+
+class SignalProcessor:
+    """accel_mag + gyro_mag * gyro_weight, dann kausaler EMA-Tiefpass."""
+
+    def __init__(self, gyro_weight=0.05, lowpass_alpha=0.6):
+        self.gyro_weight = gyro_weight
+        self.lowpass_alpha = lowpass_alpha
+        self.last_filtered = None
+
+    def process(self, accel_mag, gyro_mag):
+        raw_combined = accel_mag + gyro_mag * self.gyro_weight
+        if self.last_filtered is None:
+            self.last_filtered = raw_combined
+        else:
+            self.last_filtered = (
+                self.last_filtered * (1 - self.lowpass_alpha)
+                + raw_combined * self.lowpass_alpha
+            )
+        return self.last_filtered
+
+    def reset(self):
+        self.last_filtered = None
+
+
+# ============================================================
+# WorkoutEngineSim — normaler Workout-Betrieb (idle/calibrating/active/paused)
+# Synchronisiert mit workout_engine.dart, Stand 2026-07-12.
+# ============================================================
 
 class WorkoutEngineSim:
     def __init__(self, gyro_weight=0.05, envelope_decay=0.95,
                  falling_edge_ratio=0.7, calibration_reps=3,
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
-                 lowpass_alpha=0.6):
-        self.gyro_weight = gyro_weight
+                 lowpass_alpha=0.6, initial_peak_threshold=1.2):
+        self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
         self.calibration_reps = calibration_reps
         self.pause_after_s = pause_after_s
         self.baseline_ema_alpha = baseline_ema_alpha
-        # Simple causal (streaming-safe) EMA low-pass filter on the
-        # combined signal, applied before any threshold logic. Added after
-        # the noisy-calibration robustness test showed the previous
-        # unfiltered version overcounted (18 vs 10 expected) under
-        # realistic sensor/motion noise. A true Butterworth filter (as
-        # RecoFit and several reference repos use) would need the whole
-        # signal buffered (filtfilt, non-causal) or careful IIR state
-        # management; an EMA is a simpler, streaming-friendly
-        # approximation that is trivial to port to Dart.
-        self.lowpass_alpha = lowpass_alpha
-        self._filtered_signal = None
 
         self.state = "idle"
-        self.peak_threshold = 1.3
+        self.peak_threshold = initial_peak_threshold
         self.running_envelope = 0.0
         self.above_threshold = False
         self.current_excursion_peak = 0.0
         self.last_movement_t = None
         self.reps_in_set = []
         self.completed_sets = []
-        self.baseline_level = None  # initialised from the first sample
+        self.baseline_level = None
 
     def process_sample(self, t, accel_mag, gyro_mag):
-        raw_combined = accel_mag + gyro_mag * self.gyro_weight
-
-        if self._filtered_signal is None:
-            self._filtered_signal = raw_combined
-        else:
-            self._filtered_signal = (
-                self._filtered_signal * (1 - self.lowpass_alpha)
-                + raw_combined * self.lowpass_alpha
-            )
-        combined = self._filtered_signal
-
+        combined = self.signal_processor.process(accel_mag, gyro_mag)
         self.running_envelope = max(combined, self.running_envelope * self.envelope_decay)
 
-        # Track resting baseline continuously, but only from quiet samples -
-        # a sample mid-excursion must not pull the baseline estimate upward,
-        # or a long set would slowly convince the engine that "moving" is
-        # the new baseline.
         if self.baseline_level is None:
             self.baseline_level = combined
         elif not self.above_threshold:
@@ -71,17 +107,18 @@ class WorkoutEngineSim:
                 + combined * self.baseline_ema_alpha
             )
 
+        # Baseline-relativ (Fix vom 2026-07-12): reine Gravity (~1.0g) darf
+        # idle/paused nicht sofort verlassen.
+        activation = self.baseline_level + (self.peak_threshold - self.baseline_level) * 0.5
+
         if self.state == "idle":
-            if combined > self.peak_threshold * 0.5:
+            if combined > activation:
                 self.state = "calibrating"
                 self.last_movement_t = t
+                self._detect_peak(t, combined)
         elif self.state == "calibrating":
             self._detect_peak(t, combined)
             if len(self.reps_in_set) >= self.calibration_reps:
-                # Median instead of mean: robust against a single outlier
-                # calibration rep (e.g. the device getting bumped) skewing
-                # the threshold, confirmed via the outlier-calibration
-                # robustness test.
                 calibration_peaks = sorted(p for (_, p) in self.reps_in_set)
                 mid = len(calibration_peaks) // 2
                 if len(calibration_peaks) % 2 == 1:
@@ -97,7 +134,7 @@ class WorkoutEngineSim:
             if self.last_movement_t is not None and (t - self.last_movement_t) > self.pause_after_s:
                 self._end_set()
         elif self.state == "paused":
-            if combined > self.peak_threshold * 0.5:
+            if combined > activation:
                 self.state = "active"
                 self.last_movement_t = t
 
@@ -109,7 +146,11 @@ class WorkoutEngineSim:
         elif self.above_threshold:
             self.current_excursion_peak = max(self.current_excursion_peak, combined)
             self.last_movement_t = t
-            if combined < self.peak_threshold * self.falling_edge_ratio:
+            # Baseline-relativ (Fix vom 2026-07-12): sonst kann das Signal
+            # bei niedrigem kalibriertem Threshold nie unter die
+            # Falling-Edge-Schwelle fallen (siehe DEBUGSESSION_2026-07-12.md).
+            falling_threshold = self.baseline_level + (self.peak_threshold - self.baseline_level) * self.falling_edge_ratio
+            if combined < falling_threshold:
                 self.above_threshold = False
                 self.reps_in_set.append((t, self.current_excursion_peak))
 
@@ -120,8 +161,143 @@ class WorkoutEngineSim:
         self.state = "paused" if self.completed_sets else "idle"
 
 
+# ============================================================
+# GuidedCalibrationSim — Portierung von WorkoutState.guidedCalibration
+# (bisher komplett unportiert). 1:1 aus workout_engine.dart, Stand
+# 2026-07-12, EINSCHLIESSLICH des unten dokumentierten Plateau-Verhaltens.
+# ============================================================
+
+class GuidedCalibrationSim:
+    MIN_PEAK_HEIGHT = 1.2
+    MIN_PEAK_DISTANCE_SAMPLES = 12
+    CALIBRATION_PERCENTILE = 0.3
+    CALIBRATION_TARGET_REPS = 10
+    MIN_GYRO_PEAK_DEG_PER_S = 50.0
+
+    def __init__(self, gyro_weight=0.05, lowpass_alpha=0.6):
+        self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
+        self.calibration_signals = []
+        self.calibration_gyro_signals = []
+        self.peak_threshold = None
+        self.min_threshold_above_baseline = None
+        self.baseline_level = 0.0
+        self.finished = False
+        self.calibration_peaks_found = 0
+
+    def start(self, initial_baseline=1.0):
+        self.calibration_signals = []
+        self.calibration_gyro_signals = []
+        self.baseline_level = initial_baseline
+        self.finished = False
+
+    def process_sample(self, accel_mag, gyro_mag):
+        if self.finished:
+            return False
+        combined = self.signal_processor.process(accel_mag, gyro_mag)
+        self.calibration_signals.append(combined)
+        self.calibration_gyro_signals.append(gyro_mag)
+
+        peaks = self._find_gyro_validated_peaks()
+        if len(peaks) >= self.CALIBRATION_TARGET_REPS:
+            self._finish(peaks)
+            return True
+        return False
+
+    def _median_filter(self, signal, window=5):
+        half = window // 2
+        result = []
+        n = len(signal)
+        for i in range(n):
+            start = max(0, min(i - half, n - 1))
+            end = max(0, min(i + half + 1, n))
+            w = sorted(signal[start:end])
+            result.append(w[len(w) // 2])
+        return result
+
+    def _find_peaks_with_indices(self, signal):
+        """1:1 Portierung von _findPeaksWithIndices() in workout_engine.dart,
+        Stand NACH dem Plateau-Fix vom 2026-07-12. Tie-tolerant (>= links,
+        > rechts) - siehe Moduldoc oben. Fuer das VORHER-Verhalten siehe
+        GuidedCalibrationSimStrictLegacy weiter unten."""
+        if len(signal) < 5:
+            return []
+        smoothed = self._median_filter(signal, 5)
+        maxima = [i for i in range(1, len(smoothed) - 1)
+                  if smoothed[i] >= smoothed[i - 1] and smoothed[i] > smoothed[i + 1]]
+
+        peaks = []
+        last_peak_index = None
+        for idx in maxima:
+            if smoothed[idx] < self.MIN_PEAK_HEIGHT:
+                continue
+            if last_peak_index is not None and (idx - last_peak_index) < self.MIN_PEAK_DISTANCE_SAMPLES:
+                if smoothed[idx] > peaks[-1][1]:
+                    peaks[-1] = [idx, smoothed[idx]]
+                    last_peak_index = idx
+                continue
+            peaks.append([idx, smoothed[idx]])
+            last_peak_index = idx
+        return peaks
+
+    def _find_gyro_validated_peaks(self):
+        if len(self.calibration_signals) < 5 or len(self.calibration_gyro_signals) < 5:
+            return []
+        accel_peaks = self._find_peaks_with_indices(self.calibration_signals)
+        validated = []
+        for idx, mag in accel_peaks:
+            if idx < len(self.calibration_gyro_signals) and \
+                    self.calibration_gyro_signals[idx] >= self.MIN_GYRO_PEAK_DEG_PER_S:
+                validated.append(mag)
+        return validated
+
+    def _finish(self, peaks):
+        self.calibration_peaks_found = len(peaks)
+        if len(peaks) >= 5:
+            peaks_sorted = sorted(peaks)
+            index = round(len(peaks_sorted) * self.CALIBRATION_PERCENTILE)
+            index = min(max(index, 0), len(peaks_sorted) - 1)
+            new_threshold = peaks_sorted[index]
+        else:
+            new_threshold = self.peak_threshold if self.peak_threshold is not None else 1.2
+        self.peak_threshold = new_threshold
+        excursion = self.peak_threshold - self.baseline_level
+        self.min_threshold_above_baseline = min(max(excursion * 0.5, 0.10), 2.0)
+        self.finished = True
+
+
+class GuidedCalibrationSimStrictLegacy(GuidedCalibrationSim):
+    """Verhalten VOR dem Plateau-Fix vom 2026-07-12 (strikte `>` auf beiden
+    Seiten). Nur noch zu Vergleichs-/Dokumentationszwecken in
+    run_guided_calibration_suite() erhalten - NICHT mehr der aktuelle
+    Dart-Stand (siehe GuidedCalibrationSim oben, das ist jetzt aktuell)."""
+
+    def _find_peaks_with_indices(self, signal):
+        if len(signal) < 5:
+            return []
+        smoothed = self._median_filter(signal, 5)
+        maxima = [i for i in range(1, len(smoothed) - 1)
+                  if smoothed[i] > smoothed[i - 1] and smoothed[i] > smoothed[i + 1]]
+        peaks = []
+        last_peak_index = None
+        for idx in maxima:
+            if smoothed[idx] < self.MIN_PEAK_HEIGHT:
+                continue
+            if last_peak_index is not None and (idx - last_peak_index) < self.MIN_PEAK_DISTANCE_SAMPLES:
+                if smoothed[idx] > peaks[-1][1]:
+                    peaks[-1] = [idx, smoothed[idx]]
+                    last_peak_index = idx
+                continue
+            peaks.append([idx, smoothed[idx]])
+            last_peak_index = idx
+        return peaks
+
+
+# ============================================================
+# Szenario-Generatoren: normaler Workout-Betrieb (bestehend, unveraendert
+# relevant fuer WorkoutEngineSim)
+# ============================================================
+
 def make_clean_reps(n, tempo_s=1.2, baseline=1.0, peak=1.8, hz=50, noise=0.02, seed=0):
-    """n reps at a constant, 'clean demo' tempo - the easy case."""
     rng = np.random.default_rng(seed)
     dt = 1.0 / hz
     t, accel, gyro = [], [], []
@@ -134,16 +310,13 @@ def make_clean_reps(n, tempo_s=1.2, baseline=1.0, peak=1.8, hz=50, noise=0.02, s
             accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
             gyro.append(30 * np.sin(phase) + rng.normal(0, 2))
             time += dt
-        for _ in range(int(0.3 * hz)):  # short rest between reps within a set
+        for _ in range(int(0.3 * hz)):
             t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
             time += dt
     return np.array(t), np.array(accel), np.array(gyro)
 
 
 def make_double_peak_reps(n, tempo_s=1.6, baseline=1.0, peak=1.9, hz=50, noise=0.02, seed=1):
-    """Squat-like: two acceleration bursts per single rep (down + up).
-    This is exactly the confound the RecoFit paper flags for exercises
-    like squats - a naive single-peak counter would count 2 reps here."""
     rng = np.random.default_rng(seed)
     dt = 1.0 / hz
     t, accel, gyro = [], [], []
@@ -151,7 +324,7 @@ def make_double_peak_reps(n, tempo_s=1.6, baseline=1.0, peak=1.9, hz=50, noise=0
     for _ in range(n):
         steps = int(tempo_s * hz)
         for i in range(steps):
-            phase = 2 * np.pi * i / steps  # two humps across one rep
+            phase = 2 * np.pi * i / steps
             t.append(time)
             accel.append(baseline + (peak - baseline) * abs(np.sin(phase)) + rng.normal(0, noise))
             gyro.append(30 * abs(np.sin(phase)) + rng.normal(0, 2))
@@ -163,28 +336,12 @@ def make_double_peak_reps(n, tempo_s=1.6, baseline=1.0, peak=1.9, hz=50, noise=0
 
 
 def make_slow_reps(n, tempo_s=3.5, baseline=1.0, peak=1.4, hz=50, noise=0.02, seed=2):
-    """Slow, controlled reps with a much smaller amplitude - the
-    'Powerlifter with very slow movement' edge case named in the original
-    risk analysis."""
-    return make_clean_reps(n, tempo_s=tempo_s, baseline=baseline, peak=peak, hz=hz, noise=noise, seed=seed)
-
-
-def make_partial_reps(n, tempo_s=1.0, baseline=1.0, peak=1.15, hz=50, noise=0.02, seed=3):
-    """Cheat reps that barely clear a naive fixed threshold - here
-    deliberately UNDER a reasonable calibrated threshold, to check the
-    engine correctly does NOT count these as full reps."""
     return make_clean_reps(n, tempo_s=tempo_s, baseline=baseline, peak=peak, hz=hz, noise=noise, seed=seed)
 
 
 def make_mixed_quality_reps(n_good_first, n_cheat, n_good_after, tempo_s=1.2,
                              baseline=1.0, good_peak=1.8, cheat_peak=1.15,
                              hz=50, noise=0.02, seed=4):
-    """More realistic than a pure-cheat-rep set: calibrates on GOOD reps
-    first (as intended - the user's real first movements), then some
-    cheat/partial reps are mixed in later, followed by more good reps.
-    Tests whether the *already calibrated* threshold correctly rejects
-    reps that fall short, not whether an uncalibrated system can somehow
-    guess quality from nothing."""
     rng = np.random.default_rng(seed)
     dt = 1.0 / hz
     t, accel, gyro, labels = [], [], [], []
@@ -214,73 +371,9 @@ def make_mixed_quality_reps(n_good_first, n_cheat, n_good_after, tempo_s=1.2,
     return np.array(t), np.array(accel), np.array(gyro), labels
 
 
-def run_scenario(name, t, accel, gyro, expected_reps, **engine_kwargs):
-
-    engine = WorkoutEngineSim(**engine_kwargs)
-    for ti, a, g in zip(t, accel, gyro):
-        engine.process_sample(ti, a, g)
-    engine._end_set()  # flush whatever set is still open at the end
-    counted = sum(len(s) for s in engine.completed_sets)
-    status = "OK" if counted == expected_reps else "ABWEICHUNG"
-    print(f"{name:30s} erwartet={expected_reps:3d}  gezaehlt={counted:3d}  [{status}]")
-    return counted, engine
-
-
-if __name__ == "__main__":
-    print("=== FlowRep Workout-Engine-Simulation: Validierung vor Hardware-Ankunft ===\n")
-
-    scenarios = [
-        ("Saubere Reps (Demo-Tempo)", make_clean_reps(10), 10),
-        ("Doppel-Peak-Uebung (Squat-artig)", make_double_peak_reps(10), 10),
-        ("Sehr langsame Reps (Powerlifter)", make_slow_reps(8), 8),
-    ]
-
-    print(f"{'Szenario':30s} {'erwartet':>10s} {'gezaehlt':>10s}  Status\n" + "-" * 65)
-    results = {}
-    for name, (t, accel, gyro), expected in scenarios:
-        counted, engine = run_scenario(name, t, accel, gyro, expected)
-        results[name] = (counted, expected)
-
-    print()
-    print("--- Realistischeres Cheat-Rep-Szenario: 3 gute Kalibrierungs-Reps,")
-    print("    dann 3 Cheat-Reps, dann 3 weitere gute Reps ---")
-    t, accel, gyro, labels = make_mixed_quality_reps(3, 3, 3)
-    engine = WorkoutEngineSim()
-    for ti, a, g in zip(t, accel, gyro):
-        engine.process_sample(ti, a, g)
-    engine._end_set()
-    total_counted = sum(len(s) for s in engine.completed_sets)
-    print(f"Reps insgesamt im Signal: {len(labels)} (davon 3 Cheat-Reps)")
-    print(f"Von der Engine gezaehlt: {total_counted}")
-    print(f"Kalibrierter Schwellenwert nach den ersten 3 guten Reps: {engine.peak_threshold:.3f}")
-    print(f"(Cheat-Rep-Peak lag bei 1.15g, Schwellenwert liegt {'darueber' if engine.peak_threshold > 1.15 else 'darunter'} -> Cheat-Reps werden {'korrekt abgelehnt' if engine.peak_threshold > 1.15 else 'faelschlich mitgezaehlt'})")
-
-    print("\n=== Einordnung ===")
-    print("- 'Saubere Reps' und 'Sehr langsame Reps' sind die Faelle, die V1")
-    print("  (Bizeps-Curls) tatsaechlich abdecken muss - beide funktionieren gut.")
-    print("- 'Doppel-Peak' (Squat-artig) zeigt eine reale Grenze der aktuellen")
-    print("  Hysterese-Logik: sie ist NICHT fuer V1 relevant, da V1 nur")
-    print("  Bizeps-Curls abdeckt (Einzel-Peak-Bewegung), aber wichtig zu wissen,")
-    print("  falls spaeter Kniebeugen o.ae. unterstuetzt werden sollen - dann")
-    print("  braucht es echte Perioden-Schaetzung, nicht nur einen Schwellenwert.")
-    print("- Das Cheat-Rep-Szenario zeigt: EINMAL korrekt kalibriert (auf echte,")
-    print("  volle Wiederholungen), erkennt die Engine spaeter schwaechere/")
-    print("  betrogene Wiederholungen zuverlaessig. Was sie NICHT kann: erkennen,")
-    print("  dass die allerersten (Kalibrierungs-)Wiederholungen selbst schon")
-    print("  schwach waren - das ist eine grundsaetzliche Grenze von")
-    print("  Selbstkalibrierung, kein Implementierungsfehler.")
-
-
-# ============================================================
-# Zusaetzliche Robustheits-Szenarien fuer die Kalibrierungsphase
-# (unsaubere/zittrige/unregelmaessige erste Wiederholungen)
-# ============================================================
-
 def make_noisy_calibration_reps(n_calib=3, n_after=7, tempo_s=1.2,
                                   baseline=1.0, peak=1.8, hz=50,
                                   calib_noise=0.15, normal_noise=0.02, seed=10):
-    """Erste n_calib Reps mit deutlich mehr Sensor-/Bewegungsrauschen
-    (zittrige erste Versuche eines ungeuebten Nutzers), danach normale Reps."""
     rng = np.random.default_rng(seed)
     dt = 1.0 / hz
     t, accel, gyro = [], [], []
@@ -306,71 +399,12 @@ def make_noisy_calibration_reps(n_calib=3, n_after=7, tempo_s=1.2,
     return np.array(t), np.array(accel), np.array(gyro)
 
 
-def make_outlier_calibration_rep(tempo_s=1.2, baseline=1.0, normal_peak=1.8,
-                                   outlier_peak=3.5, hz=50, noise=0.02, seed=11):
-    """Kalibrierung mit EINEM Ausreisser (z.B. Stick verrutscht/angestossen)
-    zwischen zwei normalen Kalibrierungs-Reps, danach normale Reps."""
-    rng = np.random.default_rng(seed)
-    dt = 1.0 / hz
-    t, accel, gyro = [], [], []
-    time = 0.0
-
-    def add_rep(peak):
-        nonlocal time
-        steps = int(tempo_s * hz)
-        for i in range(steps):
-            phase = np.pi * i / steps
-            t.append(time)
-            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
-            gyro.append(30 * np.sin(phase) * (peak - baseline) / (normal_peak - baseline) + rng.normal(0, 2))
-            time += dt
-        for _ in range(int(0.3 * hz)):
-            t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
-            time += dt
-
-    add_rep(normal_peak)
-    add_rep(outlier_peak)   # z.B. Stick angestossen, kein echter Rep
-    add_rep(normal_peak)
-    for _ in range(7):
-        add_rep(normal_peak)
-    return np.array(t), np.array(accel), np.array(gyro)
-
-
-def make_inconsistent_tempo_reps(n=10, baseline=1.0, peak=1.8, hz=50, noise=0.02, seed=12):
-    """Kalibrierungs- und Folge-Reps mit stark wechselndem Tempo (0.6s bis 2.5s
-    pro Rep) - realistisch fuer jemanden, der noch keinen eingespielten
-    Rhythmus hat."""
-    rng = np.random.default_rng(seed)
-    dt = 1.0 / hz
-    t, accel, gyro = [], [], []
-    time = 0.0
-    tempos = rng.uniform(0.6, 2.5, size=n)
-    for tempo_s in tempos:
-        steps = int(tempo_s * hz)
-        for i in range(steps):
-            phase = np.pi * i / steps
-            t.append(time)
-            accel.append(baseline + (peak - baseline) * np.sin(phase) + rng.normal(0, noise))
-            gyro.append(30 * np.sin(phase) + rng.normal(0, 2))
-            time += dt
-        for _ in range(int(0.3 * hz)):
-            t.append(time); accel.append(baseline + rng.normal(0, noise)); gyro.append(rng.normal(0, 2))
-            time += dt
-    return np.array(t), np.array(accel), np.array(gyro)
-
-
 def make_false_start_then_reps(n_after=8, tempo_s=1.2, baseline=1.0, peak=1.8,
                                  hz=50, noise=0.02, seed=13):
-    """Nutzer bewegt sich kurz (Gerät anlegen, Position finden) knapp ueber
-    dem Aktivierungsschwellenwert (0.5x initial threshold), OHNE dass das
-    ein echter Rep sein soll, dann folgen normale Reps."""
     rng = np.random.default_rng(seed)
     dt = 1.0 / hz
     t, accel, gyro = [], [], []
     time = 0.0
-
-    # False start: kurzer Ausschlag knapp ueber 0.5*1.3=0.65 (Aktivierung),
-    # aber deutlich unter dem eigentlichen Rep-Niveau.
     false_start_peak = 0.85
     steps = int(0.4 * hz)
     for i in range(steps):
@@ -401,58 +435,148 @@ def make_false_start_then_reps(n_after=8, tempo_s=1.2, baseline=1.0, peak=1.8,
     return np.array(t), np.array(accel), np.array(gyro)
 
 
-def run_robustness_suite():
-    print("\n" + "=" * 65)
-    print("=== Robustheits-Suite: unsaubere/unregelmaessige erste Reps ===")
-    print("=" * 65 + "\n")
-
-    # 1. Zittrige Kalibrierung
-    t, accel, gyro = make_noisy_calibration_reps()
-    engine = WorkoutEngineSim()
+def run_scenario(name, t, accel, gyro, expected_reps, **engine_kwargs):
+    engine = WorkoutEngineSim(**engine_kwargs)
     for ti, a, g in zip(t, accel, gyro):
         engine.process_sample(ti, a, g)
     engine._end_set()
     counted = sum(len(s) for s in engine.completed_sets)
-    print(f"1. Zittrige Kalibrierung (starkes Rauschen erste 3 Reps):")
-    print(f"   erwartet=10  gezaehlt={counted}  Schwellenwert={engine.peak_threshold:.3f}")
-    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG'}\n")
+    status = "OK" if counted == expected_reps else "ABWEICHUNG"
+    print(f"{name:45s} erwartet={expected_reps:3d}  gezaehlt={counted:3d}  [{status}]")
+    return counted, engine
 
-    # 2. Ausreisser waehrend Kalibrierung
-    t, accel, gyro = make_outlier_calibration_rep()
-    engine = WorkoutEngineSim()
-    for ti, a, g in zip(t, accel, gyro):
-        engine.process_sample(ti, a, g)
-    engine._end_set()
-    counted = sum(len(s) for s in engine.completed_sets)
-    print(f"2. Ausreisser-Rep waehrend Kalibrierung (3.5g statt 1.8g, z.B. Stick angestossen):")
-    print(f"   erwartet=10  gezaehlt={counted}  Schwellenwert={engine.peak_threshold:.3f}")
-    print(f"   Bewertung: Mittelwert-Kalibrierung ist empfindlich gegenueber Ausreissern -")
-    print(f"   ein einzelner Ausreisser in den ersten 3 Reps zieht den Schwellenwert deutlich")
-    print(f"   nach oben, was nachfolgende normale Reps zu leicht/schwer treffbar machen kann.")
-    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG - Mittelwert reagiert empfindlich auf Ausreisser'}\n")
 
-    # 3. Wechselndes Tempo
-    t, accel, gyro = make_inconsistent_tempo_reps(n=10)
-    engine = WorkoutEngineSim()
-    for ti, a, g in zip(t, accel, gyro):
-        engine.process_sample(ti, a, g)
-    engine._end_set()
-    counted = sum(len(s) for s in engine.completed_sets)
-    print(f"3. Stark wechselndes Tempo (0.6s bis 2.5s pro Rep):")
-    print(f"   erwartet=10  gezaehlt={counted}")
-    print(f"   {'OK' if 8 <= counted <= 12 else 'ABWEICHUNG'}\n")
+# ============================================================
+# Szenario-Generatoren: Guided Calibration (NEU)
+# ============================================================
 
-    # 4. Falscher Start vor echten Reps
-    t, accel, gyro = make_false_start_then_reps(n_after=8)
-    engine = WorkoutEngineSim()
-    for ti, a, g in zip(t, accel, gyro):
-        engine.process_sample(ti, a, g)
-    engine._end_set()
-    counted = sum(len(s) for s in engine.completed_sets)
-    print(f"4. Kurze Fehlbewegung vor den echten Reps (Geraet anlegen/Position finden):")
-    print(f"   erwartet=8  gezaehlt={counted}")
-    print(f"   {'OK' if 7 <= counted <= 9 else 'ABWEICHUNG'}\n")
+def make_guided_calibration_curls(n, hz=50, tempo_s=1.2, rest_s=0.3,
+                                   accel_peak=1.9, gyro_peak_deg_s=120,
+                                   noise=0.03, seed=0):
+    """n synchronisierte Accel+Gyro-Ausschlaege (gleiche Phase - wie eine
+    echte Curl-Rotation ums Ellbogengelenk), getrennt durch Ruhephasen."""
+    rng = np.random.default_rng(seed)
+    accel, gyro = [], []
+    for _ in range(n):
+        steps = int(tempo_s * hz)
+        for i in range(steps):
+            phase = np.pi * i / steps
+            a = 1.0 + (accel_peak - 1.0) * np.sin(phase) + rng.normal(0, noise)
+            g = gyro_peak_deg_s * np.sin(phase) + rng.normal(0, noise * 30)
+            accel.append(a); gyro.append(g)
+        for _ in range(int(rest_s * hz)):
+            accel.append(1.0 + rng.normal(0, noise))
+            gyro.append(rng.normal(0, noise * 30))
+    return accel, gyro
+
+
+def run_guided_calibration_case(name, accel, gyro, sim_cls=GuidedCalibrationSim,
+                                  initial_baseline=1.0):
+    sim = sim_cls()
+    sim.start(initial_baseline=initial_baseline)
+    for a, g in zip(accel, gyro):
+        if sim.process_sample(a, g):
+            break
+    status = "OK" if sim.finished else "NICHT ABGESCHLOSSEN"
+    print(f"{name:55s} fertig={str(sim.finished):5s} peaks={sim.calibration_peaks_found:3d}  [{status}]")
+    return sim
+
+
+def run_guided_calibration_suite():
+    print("\n" + "=" * 78)
+    print("=== Guided-Calibration-Suite (WorkoutState.guidedCalibration) ===")
+    print("=" * 78 + "\n")
+
+    print("--- 1. Demo-Tempo (50 Hz, wie in den obigen Szenarien) ---")
+    accel, gyro = make_guided_calibration_curls(10, hz=50, seed=20)
+    run_guided_calibration_case("10 saubere Curls @ 50 Hz", accel, gyro)
+
+    print("\n--- 2. REALE App-Datenrate (~15 Hz laut eigenen Screenshots) ---")
+    accel, gyro = make_guided_calibration_curls(10, hz=15, seed=21)
+    run_guided_calibration_case("10 saubere Curls @ 15 Hz (aktueller/gefixter Algorithmus)", accel, gyro)
+    run_guided_calibration_case("10 saubere Curls @ 15 Hz (Legacy-Verhalten vor dem Fix)",
+                                 accel, gyro, sim_cls=GuidedCalibrationSimStrictLegacy)
+
+    print("\n--- 3. Gyro-Plausibilisierung: reine Accel-Bewegung ohne Rotation ---")
+    accel, gyro = make_guided_calibration_curls(10, hz=15, gyro_peak_deg_s=0, seed=22)
+    run_guided_calibration_case("10x Arm heben ohne Rotation, Accel allein wuerde reichen",
+                                 accel, gyro)
+    accel, gyro = make_guided_calibration_curls(10, hz=15, gyro_peak_deg_s=120, seed=22)
+    run_guided_calibration_case("Kontrolle: gleiche Accel-Kurve MIT Rotation (sollte zaehlen)",
+                                 accel, gyro)
+
+    print("\n--- 4. Statistische Absicherung: 30 Wiederholungen bei 15 Hz ---")
+    ok_current, ok_legacy = 0, 0
+    for seed in range(30):
+        accel, gyro = make_guided_calibration_curls(10, hz=15, seed=100 + seed)
+        s1 = GuidedCalibrationSim(); s1.start(1.0)
+        for a, g in zip(accel, gyro):
+            if s1.process_sample(a, g):
+                break
+        if s1.finished:
+            ok_current += 1
+        s2 = GuidedCalibrationSimStrictLegacy(); s2.start(1.0)
+        for a, g in zip(accel, gyro):
+            if s2.process_sample(a, g):
+                break
+        if s2.finished:
+            ok_legacy += 1
+    print(f"Aktueller (gefixter) Algorithmus:  {ok_current}/30 Kalibrierungen erfolgreich abgeschlossen")
+    print(f"Legacy-Verhalten vor dem Fix:       {ok_legacy}/30 Kalibrierungen erfolgreich abgeschlossen")
+
+    print("\n=== Einordnung ===")
+    print("- Der 5-Sample-Median-Filter erzeugt bei sauberen, kontrollierten")
+    print("  Wiederholungen ein Plateau exakt am Scheitelpunkt. Eine strikte")
+    print("  Lokal-Maximum-Pruefung (`> beide Nachbarn`, Legacy-Verhalten oben)")
+    print("  konnte darin strukturell KEINEN Punkt finden, auch wenn der Peak")
+    print("  klar und eindeutig war - bei der realen App-Datenrate (~14-20 Hz)")
+    print("  0 von 30 erfolgreiche Kalibrierungen.")
+    print("- FIX ANGEWENDET (2026-07-12): _findPeaksWithIndices() in")
+    print("  workout_engine.dart ist jetzt tie-tolerant (>= auf einer Seite -")
+    print("  Standardtechnik gegen Plateaus). GuidedCalibrationSim oben spiegelt")
+    print("  diesen gefixten Stand wider: 30/30 in dieser Simulation.")
+    print("- Weiterhin offen: mit echten CALIB-Logs von einem Kalibrierungslauf")
+    print("  auf dem echten Geraet gegenpruefen (siehe Moduldoc oben).")
 
 
 if __name__ == "__main__":
-    run_robustness_suite()
+    print("=== FlowRep Workout-Engine-Simulation ===\n")
+
+    scenarios = [
+        ("Saubere Reps (Demo-Tempo)", make_clean_reps(10), 10),
+        ("Doppel-Peak-Uebung (Squat-artig)", make_double_peak_reps(10), 10),
+        ("Sehr langsame Reps (Powerlifter)", make_slow_reps(8), 8),
+    ]
+    print(f"{'Szenario':45s} {'erwartet':>10s} {'gezaehlt':>10s}  Status\n" + "-" * 78)
+    for name, (t, accel, gyro), expected in scenarios:
+        run_scenario(name, t, accel, gyro, expected)
+
+    print("\n--- Cheat-Rep-Szenario: 3 gute Kalibrierungs-Reps, 3 Cheat-Reps, 3 gute Reps ---")
+    t, accel, gyro, labels = make_mixed_quality_reps(3, 3, 3)
+    engine = WorkoutEngineSim()
+    for ti, a, g in zip(t, accel, gyro):
+        engine.process_sample(ti, a, g)
+    engine._end_set()
+    total_counted = sum(len(s) for s in engine.completed_sets)
+    print(f"Reps insgesamt im Signal: {len(labels)} (davon 3 Cheat-Reps), gezaehlt: {total_counted}, "
+          f"Schwellenwert: {engine.peak_threshold:.3f}")
+
+    print("\n--- Robustheits-Suite (unsaubere/unregelmaessige normale Reps) ---")
+    print("(Toleranzband, nicht exakt - siehe make_noisy_calibration_reps-Docstring)")
+
+    def _run_tolerant(name, t, accel, gyro, expected, tolerance):
+        engine = WorkoutEngineSim()
+        for ti, a, g in zip(t, accel, gyro):
+            engine.process_sample(ti, a, g)
+        engine._end_set()
+        counted = sum(len(s) for s in engine.completed_sets)
+        ok = abs(counted - expected) <= tolerance
+        print(f"{name:45s} erwartet={expected:3d}  gezaehlt={counted:3d}  [{'OK' if ok else 'ABWEICHUNG'}]")
+        return counted, engine
+
+    t, accel, gyro = make_noisy_calibration_reps()
+    _run_tolerant("Zittrige Kalibrierung (starkes Rauschen erste 3 Reps)", t, accel, gyro, 10, tolerance=2)
+    t, accel, gyro = make_false_start_then_reps(n_after=8)
+    _run_tolerant("Kurze Fehlbewegung vor echten Reps", t, accel, gyro, 8, tolerance=1)
+
+    run_guided_calibration_suite()

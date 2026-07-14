@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 
-import '../models/workout_models.dart';
+import 'package:flowrep/data/logger.dart';
+import 'package:flowrep/domain/models/workout_models.dart';
+import 'package:flowrep/domain/signal_processor.dart';
 
-enum WorkoutState { idle, calibrating, active, paused }
+enum WorkoutState { idle, calibrating, active, paused, guidedCalibration, connectionLost }
 
 class SensorSample {
   final DateTime timestamp;
@@ -28,11 +30,15 @@ class WorkoutEngineEvent {
   final WorkoutState state;
   final int repsInCurrentSet;
   final ExerciseSet? completedSet;
+  final double? calibrationProgress; // 0.0–1.0 during guidedCalibration
+  final double? calibratedThreshold; // result after calibration completes
 
   const WorkoutEngineEvent({
     required this.state,
     required this.repsInCurrentSet,
     this.completedSet,
+    this.calibrationProgress,
+    this.calibratedThreshold,
   });
 }
 
@@ -75,18 +81,25 @@ class WorkoutEngineEvent {
 class WorkoutEngine {
   WorkoutEngine({
     required this.exerciseId,
-    this.gyroWeight = 0.05,
+    SignalProcessor? signalProcessor,
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
-    this.calibrationReps = 3,
+    this.calibrationReps = 1,
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
-    this.lowPassAlpha = 0.6,
-  });
+    double gyroWeight = 0.05,
+    double lowPassAlpha = 0.6,
+    this.initialPeakThreshold,
+  }) : _signalProcessor = signalProcessor ??
+            SignalProcessor(gyroWeight: gyroWeight, lowPassAlpha: lowPassAlpha),
+       _peakThreshold = initialPeakThreshold ?? 1.2;
 
+  /// Optional pre-calibrated threshold loaded from persistent storage.
+  /// If null, the engine starts with the default 1.5g.
+  final double? initialPeakThreshold;
   final String exerciseId;
-  final double gyroWeight;
+  final SignalProcessor _signalProcessor;
   final double envelopeDecayRate;
   final Duration pauseAfter;
   final int calibrationReps;
@@ -109,34 +122,34 @@ class WorkoutEngine {
   /// marginal signal as "normal" from then on. This floor is a starting
   /// point, not yet validated against real hardware - see
   /// 09_TESTPROTOKOLL_TEMPLATE.md for where that validation belongs.
-  final double minThresholdAboveBaseline;
+  ///
+  /// NOT final: the guided calibration mode updates this after learning
+  /// the user's typical rep excursion. See _finishGuidedCalibration().
+  // ignore: prefer_final_fields
+  double minThresholdAboveBaseline;
 
-  /// Streaming (causal) EMA low-pass filter strength applied to the
-  /// combined signal before any threshold logic, 0 < alpha <= 1 (higher =
-  /// less smoothing/lag, closer to raw signal). Added + tuned via
-  /// tools/workout_engine_simulation.py after a robustness test showed the
-  /// unfiltered engine overcounted (18 vs 10 expected) under realistic
-  /// sensor/motion noise during calibration. 0.6 was chosen as a balance:
-  /// it fixed the noisy-calibration case without materially breaking fast
-  /// or variable-tempo reps in the same test suite - it is a starting
-  /// point for the real Milestone-2 hardware test to refine, not a final
-  /// tuned value.
-  final double lowPassAlpha;
-
-  final _controller = StreamController<WorkoutEngineEvent>.broadcast();
+  // Synchronous delivery is intentional: it lets tests observe state
+  // changes immediately after calling processSample(), without needing
+  // async pumps. UI listeners (setState) are safe because processSample
+  // is never invoked inside another setState cycle in this app.
+  final _controller = StreamController<WorkoutEngineEvent>.broadcast(sync: true);
   Stream<WorkoutEngineEvent> get events => _controller.stream;
 
   WorkoutState _state = WorkoutState.idle;
   WorkoutState get state => _state;
 
-  double _peakThreshold = 1.3; // g, conservative default until calibrated
+  // Real-hardware tuning (2026-07-12): lowered from 1.5 to 1.2 because
+  // the raw accel magnitude peaks at ~1.227 on actual bicep curls (Serial
+  // data from M5StickC Plus2). With gyro contribution (gyroMag*0.05),
+  // even slow curls with low rotation easily cross 1.2. At 1.5, curls
+  // with <50 deg/s gyro were missed entirely.
+  double _peakThreshold = 1.2; // g, lowered for real-hardware sensitivity
   double get peakThreshold => _peakThreshold;
 
   double _runningEnvelope = 0.0;
   bool _aboveThreshold = false;
   double _currentExcursionPeak = 0.0;
   DateTime? _lastMovementAt;
-  double? _filteredSignal;
 
   /// Slow-moving estimate of the resting ("quiet") signal level. Only
   /// updated from samples that are NOT part of an above-threshold
@@ -146,14 +159,47 @@ class WorkoutEngine {
 
   final List<Rep> _repsInSet = [];
   int _setCounter = 0;
+  int _diagEngineSampleCount = 0;  // diagnostics: samples received by engine
+
+  /// Public: how many samples the engine has received since last reset.
+  int get diagEngineSampleCount => _diagEngineSampleCount;
+
+  // ---- Guided calibration mode ----
+  final List<double> _calibrationSignals = [];
+  final List<double> _calibrationGyroSignals = [];
+  static const _minPeakHeight = 1.2;  // restored from 1.05 (diagnosis): must be above noise floor
+  static const _minPeakDistanceSamples = 12; // restored from 8: prevents double-counting within one curl
+  static const _calibrationPercentile = 0.3;
+  static const int calibrationTargetReps = 10;
+  static const _minGyroPeakDegPerS = 50.0; // restored from 10.0: requires real rotation, not wrist twitch
+  // Diagnostics: track max values seen during calibration
+  double _diagMaxAccel = 0;
+  double _diagMaxGyro = 0;
+  int _finalCalibrationSignalCount = 0;  // snapshot before clear
+
+  /// Public diagnostic accessors for CALIB log capture on UI.
+  double get diagMaxAccel => _diagMaxAccel;
+  double get diagMaxGyro => _diagMaxGyro;
+  int get calibrationSignalCount => _calibrationSignals.length;
+  int get finalCalibrationSignalCount => _finalCalibrationSignalCount;
 
   void processSample(SensorSample s) {
-    final rawCombined = s.accelMagnitude + (s.gyroMagnitude * gyroWeight);
+    _diagEngineSampleCount++;
 
-    _filteredSignal = _filteredSignal == null
-        ? rawCombined
-        : _filteredSignal! * (1 - lowPassAlpha) + rawCombined * lowPassAlpha;
-    final combinedSignal = _filteredSignal!;
+    final combinedSignal = _signalProcessor.process(s);
+
+    // DIAGNOSTIC: log every 50th sample, plus during calibrating every 10th
+    final bool shouldLog = _diagEngineSampleCount % 50 == 0 ||
+        (_state == WorkoutState.calibrating && _diagEngineSampleCount % 10 == 0);
+    if (shouldLog) {
+      AppLogger.d('ENGINE #$_diagEngineSampleCount '
+          'state=${_state.name} '
+          'combined=${combinedSignal.toStringAsFixed(3)} '
+          'accelMag=${s.accelMagnitude.toStringAsFixed(3)} '
+          'gyroMag=${s.gyroMagnitude.toStringAsFixed(1)} '
+          'threshold=$_peakThreshold baseline=${baselineLevel.toStringAsFixed(3)} '
+          'above=$_aboveThreshold');
+    }
 
     _runningEnvelope = max(combinedSignal, _runningEnvelope * envelopeDecayRate);
 
@@ -166,12 +212,21 @@ class WorkoutEngine {
 
     switch (_state) {
       case WorkoutState.idle:
-        if (combinedSignal > _peakThreshold * 0.5) {
+        // Baseline-relative: gravity (~1.0g) alone must not trigger
+        // calibrating. The signal must rise meaningfully above the
+        // resting baseline before we treat it as movement.
+        if (combinedSignal >
+            baselineLevel + (_peakThreshold - baselineLevel) * 0.5) {
           // First real movement IS the first set - no separate, empty
           // calibration step. See ADR-003 / "Magic Moment" principle.
           _state = WorkoutState.calibrating;
           _lastMovementAt = s.timestamp;
           _emitStateEvent();
+          // BUGFIX: the triggering sample MUST also be processed by
+          // _detectPeak. Without this, the first high signal that
+          // transitions idle→calibrating is lost, and if the signal
+          // drops before the next sample, no rep is ever counted.
+          _detectPeak(s, combinedSignal);
         }
         break;
 
@@ -206,11 +261,44 @@ class WorkoutEngine {
         break;
 
       case WorkoutState.paused:
-        if (combinedSignal > _peakThreshold * 0.5) {
+        // Baseline-relative: same reasoning as idle — gravity alone
+        // must not re-trigger the active state during a pause.
+        if (combinedSignal >
+            baselineLevel + (_peakThreshold - baselineLevel) * 0.5) {
           _state = WorkoutState.active;
           _lastMovementAt = s.timestamp;
           _emitStateEvent();
         }
+        break;
+
+      case WorkoutState.guidedCalibration:
+        _calibrationSignals.add(combinedSignal);
+        _calibrationGyroSignals.add(s.gyroMagnitude);
+        // Track max values for diagnosis.
+        if (s.accelMagnitude > _diagMaxAccel) _diagMaxAccel = s.accelMagnitude;
+        if (s.gyroMagnitude > _diagMaxGyro) _diagMaxGyro = s.gyroMagnitude;
+        final currentPeaks = _findGyroValidatedPeaks();
+        if (currentPeaks.length != _lastCalibrationPeakCount) {
+          _lastCalibrationPeakCount = currentPeaks.length;
+          AppLogger.i('CALIB peaks=$_lastCalibrationPeakCount '
+              'maxAccel=${_diagMaxAccel.toStringAsFixed(3)} '
+              'maxGyro=${_diagMaxGyro.toStringAsFixed(1)} '
+              'signals=${_calibrationSignals.length}');
+          final progress =
+              (currentPeaks.length / calibrationTargetReps).clamp(0.0, 1.0);
+          _controller.add(WorkoutEngineEvent(
+            state: _state,
+            repsInCurrentSet: currentPeaks.length,
+            calibrationProgress: progress,
+          ));
+        }
+        if (currentPeaks.length >= calibrationTargetReps) {
+          _finishGuidedCalibration();
+        }
+        break;
+
+      case WorkoutState.connectionLost:
+        // Ignore samples until explicit reset via handleReconnect().
         break;
     }
   }
@@ -227,7 +315,15 @@ class WorkoutEngine {
       _currentExcursionPeak = max(_currentExcursionPeak, combinedSignal);
       _lastMovementAt = s.timestamp;
 
-      if (combinedSignal < _peakThreshold * fallingEdgeRatio) {
+      // Falling edge: the signal must drop back down below a threshold
+      // that is relative to the resting BASELINE, not an absolute value.
+      // Without this, gravity (~1.0g) keeps the signal permanently above
+      // a naive `_peakThreshold * fallingEdgeRatio` (e.g. 0.91g), and
+      // the engine never counts a single rep. See the real-hardware
+      // debug session of 2026-07-12 for the diagnosis.
+      final fallingThreshold =
+          baselineLevel + (_peakThreshold - baselineLevel) * fallingEdgeRatio;
+      if (combinedSignal < fallingThreshold) {
         _aboveThreshold = false;
         _repsInSet.add(
           Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
@@ -271,5 +367,192 @@ class WorkoutEngine {
   /// than waiting for the pauseAfter timeout.
   void endSetManually() => _endSet();
 
+  // ---- Guided calibration mode ----
+
+  /// Starts a guided calibration recording. The engine records all
+  /// [combinedSignal] values and runs event-based peak detection: as soon
+  /// as [calibrationTargetReps] distinct peaks are found, calibration
+  /// finishes. Live feedback is emitted via [WorkoutEngineEvent].
+  ///
+  /// See docs/CALIBRATION_MODE_CONCEPT.md for the design rationale.
+  void startGuidedCalibration() {
+    _calibrationSignals.clear();
+    _calibrationGyroSignals.clear();
+    _baselineLevel = _signalProcessor.lastFiltered;
+    _peakThreshold = 1.2;  // matches default, lowered for real hardware
+    _aboveThreshold = false;
+    _currentExcursionPeak = 0.0;
+    _repsInSet.clear();
+    _lastCalibrationPeakCount = 0;
+    _diagMaxAccel = 0;
+    _diagMaxGyro = 0;
+    _state = WorkoutState.guidedCalibration;
+    _emitStateEvent();
+  }
+
+  int get calibrationPeaksFound => _calibrationPeaksFound;
+  int _calibrationPeaksFound = 0;
+  int _lastCalibrationPeakCount = 0;  // throttle: only emit when count changes
+
+  void _finishGuidedCalibration() {
+    final peaks = _findGyroValidatedPeaks();
+    _calibrationPeaksFound = peaks.length;
+    _finalCalibrationSignalCount = _calibrationSignals.length;  // snapshot before clear
+
+    final double newThreshold;
+    if (peaks.length >= 5) {
+      peaks.sort();
+      final index = (peaks.length * _calibrationPercentile).round();
+      newThreshold = peaks[index.clamp(0, peaks.length - 1)];
+    } else {
+      newThreshold = _peakThreshold;
+    }
+
+    _peakThreshold = newThreshold;
+    final excursion = _peakThreshold - baselineLevel;
+    minThresholdAboveBaseline = (excursion * 0.5).clamp(0.10, 2.0);
+
+    _calibrationSignals.clear();
+    _calibrationGyroSignals.clear();
+    _state = WorkoutState.idle;
+    _controller.add(WorkoutEngineEvent(
+      state: _state,
+      repsInCurrentSet: 0,
+      calibrationProgress: 1.0,
+      calibratedThreshold: newThreshold,
+    ));
+  }
+
+  /// 5-sample median filter: for each sample, takes the median of a
+  /// 5-sample window centered on that sample. At edges, the window is
+  /// clamped. O(n*window) = O(5n).
+  List<double> _medianFilter(List<double> signal, int window) {
+    final result = <double>[];
+    final half = window ~/ 2;
+    for (var i = 0; i < signal.length; i++) {
+      final start = (i - half).clamp(0, signal.length - 1);
+      final end = (i + half + 1).clamp(0, signal.length);
+      final window_ = signal.sublist(start, end)..sort();
+      result.add(window_[window_.length ~/ 2]);
+    }
+    return result;
+  }
+
+  /// Cancels an ongoing guided calibration, resetting the engine to idle
+  /// and discarding any recorded signals. Safe to call at any time.
+  void cancelCalibration() {
+    _calibrationSignals.clear();
+    _calibrationGyroSignals.clear();
+    _state = WorkoutState.idle;
+    _emitStateEvent();
+  }
+
+  /// Peak detector with gyro validation. Finds peaks in the accel signal
+  /// (via [_findPeaks]) and cross-references each peak against the gyro
+  /// magnitude at the same index. Only peaks where gyro >= [_minGyroPeakDegPerS]
+  /// are kept. This eliminates false positives from lifting/shaking the
+  /// device without actual rotation (Architecture Review §2.3).
+  List<double> _findGyroValidatedPeaks() {
+    if (_calibrationSignals.length < 5 || _calibrationGyroSignals.length < 5) {
+      return [];
+    }
+    // Get accel peak indices with magnitudes.
+    final accelPeaks = _findPeaksWithIndices(_calibrationSignals);
+    // Validate: gyro must also show rotation at the same time.
+    final validated = <double>[];
+    for (final (idx, mag) in accelPeaks) {
+      if (idx < _calibrationGyroSignals.length &&
+          _calibrationGyroSignals[idx] >= _minGyroPeakDegPerS) {
+        validated.add(mag);
+      }
+    }
+    return validated;
+  }
+
+  /// Like [_findPeaks] but returns (index, magnitude) pairs so gyro
+  /// validation can cross-reference peak positions.
+  ///
+  /// Tie-tolerant on purpose (`>=` on the left, `>` on the right): a plain
+  /// `smoothed[i] > both neighbours` check cannot select ANY index inside a
+  /// flat plateau, and the 5-sample median filter reliably produces exactly
+  /// such a plateau at the top of a clean, controlled rep - confirmed via
+  /// tools/workout_engine_simulation.py run_guided_calibration_suite() at
+  /// the real ~14-20Hz app data rate: 0/30 calibrations completed with the
+  /// strict version, 30/30 with this tie-tolerant version. Fixed
+  /// 2026-07-12, see docs/ANALYSE_EXTERNE_KI_2026-07-12.md Punkt F. Picks
+  /// the FIRST sample of a plateau as the peak index.
+  List<(int, double)> _findPeaksWithIndices(List<double> signal) {
+    if (signal.length < 5) return [];
+    final smoothed = _medianFilter(signal, 5);
+    final maxima = <int>[];
+    for (var i = 1; i < smoothed.length - 1; i++) {
+      if (smoothed[i] >= smoothed[i - 1] && smoothed[i] > smoothed[i + 1]) {
+        maxima.add(i);
+      }
+    }
+    final peaks = <(int, double)>[];
+    int? lastPeakIndex;
+    for (final idx in maxima) {
+      if (smoothed[idx] < _minPeakHeight) continue;
+      if (lastPeakIndex != null &&
+          (idx - lastPeakIndex) < _minPeakDistanceSamples) {
+        if (smoothed[idx] > peaks.last.$2) {
+          peaks.last = (idx, smoothed[idx]);
+          lastPeakIndex = idx;
+        }
+        continue;
+      }
+      peaks.add((idx, smoothed[idx]));
+      lastPeakIndex = idx;
+    }
+    return peaks;
+  }
+
   void dispose() => _controller.close();
+
+  /// Call when the BLE connection is lost mid-workout. Saves the current
+  /// set as aborted and transitions to [WorkoutState.connectionLost].
+  /// Safe to call from any state (no-op if already idle/disconnected).
+  void handleDisconnect() {
+    if (_state == WorkoutState.idle ||
+        _state == WorkoutState.paused ||
+        _state == WorkoutState.connectionLost) {
+      return;
+    }
+    // Save whatever reps were counted as an aborted set.
+    if (_repsInSet.isNotEmpty) {
+      _setCounter++;
+      final abortedSet = ExerciseSet(
+        id: 'set_${DateTime.now().microsecondsSinceEpoch}_$_setCounter',
+        exerciseId: exerciseId,
+        countedReps: _repsInSet.length,
+        endedAt: DateTime.now(),
+        reps: List.of(_repsInSet),
+      );
+      _repsInSet.clear();
+      _controller.add(WorkoutEngineEvent(
+        state: WorkoutState.connectionLost,
+        repsInCurrentSet: 0,
+        completedSet: abortedSet,
+      ));
+      _state = WorkoutState.connectionLost;
+      return;
+    }
+    _state = WorkoutState.connectionLost;
+    _emitStateEvent();
+  }
+
+  /// Call when the BLE connection is re-established. Resets the engine
+  /// to idle, discarding old baseline and filter state.
+  void handleReconnect() {
+    _signalProcessor.reset();
+    _baselineLevel = null;
+    _runningEnvelope = 0.0;
+    _aboveThreshold = false;
+    _currentExcursionPeak = 0.0;
+    _lastMovementAt = null;
+    _repsInSet.clear();
+    _state = WorkoutState.idle;
+    _emitStateEvent();
+  }
 }

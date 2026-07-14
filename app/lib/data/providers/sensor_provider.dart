@@ -3,25 +3,29 @@ import 'dart:math';
 
 import '../../domain/workout_engine.dart';
 
-enum ConnectionState { disconnected, connecting, connected }
+enum SensorConnectionState { disconnected, connecting, connected }
 
 /// Abstraction so the rest of the app never knows whether it is talking to
 /// real BLE hardware or the Mock provider. See GYM_TRACKER_ARCHITEKTUR.md,
 /// Prinzip "Web-First Testing".
 abstract class ISensorProvider {
-  Stream<ConnectionState> get connectionState;
+  Stream<SensorConnectionState> get connectionState;
   Stream<SensorSample> get samples;
 
   Future<void> connect();
   Future<void> disconnect();
   Future<int> readBatteryPercent();
+
+  /// Simulates one repetition. Only meaningful for mock/test providers;
+  /// real BLE providers should implement this as a no-op.
+  void simulateRepetition();
 }
 
 /// Simulates a connected device and a plausible bicep-curl-like motion
 /// pattern, so the UI and Workout Engine can be exercised in Chrome/desktop
 /// without any hardware - this IS Phase 0's actual, explicit test target.
 class MockSensorProvider implements ISensorProvider {
-  final _connectionController = StreamController<ConnectionState>.broadcast();
+  final _connectionController = StreamController<SensorConnectionState>.broadcast();
   final _sampleController = StreamController<SensorSample>.broadcast();
   Timer? _sampleTimer;
   Timer? _repCycleTimer;
@@ -30,16 +34,16 @@ class MockSensorProvider implements ISensorProvider {
   bool _simulatingRep = false;
 
   @override
-  Stream<ConnectionState> get connectionState => _connectionController.stream;
+  Stream<SensorConnectionState> get connectionState => _connectionController.stream;
 
   @override
   Stream<SensorSample> get samples => _sampleController.stream;
 
   @override
   Future<void> connect() async {
-    _connectionController.add(ConnectionState.connecting);
+    _connectionController.add(SensorConnectionState.connecting);
     await Future.delayed(const Duration(seconds: 2));
-    _connectionController.add(ConnectionState.connected);
+    _connectionController.add(SensorConnectionState.connected);
     _startStreaming();
   }
 
@@ -47,7 +51,7 @@ class MockSensorProvider implements ISensorProvider {
   Future<void> disconnect() async {
     _sampleTimer?.cancel();
     _repCycleTimer?.cancel();
-    _connectionController.add(ConnectionState.disconnected);
+    _connectionController.add(SensorConnectionState.disconnected);
   }
 
   @override
@@ -66,6 +70,7 @@ class MockSensorProvider implements ISensorProvider {
   /// Call this from the UI/test to simulate the user performing one
   /// bicep-curl-like repetition: a smooth rise and fall in acceleration
   /// magnitude over roughly 1.5 seconds.
+  @override
   void simulateRepetition() {
     if (_simulatingRep) return;
     _simulatingRep = true;
@@ -86,7 +91,7 @@ class MockSensorProvider implements ISensorProvider {
     // profile. This is intentionally simple - it exists to exercise the
     // Workout Engine's state machine end-to-end, not to be a realistic
     // biomechanical model.
-    final noise = () => (_random.nextDouble() - 0.5) * 0.05;
+    double noise() => (_random.nextDouble() - 0.5) * 0.05;
     double repComponent = 0.0;
     if (_simulatingRep) {
       repComponent = sin(_cyclePhase * 4) .abs() * 1.8;

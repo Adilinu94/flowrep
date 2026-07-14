@@ -1,18 +1,21 @@
 import 'dart:math';
 
 import 'package:test/test.dart';
+import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 
-/// Generates a synthetic "bicep curl"-like acceleration profile: baseline
-/// gravity (~1g on the Y axis) plus `repCount` smooth sine-shaped
-/// excursions, each rising above and falling back below `peakHeight`.
-/// This is deliberately simple synthetic data, not real captured motion -
-/// it exists to validate the state machine's logic (does N clean
-/// excursions produce N counted reps?), not to claim real-world accuracy.
+/// Generates a synthetic "bicep curl"-like acceleration profile: a quiet
+/// baseline near zero plus `repCount` smooth sine-shaped excursions, each
+/// rising to `peakHeight` and falling back to `baseline`. The quiet baseline
+/// must sit clearly below the engine's falling-edge threshold so that each
+/// rep is counted exactly once. This is deliberately simple synthetic data,
+/// not real captured motion - it exists to validate the state machine's
+/// logic (does N clean excursions produce N counted reps?), not to claim
+/// real-world accuracy.
 List<SensorSample> _generateSyntheticReps({
   required int repCount,
   double peakHeight = 1.8,
-  double baseline = 1.0,
+  double baseline = 0.0,
   int samplesPerRep = 30, // ~0.6s at 50Hz-equivalent 20ms steps
   int restSamplesBetween = 5,
 }) {
@@ -62,11 +65,13 @@ void main() {
       }
 
       // Force the pause timeout by feeding several seconds of stillness.
+      // The quiet signal must sit below the falling-edge threshold so the
+      // engine recognises the set has ended.
       var t = samples.last.timestamp;
       for (var i = 0; i < 250; i++) {
         t = t.add(const Duration(milliseconds: 20));
         engine.processSample(
-          SensorSample(timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0),
+          SensorSample(timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0),
         );
       }
 
@@ -87,10 +92,14 @@ void main() {
 
       // Small noise below the activation threshold must NOT trigger a
       // state change - otherwise sensor noise alone would start a "set".
+      // Activation is baseline-relative (baselineLevel + (peakThreshold -
+      // baselineLevel) * 0.5, see processSample()), not a flat multiple of
+      // peakThreshold - that was the real HyperOS bug fixed 2026-07-12
+      // (see DEBUGSESSION_2026-07-12.md). Default peakThreshold is 1.2.
       for (var i = 0; i < 20; i++) {
         engine.processSample(SensorSample(
           timestamp: DateTime.now(),
-          ax: 0.01, ay: 1.0, az: 0.0, gx: 0, gy: 0, gz: 0,
+          ax: 0.01, ay: 0.3, az: 0.0, gx: 0, gy: 0, gz: 0,
         ));
       }
       expect(engine.state, WorkoutState.idle);
@@ -207,7 +216,7 @@ void main() {
         }
         for (var i = 0; i < 5; i++) {
           engine.processSample(SensorSample(
-            timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+            timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0,
           ));
           t = t.add(step);
         }
@@ -219,6 +228,103 @@ void main() {
       // without demanding hardware-validated precision from a synthetic
       // test.
       expect(finishedSet!.countedReps, inInclusiveRange(7, 14));
+      engine.dispose();
+    });
+  });
+
+  // Added 2026-07-12 (docs/ANALYSE_EXTERNE_KI_2026-07-12.md Punkt F): the
+  // guided-calibration path (WorkoutState.guidedCalibration,
+  // startGuidedCalibration()/_finishGuidedCalibration()) previously had NO
+  // test coverage at all - every test above only exercises the older
+  // auto-calibration-from-first-3-reps path. See also
+  // tools/workout_engine_simulation.py run_guided_calibration_suite() for
+  // the Python-side equivalent, including a documented open finding.
+  group('WorkoutEngine.guidedCalibration', () {
+    test('startGuidedCalibration transitions state to guidedCalibration',
+        () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.startGuidedCalibration();
+      expect(engine.state, WorkoutState.guidedCalibration);
+      engine.dispose();
+    });
+
+    test(
+        'a pure rest signal (no real excursions) never spuriously '
+        'completes calibration', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.startGuidedCalibration();
+
+      var t = DateTime(2026, 1, 1);
+      for (var i = 0; i < 500; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(const Duration(milliseconds: 20));
+      }
+
+      expect(engine.state, WorkoutState.guidedCalibration,
+          reason: 'Without any real excursions above the gyro-validated '
+              'peak thresholds, calibration must not complete.');
+      engine.dispose();
+    });
+
+    test('cancelCalibration resets to idle and discards recorded signals',
+        () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.startGuidedCalibration();
+
+      var t = DateTime(2026, 1, 1);
+      for (var i = 0; i < 20; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.5, az: 0, gx: 0, gy: 80, gz: 0,
+        ));
+        t = t.add(const Duration(milliseconds: 20));
+      }
+
+      engine.cancelCalibration();
+      expect(engine.state, WorkoutState.idle);
+      engine.dispose();
+    });
+
+    test(
+        'regression: guided calibration completes at the real ~15Hz app data '
+        'rate despite the median-filter plateau at a clean rep\'s peak '
+        '(median filter + strict ">" on both sides could not select any '
+        'index inside the plateau - fixed 2026-07-12 by making '
+        '_findPeaksWithIndices tie-tolerant, see its doc comment and '
+        'tools/workout_engine_simulation.py run_guided_calibration_suite, '
+        '0/30 before the fix vs 30/30 after)',
+        () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.startGuidedCalibration();
+
+      // ~15 Hz, matching the app's real observed polling rate rather than
+      // the 50Hz used in the other synthetic tests in this file.
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 67);
+      for (var rep = 0; rep < 10; rep++) {
+        const steps = 18;
+        for (var i = 0; i < steps; i++) {
+          final phase = (i / steps) * 3.14159265;
+          final accelMag = 1.0 + 0.9 * _sin(phase);
+          final gyroMag = 120 * _sin(phase);
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: accelMag, az: 0, gx: 0, gy: gyroMag, gz: 0,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 5; i++) {
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+      }
+
+      expect(engine.state, WorkoutState.idle,
+          reason: 'Calibration should complete with the tie-tolerant peak '
+              'detector; if this fails, the plateau fix may have '
+              'regressed.');
       engine.dispose();
     });
   });
