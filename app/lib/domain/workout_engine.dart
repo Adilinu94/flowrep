@@ -232,7 +232,14 @@ class WorkoutEngine {
 
     if (_baselineLevel == null) {
       _baselineLevel = combinedSignal;
-    } else if (!_aboveThreshold) {
+    } else if (!_aboveThreshold &&
+        _state != WorkoutState.guidedCalibration) {
+      // Don't adapt baseline during guided calibration. The calibration
+      // reps produce large excursions that would drag the EMA upward
+      // (observed: 1.05 → 5.7 during the 2026-07-16 E2E test). The
+      // baseline was already set by startGuidedCalibration() from the
+      // settled rest signal after the 3s+5s rest/countdown phase, so
+      // it is the correct reference point for the entire calibration.
       _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
           combinedSignal * baselineEmaAlpha;
     }

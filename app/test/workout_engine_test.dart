@@ -439,5 +439,70 @@ void main() {
 
       engine.dispose();
     });
+
+    test(
+        'regression: baseline must NOT drift upward during guidedCalibration '
+        '(found during E2E hardware test 2026-07-16: baseline drifted from '
+        '1.05 to 5.7 because _aboveThreshold is never set true in this '
+        'state, so the EMA tracked every sample including movement spikes)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+
+      // Feed rest samples FIRST (in idle state) to settle the signal
+      // processor's EMA to ~1.0. Then start calibration so
+      // _baselineLevel captures the settled rest level.
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 67);
+      for (var i = 0; i < 10; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+      engine.startGuidedCalibration();
+      final baselineBefore = engine.baselineLevel;
+
+      // Feed 10 reps of large excursions. Gyro is deliberately kept BELOW
+      // the 50 deg/s validation threshold so _findGyroValidatedPeaks()
+      // rejects all peaks and calibration NEVER completes — this keeps
+      // the engine in guidedCalibration state for the entire test,
+      // isolating the baseline-freeze behavior. The combined signal still
+      // reaches ~3.9 (accel 1.9 + gyro 40*0.05=2.0), well above baseline.
+      for (var rep = 0; rep < 10; rep++) {
+        const steps = 18;
+        for (var i = 0; i < steps; i++) {
+          final phase = (i / steps) * 3.14159265;
+          final accelMag = 1.0 + 0.9 * _sin(phase);
+          final gyroMag = 40 * _sin(phase); // <50: peaks not validated
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: accelMag, az: 0,
+            gx: 0, gy: gyroMag, gz: 0,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 5; i++) {
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+      }
+
+      // Engine must still be in guidedCalibration (no peaks validated).
+      expect(engine.state, WorkoutState.guidedCalibration,
+          reason: 'Calibration must not have completed — gyro was kept '
+              'below the 50 deg/s validation threshold.');
+
+      final baselineAfter = engine.baselineLevel;
+
+      // The baseline must be EXACTLY the same — it's frozen during
+      // guidedCalibration. No tolerance needed because the EMA update
+      // is completely skipped in this state.
+      expect(baselineAfter, equals(baselineBefore),
+          reason: 'Baseline must not drift during guidedCalibration. '
+              'Before the fix it rose from ~1.0 to ~5.7 because the EMA '
+              'tracked movement spikes. After the fix, the baseline is '
+              'frozen for the duration of guided calibration.');
+      engine.dispose();
+    });
   });
 }
