@@ -15,5 +15,24 @@ app/windows/
 firmware/.pio/
 firmware/.vscode/
 
+# IDE (gefunden als untracked beim Aufräumen, Session Claude-9936160f 2026-07-16)
+app/.idea/
+*.iml
+
 # OS
 .DS_Store
+# Windows-Shell-Artefakt, tauchte wiederholt im Repo-Root auf
+nul
+
+# Backups & interne Verzeichnisse (nicht ins Repo)
+_backup_app/
+.commandcode/
+
+# Python Bytecode
+__pycache__/
+*.pyc
+
+# Temporaere Dateien / Dumps
+flutter_test_verify_claude.txt
+screen_calib.png
+flowrep_device_dump.bin
