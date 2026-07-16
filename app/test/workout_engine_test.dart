@@ -386,5 +386,58 @@ void main() {
               'overwriting it again.');
       engine.dispose();
     });
+
+    test(
+        'applyCalibration() updates threshold and hasValidCalibration '
+        'in place without recreating the engine (race-condition fix, '
+        'found during E2E hardware test 2026-07-16: _loadCalibration() '
+        'previously disposed+recreated the engine, leaving the '
+        '_CalibrationDialog with a stale reference)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      final initialThreshold = engine.peakThreshold;
+      expect(engine.hasValidCalibration, isFalse);
+
+      // Apply a persisted calibration as _loadCalibration() would.
+      engine.applyCalibration(
+        peakThreshold: 2.5,
+        minThresholdAboveBaseline: 0.75,
+      );
+
+      expect(engine.peakThreshold, equals(2.5));
+      expect(engine.minThresholdAboveBaseline, equals(0.75));
+      expect(engine.hasValidCalibration, isTrue,
+          reason: 'applyCalibration must set hasValidCalibration so the '
+              'idle-state handler goes straight to active (ADR-020), '
+              'not to the one-rep auto-calibration path.');
+      expect(engine.state, WorkoutState.idle);
+
+      // The engine instance must still be usable — feed a sample and
+      // verify it processes without errors.
+      engine.processSample(SensorSample(
+        timestamp: DateTime.now(),
+        ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+      ));
+      expect(engine.state, WorkoutState.idle,
+          reason: 'A resting sample (~1.0g) must not trigger a state '
+              'change with a threshold of 2.5.');
+
+      // Verify that guided calibration still works after applyCalibration —
+      // this is the exact scenario that was broken: load calibration, then
+      // start guided calibration from a dialog that captured this engine.
+      engine.startGuidedCalibration();
+      expect(engine.state, WorkoutState.guidedCalibration,
+          reason: 'startGuidedCalibration() must work after '
+              'applyCalibration() — this is the race condition that was '
+              'broken when _loadCalibration() disposed the engine.');
+
+      // Threshold should be reset by startGuidedCalibration.
+      expect(engine.peakThreshold, equals(1.2),
+          reason: 'startGuidedCalibration() resets threshold to 1.2 '
+              'regardless of what applyCalibration set.');
+      expect(initialThreshold, equals(1.2),
+          reason: 'Sanity: default threshold is 1.2.');
+
+      engine.dispose();
+    });
   });
 }

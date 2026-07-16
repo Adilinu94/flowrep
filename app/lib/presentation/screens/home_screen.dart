@@ -32,7 +32,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _refreshTimer;
   double? _calibratedThreshold;
   int _calibrationPeaksFound = 0;
-  late WorkoutEngine _engine;  // NOT final: _loadCalibration() recreates engine after calibration load
+  late final WorkoutEngine _engine;  // stable for the lifetime of this State — applyCalibration() updates it in place (race-condition fix, 2026-07-16)
   late final bool _isMock;
   final _calibrationStore = CalibrationStore();
   String? _bleDeviceId;
@@ -342,15 +342,18 @@ class _HomeScreenState extends State<HomeScreen> {
       setState(() {
         _calibratedThreshold = data.peakThreshold;
       });
-      // Recreate engine with persisted calibration.
-      _engine.dispose();
-      _engine = WorkoutEngine(
-        exerciseId: 'bicep_curl',
-        initialPeakThreshold: data.peakThreshold,
+      // Apply persisted calibration IN PLACE — do NOT dispose and recreate
+      // the engine. Previously, disposing + recreating caused a race
+      // condition: the _CalibrationDialog holds a reference to the engine
+      // (passed as a constructor parameter), so if _loadCalibration()
+      // completed after the dialog was shown, the dialog would call
+      // startGuidedCalibration() on the OLD (disposed) engine — silently
+      // doing nothing. Found during the E2E hardware test on 2026-07-16.
+      // See WorkoutEngine.applyCalibration() for the full diagnosis.
+      _engine.applyCalibration(
+        peakThreshold: data.peakThreshold,
         minThresholdAboveBaseline: data.minThresholdAboveBaseline,
-        hasValidCalibration: true, // ADR-020: this is a valid, persisted calibration
       );
-      _bindEngine();
     }
   }
 

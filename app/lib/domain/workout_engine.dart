@@ -606,4 +606,46 @@ class WorkoutEngine {
     _state = WorkoutState.idle;
     _emitStateEvent();
   }
+
+  /// Applies persisted calibration parameters to this engine instance,
+  /// updating the threshold and related fields in place — WITHOUT
+  /// recreating the engine.
+  ///
+  /// This method exists to fix a race condition (found during the E2E
+  /// hardware test on 2026-07-16) where [_HomeScreenState._loadCalibration]
+  /// previously disposed the old engine and created a new one. Any code
+  /// that had captured a reference to the old engine (notably the
+  /// [_CalibrationDialog], which receives the engine as a constructor
+  /// parameter) would then call [startGuidedCalibration] on a disposed
+  /// engine — the call silently did nothing, and the live engine never
+  /// entered guidedCalibration state.
+  ///
+  /// By applying calibration in-place, the engine reference stays stable
+  /// for the lifetime of the [_HomeScreenState], and all listeners
+  /// (samples, events, dialog) always talk to the same instance.
+  void applyCalibration({
+    required double peakThreshold,
+    required double minThresholdAboveBaseline,
+    bool markValid = true,
+  }) {
+    _peakThreshold = peakThreshold;
+    this.minThresholdAboveBaseline = minThresholdAboveBaseline;
+    if (markValid) {
+      hasValidCalibration = true;
+    }
+    // Reset transient state so the engine starts fresh with the new
+    // threshold, mirroring what a freshly-constructed engine would have.
+    _aboveThreshold = false;
+    _currentExcursionPeak = 0.0;
+    _repsInSet.clear();
+    _runningEnvelope = 0.0;
+    _lastMovementAt = null;
+    // Don't reset _baselineLevel — let the EMA adapt naturally from
+    // whatever the current signal level is. A null baseline (fresh
+    // engine) would re-initialise on the next sample; keeping the
+    // existing value avoids a brief window of wrong threshold logic.
+    if (_state != WorkoutState.guidedCalibration) {
+      _state = WorkoutState.idle;
+    }
+  }
 }
