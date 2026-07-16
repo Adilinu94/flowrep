@@ -17,7 +17,7 @@ import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 
-import '../../domain/models/workout_models.dart';
+import '../../domain/models/workout_models.dart' as domain;
 import '../../domain/repositories/i_workout_repository.dart';
 
 part 'drift_database.g.dart';
@@ -84,7 +84,7 @@ class DriftWorkoutRepository implements IWorkoutRepository {
   final AppDatabase _db;
 
   @override
-  Future<void> saveSession(WorkoutSession session) async {
+  Future<void> saveSession(domain.WorkoutSession session) async {
     await _db.into(_db.workoutSessions).insertOnConflictUpdate(
           WorkoutSessionsCompanion.insert(
             id: session.id,
@@ -116,30 +116,30 @@ class DriftWorkoutRepository implements IWorkoutRepository {
   }
 
   @override
-  Future<List<WorkoutSession>> getHistory() async {
+  Future<List<domain.WorkoutSession>> getHistory() async {
     final sessionRows = await _db.select(_db.workoutSessions).get();
-    final result = <WorkoutSession>[];
+    final result = <domain.WorkoutSession>[];
     for (final row in sessionRows) {
       final setRows = await (_db.select(_db.exerciseSets)
             ..where((t) => t.sessionId.equals(row.id)))
           .get();
-      final sets = <ExerciseSet>[];
+      final sets = <domain.ExerciseSet>[];
       for (final setRow in setRows) {
         final repRows = await (_db.select(_db.reps)
               ..where((t) => t.setId.equals(setRow.id)))
             .get();
-        sets.add(ExerciseSet(
+        sets.add(domain.ExerciseSet(
           id: setRow.id,
           exerciseId: setRow.exerciseId,
           countedReps: setRow.countedReps,
           correctedReps: setRow.correctedReps,
           endedAt: setRow.endedAt,
           reps: repRows
-              .map((r) => Rep(timestamp: r.timestamp, peakMagnitude: r.peakMagnitude))
+              .map((r) => domain.Rep(timestamp: r.timestamp, peakMagnitude: r.peakMagnitude))
               .toList(),
         ));
       }
-      result.add(WorkoutSession(
+      result.add(domain.WorkoutSession(
         id: row.id,
         startedAt: row.startedAt,
         endedAt: row.endedAt,
@@ -150,7 +150,7 @@ class DriftWorkoutRepository implements IWorkoutRepository {
   }
 
   @override
-  Future<void> saveCorrection(CorrectionEvent event) async {
+  Future<void> saveCorrection(domain.CorrectionEvent event) async {
     await _db.into(_db.correctionEvents).insert(
           CorrectionEventsCompanion.insert(
             id: event.id,
