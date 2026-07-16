@@ -88,6 +88,7 @@ class WorkoutEngine {
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
+    this.hasValidCalibration = false,
     double gyroWeight = 0.05,
     double lowPassAlpha = 0.6,
     this.initialPeakThreshold,
@@ -127,6 +128,32 @@ class WorkoutEngine {
   /// the user's typical rep excursion. See _finishGuidedCalibration().
   // ignore: prefer_final_fields
   double minThresholdAboveBaseline;
+
+  /// True once a valid calibration is in place - either a completed guided
+  /// calibration, or a persisted calibration loaded from storage at engine
+  /// construction. Gates the idle state's transition below: without this
+  /// check, ANY movement out of idle re-triggers the one-rep
+  /// auto-calibration path (calibrationReps, defaulting to 1) and silently
+  /// overwrites the carefully-calibrated guided-calibration threshold on
+  /// the very next rep, no matter how good that threshold already was.
+  /// See docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md, ADR-020.
+  // ignore: prefer_final_fields
+  bool hasValidCalibration;
+
+  /// True for a brief window right after guided calibration finishes.
+  /// Calibration completes as soon as the Nth peak is CONFIRMED (one
+  /// sample past the actual maximum, per _findPeaksWithIndices), not once
+  /// the signal has returned to rest - the remaining tail of that last rep
+  /// is often still elevated. Without this gate, that still-elevated tail
+  /// immediately re-crosses the idle activation threshold and triggers a
+  /// spurious extra transition before the user has genuinely stopped
+  /// moving (found via real `flutter test` execution, not simulation -
+  /// neither this session's nor an earlier session's Python/Dart
+  /// reconstruction caught it; see Änderungsprotokoll in
+  /// docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md for how this surfaced).
+  /// Cleared as soon as one sample is seen back at/below a settled level.
+  // ignore: prefer_final_fields
+  bool _awaitingSettleAfterCalibration = false;
 
   // Synchronous delivery is intentional: it lets tests observe state
   // changes immediately after calling processSample(), without needing
@@ -212,20 +239,42 @@ class WorkoutEngine {
 
     switch (_state) {
       case WorkoutState.idle:
+        if (_awaitingSettleAfterCalibration) {
+          // Don't evaluate movement at all until the tail of the last
+          // calibration rep has genuinely settled back down - see field
+          // doc comment above.
+          final settleLine = baselineLevel + minThresholdAboveBaseline;
+          if (combinedSignal <= settleLine) {
+            _awaitingSettleAfterCalibration = false;
+          }
+          break;
+        }
         // Baseline-relative: gravity (~1.0g) alone must not trigger
         // calibrating. The signal must rise meaningfully above the
         // resting baseline before we treat it as movement.
         if (combinedSignal >
             baselineLevel + (_peakThreshold - baselineLevel) * 0.5) {
-          // First real movement IS the first set - no separate, empty
-          // calibration step. See ADR-003 / "Magic Moment" principle.
-          _state = WorkoutState.calibrating;
+          if (hasValidCalibration) {
+            // ADR-020 fix: a valid calibration (guided, or loaded from
+            // persistence) already exists - go straight to active
+            // tracking, same as the paused state below. Without this
+            // branch, the one-rep auto-calibration path in the `else`
+            // fires unconditionally and overwrites this threshold after
+            // just one rep - see ADR-020 for the full diagnosis.
+            _state = WorkoutState.active;
+            _repsInSet.clear();
+          } else {
+            // First real movement IS the first set - no separate, empty
+            // calibration step. See ADR-003 / "Magic Moment" principle.
+            // Reserved exclusively for users who have never calibrated.
+            _state = WorkoutState.calibrating;
+          }
           _lastMovementAt = s.timestamp;
           _emitStateEvent();
           // BUGFIX: the triggering sample MUST also be processed by
           // _detectPeak. Without this, the first high signal that
-          // transitions idle→calibrating is lost, and if the signal
-          // drops before the next sample, no rep is ever counted.
+          // transitions out of idle is lost, and if the signal drops
+          // before the next sample, no rep is ever counted.
           _detectPeak(s, combinedSignal);
         }
         break;
@@ -411,6 +460,8 @@ class WorkoutEngine {
     _peakThreshold = newThreshold;
     final excursion = _peakThreshold - baselineLevel;
     minThresholdAboveBaseline = (excursion * 0.5).clamp(0.10, 2.0);
+    hasValidCalibration = true; // ADR-020: guided calibration just completed
+    _awaitingSettleAfterCalibration = true; // settle-gate, see field doc comment
 
     _calibrationSignals.clear();
     _calibrationGyroSignals.clear();

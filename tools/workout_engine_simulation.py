@@ -77,13 +77,24 @@ class WorkoutEngineSim:
     def __init__(self, gyro_weight=0.05, envelope_decay=0.95,
                  falling_edge_ratio=0.7, calibration_reps=3,
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
-                 lowpass_alpha=0.6, initial_peak_threshold=1.2):
+                 lowpass_alpha=0.6, initial_peak_threshold=1.2,
+                 has_valid_calibration=False):
         self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
         self.calibration_reps = calibration_reps
         self.pause_after_s = pause_after_s
         self.baseline_ema_alpha = baseline_ema_alpha
+        # ADR-020 (docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md):
+        # True once a valid calibration (guided, or loaded from persistence)
+        # is in place. Mirrors WorkoutEngine.hasValidCalibration in
+        # workout_engine.dart. NOTE: calibration_reps default here (3) is
+        # currently OUT OF SYNC with the real Dart default (1, changed
+        # 2026-07-12) - deliberately left as-is for this class default so
+        # the existing scenarios below (which assume 3) do not silently
+        # change meaning; pass calibration_reps=1 explicitly where fidelity
+        # to the current real default matters, e.g. in the ADR-020 test.
+        self.has_valid_calibration = has_valid_calibration
 
         self.state = "idle"
         self.peak_threshold = initial_peak_threshold
@@ -113,7 +124,16 @@ class WorkoutEngineSim:
 
         if self.state == "idle":
             if combined > activation:
-                self.state = "calibrating"
+                if self.has_valid_calibration:
+                    # ADR-020 fix: already calibrated - straight to active,
+                    # same as the paused state below. Without this branch,
+                    # the one-rep auto-calibration path a few lines down
+                    # fires unconditionally and overwrites the threshold
+                    # after just one rep.
+                    self.state = "active"
+                    self.reps_in_set = []
+                else:
+                    self.state = "calibrating"
                 self.last_movement_t = t
                 self._detect_peak(t, combined)
         elif self.state == "calibrating":
@@ -290,6 +310,209 @@ class GuidedCalibrationSimStrictLegacy(GuidedCalibrationSim):
             peaks.append([idx, smoothed[idx]])
             last_peak_index = idx
         return peaks
+
+
+# ============================================================
+# UnifiedEngineSim (NEU, 2026-07-14) - EIN State Machine fuer
+# guidedCalibration UND normalen Betrieb zusammen, 1:1 wie die echte
+# WorkoutEngine-Klasse in workout_engine.dart (dort ist es eine einzige
+# Klasse - hier bisher zwei getrennte: GuidedCalibrationSim und
+# WorkoutEngineSim). Diese strukturelle Trennung war eine echte Luecke:
+# sie macht es unmoeglich zu simulieren, was mit den REST-Samples des
+# letzten Kalibrierungs-Reps passiert, nachdem die Kalibrierung mittendrin
+# abschliesst - genau das Verhalten, das den Settle-Gate-Bug verursacht hat
+# (gefunden nur durch echtes `flutter test`, siehe STATUS_FORTSCHRITT.md
+# Aenderungsprotokoll, NICHT durch diese oder eine vorherige Simulation).
+# Ersetzt NICHT GuidedCalibrationSim/WorkoutEngineSim (die bleiben fuer
+# alle bestehenden Szenarien oben unveraendert), sondern ergaenzt sie
+# gezielt fuer Szenarien, die die Zustandsgrenze selbst betreffen.
+# ============================================================
+
+class UnifiedEngineSim:
+    MIN_PEAK_HEIGHT = 1.2
+    MIN_PEAK_DISTANCE_SAMPLES = 12
+    CALIBRATION_PERCENTILE = 0.3
+    CALIBRATION_TARGET_REPS = 10
+    MIN_GYRO_PEAK_DEG_PER_S = 50.0
+
+    def __init__(self, calibration_reps=1, gyro_weight=0.05, lowpass_alpha=0.6,
+                 falling_edge_ratio=0.7, baseline_ema_alpha=0.01,
+                 min_threshold_above_baseline=0.10):
+        self.sp = SignalProcessor(gyro_weight, lowpass_alpha)
+        self.calibration_reps = calibration_reps
+        self.falling_edge_ratio = falling_edge_ratio
+        self.baseline_ema_alpha = baseline_ema_alpha
+        self.min_threshold_above_baseline = min_threshold_above_baseline
+
+        self.state = "idle"
+        self.has_valid_calibration = False
+        self.awaiting_settle_after_calibration = False  # mirrors _awaitingSettleAfterCalibration
+        self.peak_threshold = 1.2
+        self.baseline_level = None
+        self.above_threshold = False
+        self.current_excursion_peak = 0.0
+        self.reps_in_set = []
+        self.calibration_signals = []
+        self.calibration_gyro_signals = []
+
+    def start_guided_calibration(self):
+        self.calibration_signals, self.calibration_gyro_signals = [], []
+        self.baseline_level = self.sp.last_filtered
+        self.peak_threshold = 1.2
+        self.above_threshold = False
+        self.current_excursion_peak = 0.0
+        self.reps_in_set = []
+        self.state = "guidedCalibration"
+
+    def process_sample(self, accel_mag, gyro_mag):
+        combined = self.sp.process(accel_mag, gyro_mag)
+        if self.baseline_level is None:
+            self.baseline_level = combined
+        elif not self.above_threshold:
+            self.baseline_level = self.baseline_level * (1 - self.baseline_ema_alpha) + combined * self.baseline_ema_alpha
+
+        if self.state == "idle":
+            if self.awaiting_settle_after_calibration:
+                settle_line = self.baseline_level + self.min_threshold_above_baseline
+                if combined <= settle_line:
+                    self.awaiting_settle_after_calibration = False
+                return
+            activation = self.baseline_level + (self.peak_threshold - self.baseline_level) * 0.5
+            if combined > activation:
+                if self.has_valid_calibration:
+                    self.state = "active"
+                    self.reps_in_set = []
+                else:
+                    self.state = "calibrating"
+                self._detect_peak(combined)
+        elif self.state == "calibrating":
+            self._detect_peak(combined)
+            if len(self.reps_in_set) >= self.calibration_reps:
+                peaks = sorted(self.reps_in_set)
+                mid = len(peaks) // 2
+                median_peak = peaks[mid] if len(peaks) % 2 == 1 else (peaks[mid-1] + peaks[mid]) / 2
+                calibrated = self.baseline_level + (median_peak - self.baseline_level) * 0.5
+                self.peak_threshold = max(calibrated, self.baseline_level + 0.10)
+                self.state = "active"
+        elif self.state == "active":
+            self._detect_peak(combined)
+        elif self.state == "guidedCalibration":
+            self.calibration_signals.append(combined)
+            self.calibration_gyro_signals.append(gyro_mag)
+            peaks = self._find_gyro_validated_peaks()
+            if len(peaks) >= self.CALIBRATION_TARGET_REPS:
+                self._finish_guided_calibration(peaks)
+
+    def _detect_peak(self, combined):
+        if not self.above_threshold and combined > self.peak_threshold:
+            self.above_threshold = True
+            self.current_excursion_peak = combined
+        elif self.above_threshold:
+            self.current_excursion_peak = max(self.current_excursion_peak, combined)
+            falling_threshold = self.baseline_level + (self.peak_threshold - self.baseline_level) * self.falling_edge_ratio
+            if combined < falling_threshold:
+                self.above_threshold = False
+                self.reps_in_set.append(self.current_excursion_peak)
+
+    def _median_filter(self, signal, window=5):
+        half = window // 2
+        n = len(signal)
+        out = []
+        for i in range(n):
+            start = max(0, min(i - half, n - 1))
+            end = max(0, min(i + half + 1, n))
+            w = sorted(signal[start:end])
+            out.append(w[len(w) // 2])
+        return out
+
+    def _find_peaks_with_indices(self, signal):
+        if len(signal) < 5:
+            return []
+        smoothed = self._median_filter(signal, 5)
+        maxima = [i for i in range(1, len(smoothed)-1) if smoothed[i] >= smoothed[i-1] and smoothed[i] > smoothed[i+1]]
+        peaks, last = [], None
+        for idx in maxima:
+            if smoothed[idx] < self.MIN_PEAK_HEIGHT:
+                continue
+            if last is not None and (idx - last) < self.MIN_PEAK_DISTANCE_SAMPLES:
+                if smoothed[idx] > peaks[-1][1]:
+                    peaks[-1] = [idx, smoothed[idx]]
+                    last = idx
+                continue
+            peaks.append([idx, smoothed[idx]])
+            last = idx
+        return peaks
+
+    def _find_gyro_validated_peaks(self):
+        if len(self.calibration_signals) < 5:
+            return []
+        accel_peaks = self._find_peaks_with_indices(self.calibration_signals)
+        return [mag for idx, mag in accel_peaks
+                if idx < len(self.calibration_gyro_signals) and self.calibration_gyro_signals[idx] >= self.MIN_GYRO_PEAK_DEG_PER_S]
+
+    def _finish_guided_calibration(self, peaks):
+        if len(peaks) >= 5:
+            ps = sorted(peaks)
+            idx = min(max(round(len(ps) * self.CALIBRATION_PERCENTILE), 0), len(ps) - 1)
+            self.peak_threshold = ps[idx]
+        self.calibration_signals, self.calibration_gyro_signals = [], []
+        excursion = self.peak_threshold - self.baseline_level
+        self.min_threshold_above_baseline = min(max(excursion * 0.5, 0.10), 2.0)
+        self.state = "idle"
+        self.has_valid_calibration = True
+        self.awaiting_settle_after_calibration = True
+
+
+def feed_continuous_calibration_pattern(engine, n_reps=10, hz=15, steps=18, rest=5,
+                                          accel_amplitude=0.9, gyro_peak=120):
+    """Exakt das Muster aus workout_engine_test.dart (accelMag=1.0+0.9*sin,
+    gyroMag=120*sin, 18 Schritte + 5 Ruhe-Samples/Rep) als EIN durchgehender
+    Sample-Strom - kein Abbruch bei Kalibrierungsende, im Unterschied zu
+    run_guided_calibration_case() oben."""
+    for _ in range(n_reps):
+        for i in range(steps):
+            phase = (i / steps) * np.pi
+            engine.process_sample(1.0 + accel_amplitude * np.sin(phase), gyro_peak * np.sin(phase))
+        for _ in range(rest):
+            engine.process_sample(1.0, 0.0)
+
+
+def run_calibration_settle_regression_suite():
+    """Regressionstest fuer den Settle-Gate-Fix (gefunden 2026-07-14 durch
+    echtes `flutter test`, siehe STATUS_FORTSCHRITT.md): Guided Calibration
+    kann abschliessen, WAEHREND der letzte Rep noch mitten im Abklingen ist
+    (der Peak-Detector braucht nur 1 Sample nach dem Maximum, nicht die volle
+    Rueckkehr zur Ruhe). Ohne Gate reisst das noch erhoehte Signal den
+    Zustand sofort wieder aus idle heraus - mit ADR-020-Fix nach `active`,
+    ohne nach `calibrating`. Beides ist falsch; erwartet ist `idle`.
+
+    Testet zwei Dinge am selben durchgehenden Sample-Strom (kein Neustart
+    zwischen Kalibrierung und Normalbetrieb, siehe UnifiedEngineSim oben):
+    1. Direkt nach den 10 Kalibrierungs-Reps: state MUSS idle sein.
+    2. Danach EIN weiterer normaler Rep: threshold darf sich nicht aendern
+       (ADR-020, jetzt im selben durchgehenden Lauf statt in zwei Objekten).
+    """
+    print("\n" + "=" * 78)
+    print("=== Settle-Gate-Regressionstest (nach Kalibrierungsende, vor idle) ===")
+    print("=" * 78 + "\n")
+
+    engine = UnifiedEngineSim(calibration_reps=1)
+    engine.start_guided_calibration()
+    feed_continuous_calibration_pattern(engine, n_reps=10)
+
+    state_ok = engine.state == "idle"
+    print(f"Zustand direkt nach Kalibrierungsende: {engine.state}  (erwartet: idle)  "
+          f"[{'OK' if state_ok else 'FEHLER'}]")
+
+    threshold_before = engine.peak_threshold
+    feed_continuous_calibration_pattern(engine, n_reps=1)
+    threshold_ok = engine.peak_threshold == threshold_before
+    active_ok = engine.state == "active"
+    print(f"Nach 1 weiterem Rep: threshold vorher={threshold_before:.3f} "
+          f"nachher={engine.peak_threshold:.3f} state={engine.state}  "
+          f"[{'OK' if threshold_ok and active_ok else 'FEHLER'}]")
+
+    return state_ok and threshold_ok and active_ok
 
 
 # ============================================================
@@ -539,6 +762,71 @@ def run_guided_calibration_suite():
     print("  auf dem echten Geraet gegenpruefen (siehe Moduldoc oben).")
 
 
+def run_adr020_regression_suite():
+    """Regressionstest fuer ADR-020 (docs/Umbauplan Flowrep/
+    02_ARCHITECTURE_DECISION_RECORDS.md): Der aus einer abgeschlossenen
+    Guided Calibration ermittelte Schwellenwert darf durch die anschliessende
+    erste normale Bewegung NICHT durch die alte Ein-Rep-Auto-Rekalibrierung
+    (calibration_reps, im echten Code aktuell = 1) ueberschrieben werden.
+
+    Ablauf: 1) echte Guided Calibration mit 10 Curls durchlaufen lassen,
+    genau wie im Live-Betrieb. 2) den daraus resultierenden Schwellenwert in
+    eine neue WorkoutEngineSim einspeisen (mirrors home_screen.dart
+    _loadCalibration(), das nach einer Kalibrierung eine neue Engine-Instanz
+    mit initial_peak_threshold baut). 3) einen einzelnen weiteren, normalen
+    Rep simulieren. 4) pruefen, ob peak_threshold sich veraendert hat.
+
+    Wird zweimal ausgefuehrt: einmal mit has_valid_calibration=False (muss
+    den Bug reproduzieren - Beweis, dass der Test ueberhaupt etwas erkennt),
+    einmal mit has_valid_calibration=True (muss stabil bleiben - der Fix,
+    der jetzt auch in workout_engine.dart und home_screen.dart steht).
+    """
+    print("\n" + "=" * 78)
+    print("=== ADR-020-Regressionstest: Threshold-Persistenz nach Kalibrierung ===")
+    print("=" * 78 + "\n")
+
+    calib_accel, calib_gyro = make_guided_calibration_curls(10, hz=15, seed=42)
+    calib_sim = GuidedCalibrationSim()
+    calib_sim.start(initial_baseline=1.0)
+    for a, g in zip(calib_accel, calib_gyro):
+        if calib_sim.process_sample(a, g):
+            break
+    assert calib_sim.finished, "Guided Calibration selbst haette abschliessen muessen - Testaufbau pruefen."
+    threshold_after_calibration = calib_sim.peak_threshold
+    print(f"Guided Calibration abgeschlossen, Schwellenwert = {threshold_after_calibration:.3f}\n")
+
+    one_rep_accel, one_rep_gyro = make_guided_calibration_curls(1, hz=15, seed=43)
+
+    results = {}
+    for has_fix, label in [(False, "OHNE Fix (has_valid_calibration=False)"),
+                            (True, "MIT Fix (has_valid_calibration=True)")]:
+        engine = WorkoutEngineSim(
+            calibration_reps=1,  # echter aktueller Dart-Default, siehe Moduldoc-Hinweis oben
+            initial_peak_threshold=threshold_after_calibration,
+            has_valid_calibration=has_fix,
+        )
+        t = 0.0
+        for a, g in zip(one_rep_accel, one_rep_gyro):
+            engine.process_sample(t, a, g)
+            t += 1 / 15
+        changed = abs(engine.peak_threshold - threshold_after_calibration) > 1e-9
+        results[has_fix] = changed
+        status = "BUG: Threshold veraendert" if changed else "OK: Threshold blieb erhalten"
+        print(f"{label:42s} threshold={engine.peak_threshold:7.3f} state={engine.state:10s}  [{status}]")
+
+    print()
+    if results[False] and not results[True]:
+        print("=> Test unterscheidet korrekt zwischen Bug (ohne Fix) und Fix (mit Fix).")
+        print("=> workout_engine.dart und home_screen.dart wurden mit genau diesem Fix aktualisiert.")
+    else:
+        print("=> UNERWARTET: Test unterscheidet NICHT wie erwartet zwischen Bug und Fix - pruefen!")
+    # bool(...) statt "is True"/"is False": rng.normal() liefert numpy.float64,
+    # dadurch ist `changed` ein numpy.bool_, das mit "is True"/"is False" NIE
+    # uebereinstimmt (Identitaets- statt Wertvergleich) - beim ersten echten
+    # Lauf dieser Datei gefunden (raise SystemExit trotz korrektem Verhalten).
+    return bool(results[False]) and not bool(results[True])
+
+
 if __name__ == "__main__":
     print("=== FlowRep Workout-Engine-Simulation ===\n")
 
@@ -580,3 +868,9 @@ if __name__ == "__main__":
     _run_tolerant("Kurze Fehlbewegung vor echten Reps", t, accel, gyro, 8, tolerance=1)
 
     run_guided_calibration_suite()
+    adr020_ok = run_adr020_regression_suite()
+    settle_ok = run_calibration_settle_regression_suite()
+    if not adr020_ok:
+        raise SystemExit("ADR-020-Regressionstest fehlgeschlagen - siehe Ausgabe oben.")
+    if not settle_ok:
+        raise SystemExit("Settle-Gate-Regressionstest fehlgeschlagen - siehe Ausgabe oben.")

@@ -327,5 +327,64 @@ void main() {
               'regressed.');
       engine.dispose();
     });
+
+    test(
+        'regression (ADR-020): the guided-calibration threshold must NOT be '
+        'silently overwritten by the old one-rep auto-calibration when the '
+        'first real movement after calibration begins (see '
+        "docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md, "
+        'ADR-020 - without the hasValidCalibration check in the idle-state '
+        'handler, the very next movement after _finishGuidedCalibration() '
+        're-enters WorkoutState.calibrating and recomputes peakThreshold '
+        'from just that one rep, discarding the carefully guided-'
+        'calibrated value)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.startGuidedCalibration();
+
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 67); // ~15 Hz, real app data rate
+      const steps = 18;
+
+      void feedOneRep() {
+        for (var i = 0; i < steps; i++) {
+          final phase = (i / steps) * 3.14159265;
+          final accelMag = 1.0 + 0.9 * _sin(phase);
+          final gyroMag = 120 * _sin(phase);
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: accelMag, az: 0, gx: 0, gy: gyroMag, gz: 0,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 5; i++) {
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+      }
+
+      for (var rep = 0; rep < 10; rep++) {
+        feedOneRep();
+      }
+
+      expect(engine.state, WorkoutState.idle,
+          reason: 'Guided calibration should have completed by now.');
+      expect(engine.hasValidCalibration, isTrue,
+          reason: '_finishGuidedCalibration() must set this flag.');
+      final thresholdAfterCalibration = engine.peakThreshold;
+
+      // Exactly ONE more realistic rep, as if the user immediately started
+      // their real working set right after calibration - the scenario
+      // ADR-020 diagnoses.
+      feedOneRep();
+
+      expect(engine.peakThreshold, equals(thresholdAfterCalibration),
+          reason: 'ADR-020 regression: the guided-calibrated threshold '
+              'must survive the first post-calibration rep unchanged. If '
+              'this fails, the idle-state hasValidCalibration check has '
+              'regressed and the old one-rep auto-calibration is silently '
+              'overwriting it again.');
+      engine.dispose();
+    });
   });
 }
