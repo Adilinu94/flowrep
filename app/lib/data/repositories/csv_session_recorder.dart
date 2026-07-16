@@ -91,7 +91,7 @@ class CsvSessionRecorder {
     _sessionStart = null;
     if (rowsSnapshot.isEmpty) return null;
 
-    final baseDir = await getExternalStorageDirectory();
+    final baseDir = await _getBaseDirectory();
     if (baseDir == null) return null;
     final recordingsDir = Directory('${baseDir.path}/recordings');
     await recordingsDir.create(recursive: true);
