@@ -1,9 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart' show kReleaseMode;
 import 'package:flutter/material.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
+import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
 import '../../domain/workout_engine.dart';
 
@@ -35,11 +39,56 @@ class _HomeScreenState extends State<HomeScreen> {
   StreamSubscription<dynamic>? _samplesSub;
   StreamSubscription<dynamic>? _eventsSub;
 
+  // CSV-Aufnahmefunktion (Dokument 07/08). Eigener, unabhaengiger Listener
+  // auf denselben Sample-Stream - siehe csv_session_recorder.dart.
+  final _recorder = CsvSessionRecorder();
+  StreamSubscription<dynamic>? _recorderSamplesSub;
+  Timer? _recordingSampleCountTimer;
+  bool _isRecording = false;
+  int _recordedSampleCount = 0;
+  File? _lastRecordingFile;
+
   void _bindEngine() {
     _samplesSub?.cancel();
     _eventsSub?.cancel();
+    _recorderSamplesSub?.cancel();
     _samplesSub = widget.sensorProvider.samples.listen(_engine.processSample);
     _eventsSub = _engine.events.listen(_onEngineEvent);
+    // Unabhaengig vom Engine-Listener oben - siehe csv_session_recorder.dart.
+    _recorderSamplesSub = widget.sensorProvider.samples.listen(_recorder.onSample);
+  }
+
+  Future<void> _toggleRecording() async {
+    if (_isRecording) {
+      _recordingSampleCountTimer?.cancel();
+      _recordingSampleCountTimer = null;
+      final file = await _recorder.stop(_engine.exerciseId);
+      if (!mounted) return;
+      setState(() {
+        _isRecording = false;
+        _recordedSampleCount = _recorder.sampleCount;
+        _lastRecordingFile = file;
+      });
+    } else {
+      _recorder.start();
+      setState(() {
+        _isRecording = true;
+        _recordedSampleCount = 0;
+        _lastRecordingFile = null;
+      });
+      _recordingSampleCountTimer = Timer.periodic(const Duration(milliseconds: 300), (_) {
+        if (!mounted) return;
+        setState(() => _recordedSampleCount = _recorder.sampleCount);
+      });
+    }
+  }
+
+  Future<void> _shareLastRecording() async {
+    final file = _lastRecordingFile;
+    if (file == null) return;
+    await SharePlus.instance.share(
+      ShareParams(files: [XFile(file.path)], text: 'FlowRep-Aufnahme'),
+    );
   }
 
   @override
@@ -242,6 +291,38 @@ class _HomeScreenState extends State<HomeScreen> {
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
+              if (!kReleaseMode && !_isMock) ...[
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: _toggleRecording,
+                      icon: Icon(_isRecording ? Icons.stop : Icons.fiber_manual_record),
+                      label: Text(_isRecording
+                          ? 'Aufnahme stoppen ($_recordedSampleCount)'
+                          : 'Aufnahme starten'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _isRecording ? Colors.red : Colors.red.shade200,
+                        foregroundColor: Colors.white,
+                      ),
+                    ),
+                    if (_lastRecordingFile != null) ...[
+                      const SizedBox(width: 12),
+                      ElevatedButton.icon(
+                        onPressed: _shareLastRecording,
+                        icon: const Icon(Icons.share),
+                        label: const Text('Teilen'),
+                      ),
+                    ],
+                  ],
+                ),
+                if (_lastRecordingFile != null)
+                  Text(
+                    'Gespeichert: ${_lastRecordingFile!.path.split(Platform.pathSeparator).last}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+              ],
             ],
           ],
         ),
@@ -267,6 +348,7 @@ class _HomeScreenState extends State<HomeScreen> {
         exerciseId: 'bicep_curl',
         initialPeakThreshold: data.peakThreshold,
         minThresholdAboveBaseline: data.minThresholdAboveBaseline,
+        hasValidCalibration: true, // ADR-020: this is a valid, persisted calibration
       );
       _bindEngine();
     }
@@ -274,6 +356,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _onEngineEvent(WorkoutEngineEvent event) {
     if (!mounted) return;
+    _recorder.onEngineStateChanged(event.state);
     setState(() {
       _workoutState = event.state;
       _repsInCurrentSet = event.repsInCurrentSet;
@@ -314,6 +397,9 @@ class _HomeScreenState extends State<HomeScreen> {
     _refreshTimer?.cancel();
     _samplesSub?.cancel();
     _eventsSub?.cancel();
+    _recorderSamplesSub?.cancel();
+    _recordingSampleCountTimer?.cancel();
+    _recorder.dispose();
     _engine.dispose();
     final provider = widget.sensorProvider;
     if (provider is BleSensorProvider) {

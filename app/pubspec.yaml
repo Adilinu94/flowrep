@@ -12,16 +12,26 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  # BLE - final choice, siehe ADR-002. Version bewusst nicht eng gepinnt,
-  # da die Entscheidung an die zum Zeitpunkt der Installation aktuelle
-  # stabile Version delegiert war (siehe 06_SETUP_ANLEITUNG.md).
-  flutter_blue_plus: ^1.32.0
+  # BLE - final choice, siehe ADR-002. functional with read()-polling at 28 Hz.
+  # Notifications confirmed working on HyperOS (nRF Connect test) but
+  # flutter_blue_plus v1 doesn't deliver them. read()-polling is the
+  # viable workaround.
+  flutter_blue_plus: ^2.3.10
 
   # DB - finale Wahl Drift statt Isar, siehe ADR-006.
   drift: ^2.20.0
   sqlite3_flutter_libs: ^0.5.24
   path_provider: ^2.1.4
   path: ^1.9.0
+  # Ergaenzt: von calibration_store.dart benoetigt (ADR-020-Fix brachte
+  # diese Datei von master herueber, siehe docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md).
+  # Version uebernommen von origin/master's pubspec.yaml.
+  flutter_secure_storage: ^9.2.2
+  # CSV-Aufnahmefunktion (Dokument 07/08, Session Claude-9936160f 2026-07-15):
+  # Teilen-Button fuer aufgenommene CSVs. Aktuelle Major-Version (12.x) hat
+  # eine neue API (SharePlus.instance.share(ShareParams(...)) statt des
+  # alten statischen Share.shareXFiles(...)) - siehe csv_session_recorder.dart.
+  share_plus: ^12.0.1
 
 dev_dependencies:
   flutter_test:
