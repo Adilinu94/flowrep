@@ -85,6 +85,7 @@ class WorkoutEngine {
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
     this.calibrationReps = 1,
+    this.minRepInterval = const Duration(milliseconds: 800),
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
@@ -104,6 +105,44 @@ class WorkoutEngine {
   final double envelopeDecayRate;
   final Duration pauseAfter;
   final int calibrationReps;
+
+  /// P1.1 fix for S1 (docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §2.2/§3):
+  /// minimum time after a COUNTED rep before a new rising edge in
+  /// [_detectPeak] is accepted at all. Without this, a single curl - which
+  /// in the magnitude signal (`accelMagnitude + gyroMagnitude*gyroWeight`)
+  /// almost always produces two humps, concentric and eccentric - gets
+  /// counted twice. Reproduced in tools/workout_engine_simulation.py
+  /// (make_double_peak_reps: 20 counted for 10 expected before this fix).
+  ///
+  /// Deliberately a fixed value, not self-learned from [_repsInSet] timing:
+  /// while the double-count bug is active, observed inter-rep gaps are a
+  /// mix of the real rep interval and the hump-to-hump gap within one rep,
+  /// so a median derived from them would reinforce the bug instead of
+  /// fixing it. The real fix for that - median rep duration from a
+  /// *verified* known-count calibration - is what the Known-Count optimizer
+  /// in tools/workout_engine_simulation.py (kalibriere_persona() /
+  /// known_count_sweep(), Guided-Calibration-2.0 Paket 1) already does.
+  /// This constructor parameter exists so a later engine-integration step
+  /// can pass a learned value from an `ExerciseProfile` through the same
+  /// mechanism instead of rebuilding it.
+  ///
+  /// 800ms default matches the Python port's empirically-checked fallback
+  /// (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §3 P1.1: "Fallback 0,8 s"):
+  /// reduces the double-peak scenario above from 20 counted to 11 (residual
+  /// +1 is the very first rep, before any rep has been counted yet to
+  /// anchor the lockout against - see [_lastCountedRepAt]), with no
+  /// regression across the other scenarios in the simulation suite.
+  final Duration minRepInterval;
+
+  /// Timestamp of the last rep actually added to [_repsInSet]. Null until
+  /// the first rep of the current engine lifetime is counted, which means
+  /// [minRepInterval] cannot protect that very first rep's own second hump
+  /// - see [minRepInterval] doc comment. Intentionally not reset in
+  /// [_endSet]: rep cadence for the same exercise/session is not expected
+  /// to reset between sets, and keeping it lets the lockout stay effective
+  /// across a paused-then-resumed set instead of re-exposing the bootstrap
+  /// gap on every set.
+  DateTime? _lastCountedRepAt;
 
   /// Falling-edge trigger = peakThreshold * fallingEdgeRatio. Must be < 1.0
   /// to create a hysteresis band; otherwise sensor noise right at the
@@ -360,7 +399,14 @@ class WorkoutEngine {
   }
 
   void _detectPeak(SensorSample s, double combinedSignal) {
-    if (!_aboveThreshold && combinedSignal > _peakThreshold) {
+    // P1.1/S1: during the lockout window after the last COUNTED rep, a new
+    // rising edge is ignored entirely (never sets _aboveThreshold) rather
+    // than being allowed to become its own excursion and only being
+    // discarded later - see minRepInterval doc comment for why.
+    final inRefractory = _lastCountedRepAt != null &&
+        s.timestamp.difference(_lastCountedRepAt!) < minRepInterval;
+
+    if (!_aboveThreshold && combinedSignal > _peakThreshold && !inRefractory) {
       _aboveThreshold = true;
       _currentExcursionPeak = combinedSignal;
       _lastMovementAt = s.timestamp;
@@ -384,6 +430,7 @@ class WorkoutEngine {
         _repsInSet.add(
           Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
         );
+        _lastCountedRepAt = s.timestamp;
         _emitStateEvent();
       }
     }
@@ -439,6 +486,7 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _repsInSet.clear();
+    _lastCountedRepAt = null;
     _lastCalibrationPeakCount = 0;
     _diagMaxAccel = 0;
     _diagMaxGyro = 0;
@@ -609,6 +657,7 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _lastMovementAt = null;
+    _lastCountedRepAt = null;
     _repsInSet.clear();
     _state = WorkoutState.idle;
     _emitStateEvent();
@@ -647,6 +696,7 @@ class WorkoutEngine {
     _repsInSet.clear();
     _runningEnvelope = 0.0;
     _lastMovementAt = null;
+    _lastCountedRepAt = null;
     // Don't reset _baselineLevel — let the EMA adapt naturally from
     // whatever the current signal level is. A null baseline (fresh
     // engine) would re-initialise on the next sample; keeping the
