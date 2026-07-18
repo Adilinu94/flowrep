@@ -3,28 +3,30 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../../data/security/calibration_store.dart';
-import '../../../domain/calibration_contract.dart';
+import '../../../domain/calibration_controller.dart';
 import '../../../domain/workout_engine.dart' show SensorSample;
 
 /// Guided Calibration 2.0 (Konzept-Dokument, Paket 4-9): fuehrt den Nutzer
-/// durch die 5 Stufen (Ruhe, 1 Rep, 5 bekannte Reps, 3 langsame Reps,
-/// Review) und speichert das Ergebnis als ExerciseProfile.
+/// durch die 5 Stufen von [CalibrationController] (rest/singleRep/knownSet/
+/// slowSet/review) und speichert das Ergebnis als ExerciseProfile.
 ///
-/// Nimmt den [controller] als Parameter entgegen (Dependency Injection) -
-/// aktuell wird von home_screen.dart ein PlaceholderCalibrationController
-/// uebergeben; sobald die echte Implementierung existiert, aendert sich
-/// nur die Stelle, an der dieser Screen konstruiert wird.
+/// Interaktionsmodell (siehe calibration_controller.dart-Dokumentation):
+/// Jede Sammel-Stufe wird durch einen "Weiter"-Tap des Nutzers beendet
+/// (controller.finishStage()), NICHT automatisch nach einer festen Anzahl
+/// Samples. Bei nicht bestandenem Qualitaets-Gate (rest/singleRep) bleibt
+/// die Stufe aktiv und zeigt den Grund an; der Nutzer wiederholt die
+/// Bewegung und tippt erneut auf "Weiter".
 class CalibrationWizardScreen extends StatefulWidget {
   const CalibrationWizardScreen({
     super.key,
-    required this.controller,
     required this.samples,
     required this.exerciseId,
+    required this.deviceId,
   });
 
-  final CalibrationController controller;
   final Stream<SensorSample> samples;
   final String exerciseId;
+  final String deviceId;
 
   @override
   State<CalibrationWizardScreen> createState() =>
@@ -32,61 +34,105 @@ class CalibrationWizardScreen extends StatefulWidget {
 }
 
 class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
-  late CalibrationStage _stage;
-  StreamSubscription<CalibrationStage>? _stageSub;
+  late final CalibrationController _controller;
   StreamSubscription<SensorSample>? _samplesSub;
-  Timer? _uiRefreshTimer;
+  Timer? _uiTimer;
+  String? _gateFailMessage;
+  CalibrationReviewData? _review;
   bool _saving = false;
   String? _saveError;
+  final _correctKnownCtrl = TextEditingController();
+  final _correctSlowCtrl = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _stage = widget.controller.stage;
-    _stageSub = widget.controller.stageStream.listen((s) {
-      if (!mounted) return;
-      setState(() => _stage = s);
-    });
-    _samplesSub = widget.samples.listen(widget.controller.onSample);
-    // progress/repsCountedInCurrentStage aendern sich zwischen Stage-
-    // Wechseln (innerhalb derselben Stage) - dafuer reicht kein alleiniger
-    // stageStream-Listener, ein leichter periodischer Refresh genuegt.
-    _uiRefreshTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _controller = CalibrationController(
+      exerciseId: widget.exerciseId,
+      onStageAdvanced: (stage) {
+        if (!mounted) return;
+        setState(() => _gateFailMessage = null);
+      },
+      onQualityGateFail: (stage, reason) {
+        if (!mounted) return;
+        setState(() => _gateFailMessage = reason);
+      },
+      onReviewDataReady: (data) {
+        if (!mounted) return;
+        setState(() => _review = data);
+      },
+    );
+    _controller.start();
+    _samplesSub = widget.samples.listen(_controller.onSample);
+    // bufferedSampleCount aendert sich zwischen Stage-Callbacks - ein
+    // leichter periodischer Refresh haelt die Live-Anzeige aktuell.
+    _uiTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (mounted) setState(() {});
     });
   }
 
   @override
   void dispose() {
-    _stageSub?.cancel();
     _samplesSub?.cancel();
-    _uiRefreshTimer?.cancel();
-    widget.controller.dispose();
+    _uiTimer?.cancel();
+    _correctKnownCtrl.dispose();
+    _correctSlowCtrl.dispose();
     super.dispose();
   }
 
-  void _cancel() {
-    widget.controller.cancel();
-    Navigator.of(context).pop(false);
-  }
+  void _cancel() => Navigator.of(context).pop(false);
 
   void _restart() {
     setState(() {
+      _gateFailMessage = null;
+      _review = null;
       _saveError = null;
-      widget.controller.reset();
-      _stage = widget.controller.stage;
+      _controller.start();
+    });
+  }
+
+  void _next() => _controller.finishStage();
+
+  void _correctKnown() {
+    final n = int.tryParse(_correctKnownCtrl.text);
+    if (n == null || n < 1) return;
+    setState(() {
+      _controller.userCorrectCount(CalibrationStage.knownSet, n);
+    });
+  }
+
+  void _correctSlow() {
+    final n = int.tryParse(_correctSlowCtrl.text);
+    if (n == null || n < 1) return;
+    setState(() {
+      _controller.userCorrectCount(CalibrationStage.slowSet, n);
     });
   }
 
   Future<void> _accept() async {
-    final profile = widget.controller.result;
-    if (profile == null) return;
+    final review = _review;
+    if (review == null || !review.ready) return;
     setState(() {
       _saving = true;
       _saveError = null;
     });
     try {
-      await CalibrationStore().saveProfile(profile: profile);
+      final store = CalibrationStore();
+      final previous = await store.loadProfile(
+        exerciseId: widget.exerciseId,
+        deviceId: widget.deviceId,
+      );
+      _controller.finishStage(); // review -> done
+      final profile = _controller.finalize(previous: previous);
+      if (profile == null) {
+        if (!mounted) return;
+        setState(() {
+          _saving = false;
+          _saveError = 'Kalibrierung unvollstaendig - bitte neu starten.';
+        });
+        return;
+      }
+      await store.saveProfile(profile: profile);
       if (!mounted) return;
       Navigator.of(context).pop(true);
     } catch (e) {
@@ -99,58 +145,66 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   }
 
   String get _title {
-    switch (_stage) {
-      case CalibrationStage.restBaseline:
+    switch (_controller.stage) {
+      case CalibrationStage.rest:
         return 'Ruhephase';
-      case CalibrationStage.singleRepAxis:
+      case CalibrationStage.singleRep:
         return 'Eine Wiederholung';
-      case CalibrationStage.knownCountFit:
+      case CalibrationStage.knownSet:
         return 'Bekannte Wiederholungen';
-      case CalibrationStage.tempoCheck:
+      case CalibrationStage.slowSet:
         return 'Langsame Wiederholungen';
       case CalibrationStage.review:
         return 'Ergebnis';
+      case CalibrationStage.done:
+        return 'Fertig';
       case CalibrationStage.failed:
-        return 'Kalibrierung fehlgeschlagen';
+        return 'Abgebrochen';
     }
   }
 
   String get _instruction {
-    switch (_stage) {
-      case CalibrationStage.restBaseline:
-        return 'Halte den Arm RUHIG in der Startposition. '
-            'Die App misst jetzt deine Ruheposition und den Rauschboden.';
-      case CalibrationStage.singleRepAxis:
-        return 'Mach EINE einzelne, gleichmaessige Bizeps-Curl-Wiederholung. '
-            'Daraus bestimmt die App die Bewegungsachse.';
-      case CalibrationStage.knownCountFit:
-        final n = widget.controller.targetRepsForCurrentStage;
-        return 'Mach jetzt genau $n Bizeps-Curls in deinem normalen Tempo. '
-            'Die Anzahl muss stimmen - das ist der Kern der Kalibrierung.';
-      case CalibrationStage.tempoCheck:
-        final n = widget.controller.targetRepsForCurrentStage;
-        return 'Mach $n bewusst LANGSAME Wiederholungen, damit die '
-            'Kalibrierung auch bei anderem Tempo verlaesslich bleibt.';
+    switch (_controller.stage) {
+      case CalibrationStage.rest:
+        return 'Halte den Arm RUHIG in der Startposition, dann tippe auf '
+            'Weiter. Die App misst deine Ruheposition und den Rauschboden.';
+      case CalibrationStage.singleRep:
+        return 'Mach EINE einzelne, gleichmaessige Bizeps-Curl-Wiederholung, '
+            'dann tippe auf Weiter. Daraus bestimmt die App die Bewegungsachse.';
+      case CalibrationStage.knownSet:
+        final n = _controller.knownSetCount;
+        return 'Mach genau $n Bizeps-Curls in deinem normalen Tempo, dann '
+            'tippe auf Weiter. Die Anzahl muss stimmen - das ist der Kern '
+            'der Kalibrierung.';
+      case CalibrationStage.slowSet:
+        final n = _controller.slowSetCount;
+        return 'Mach $n bewusst LANGSAME Wiederholungen, dann tippe auf '
+            'Weiter, damit die Kalibrierung auch bei anderem Tempo '
+            'verlaesslich bleibt.';
       case CalibrationStage.review:
-        return 'Pruefe das Ergebnis unten. Du kannst es uebernehmen oder '
-            'die Kalibrierung neu starten.';
+        return 'Pruefe das Ergebnis unten.';
+      case CalibrationStage.done:
+        return 'Kalibrierung abgeschlossen.';
       case CalibrationStage.failed:
-        return widget.controller.failureReason ??
-            'Es gab ein Problem bei der Kalibrierung.';
+        return 'Die Kalibrierung wurde abgebrochen.';
     }
   }
 
+  bool get _isCollectingStage => const {
+        CalibrationStage.rest,
+        CalibrationStage.singleRep,
+        CalibrationStage.knownSet,
+        CalibrationStage.slowSet,
+      }.contains(_controller.stage);
+
   @override
   Widget build(BuildContext context) {
-    final target = widget.controller.targetRepsForCurrentStage;
-    final reps = widget.controller.repsCountedInCurrentStage;
+    final seconds =
+        _controller.bufferedSampleCount / _controller.sampleRateHz;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_title),
-        automaticallyImplyLeading: false,
-      ),
+      appBar: AppBar(title: Text(_title), automaticallyImplyLeading: false),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
@@ -160,21 +214,27 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyLarge,
               ),
-              const SizedBox(height: 32),
-              if (_stage != CalibrationStage.review &&
-                  _stage != CalibrationStage.failed) ...[
-                if (target > 0) ...[
-                  Text(
-                    '$reps / $target',
-                    style: const TextStyle(
-                        fontSize: 56, fontWeight: FontWeight.bold),
+              const SizedBox(height: 24),
+              if (_isCollectingStage) ...[
+                Text('${seconds.toStringAsFixed(1)} s aufgezeichnet',
+                    style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                const LinearProgressIndicator(),
+                if (_gateFailMessage != null) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.orange.shade900,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(_gateFailMessage!,
+                        style: const TextStyle(color: Colors.white)),
                   ),
-                  const SizedBox(height: 12),
                 ],
-                LinearProgressIndicator(value: widget.controller.progress),
               ],
-              if (_stage == CalibrationStage.review) _buildReview(context),
-              if (_stage == CalibrationStage.failed) _buildFailed(context),
+              if (_controller.stage == CalibrationStage.review)
+                _buildReview(context),
             ],
           ),
         ),
@@ -184,28 +244,53 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   }
 
   Widget _buildReview(BuildContext context) {
-    final profile = widget.controller.result;
-    if (profile == null) {
-      return const Text('Kein Ergebnis verfuegbar.');
+    final review = _review;
+    if (review == null || !review.ready) {
+      return Column(
+        children: [
+          const Icon(Icons.info, color: Colors.orange, size: 48),
+          const SizedBox(height: 8),
+          Text(
+            'Keine Parameter-Konfiguration hat exakt '
+            '${_controller.knownSetCount}/${_controller.knownSetCount} '
+            'gezaehlt. Bitte korrigiere unten die tatsaechliche Anzahl.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 16),
+          _buildCorrectionRow(
+            label: 'Tatsaechliche Anzahl (Stufe B)',
+            controller: _correctKnownCtrl,
+            onSubmit: _correctKnown,
+          ),
+        ],
+      );
     }
-    final good = !profile.needsRecalibration;
     return Column(
       children: [
         Icon(
-          good ? Icons.check_circle : Icons.info,
-          color: good ? Colors.green : Colors.orange,
-          size: 56,
+          review.matches ? Icons.check_circle : Icons.info,
+          color: review.matches ? Colors.green : Colors.orange,
+          size: 48,
         ),
+        const SizedBox(height: 8),
+        Text('Stufe B: ${review.countedKnown} / ${review.knownCount} gezaehlt'),
+        Text('Stufe C: ${review.countedSlow ?? '-'} / ${review.slowCount} gezaehlt'),
         const SizedBox(height: 12),
-        Text(
-          good
-              ? 'Kalibrierung sieht gut aus.'
-              : 'Kalibrierung gespeichert, aber mit niedriger Qualitaet - '
-                  'eine Wiederholung wird empfohlen.',
-          textAlign: TextAlign.center,
-          style: Theme.of(context).textTheme.titleMedium,
-        ),
-        const SizedBox(height: 16),
+        if (!review.matches) ...[
+          if (review.countedKnown != review.knownCount)
+            _buildCorrectionRow(
+              label: 'Tatsaechliche Anzahl (Stufe B)',
+              controller: _correctKnownCtrl,
+              onSubmit: _correctKnown,
+            ),
+          if (review.countedSlow != review.slowCount)
+            _buildCorrectionRow(
+              label: 'Tatsaechliche Anzahl (Stufe C)',
+              controller: _correctSlowCtrl,
+              onSubmit: _correctSlow,
+            ),
+        ],
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
@@ -213,9 +298,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
             borderRadius: BorderRadius.circular(8),
           ),
           child: Text(
-            'theta=${profile.theta.toStringAsFixed(3)} '
-            'signal=${profile.chosenSignal.name} '
-            'quality=${profile.qualityScore.toStringAsFixed(2)}',
+            'signal=${review.signal?.name} theta=${review.theta?.toStringAsFixed(3)}',
             style: const TextStyle(
                 fontSize: 10, fontFamily: 'monospace', color: Colors.cyanAccent),
           ),
@@ -229,33 +312,49 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
     );
   }
 
-  Widget _buildFailed(BuildContext context) {
-    return const Column(
-      children: [
-        Icon(Icons.error, color: Colors.red, size: 56),
-      ],
+  Widget _buildCorrectionRow({
+    required String label,
+    required TextEditingController controller,
+    required VoidCallback onSubmit,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: controller,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: label, isDense: true),
+            ),
+          ),
+          const SizedBox(width: 8),
+          FilledButton(
+              onPressed: onSubmit, child: const Text('Korrigieren')),
+        ],
+      ),
     );
   }
 
   Widget _buildBottomBar(BuildContext context) {
-    final isActive = _stage != CalibrationStage.review &&
-        _stage != CalibrationStage.failed;
+    final stage = _controller.stage;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          if (isActive)
+          if (_isCollectingStage) ...[
             TextButton(onPressed: _cancel, child: const Text('Abbrechen')),
-          if (_stage == CalibrationStage.failed)
-            FilledButton(
-                onPressed: _restart, child: const Text('Erneut versuchen')),
-          if (_stage == CalibrationStage.review) ...[
+            FilledButton(onPressed: _next, child: const Text('Weiter')),
+          ],
+          if (stage == CalibrationStage.review) ...[
             TextButton(
                 onPressed: _saving ? null : _restart,
                 child: const Text('Neu starten')),
             FilledButton(
-              onPressed: _saving ? null : _accept,
+              onPressed: (_saving || _review == null || !_review!.ready)
+                  ? null
+                  : _accept,
               child: _saving
                   ? const SizedBox(
                       width: 18,

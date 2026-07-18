@@ -9,7 +9,6 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
-import '../../domain/calibration_controller_placeholder.dart';
 import '../../domain/workout_engine.dart';
 import 'calibration/calibration_wizard_screen.dart';
 
@@ -407,26 +406,20 @@ class _HomeScreenState extends State<HomeScreen> {
   // _CalibrationDialog bleiben bewusst im Code (siehe deren Definition
   // unten) statt geloescht zu werden, bis die neue Kalibrierung 2.0 auf
   // echter Hardware end-to-end bestaetigt ist.
-  //
-  // TODO(Agent 2): PlaceholderCalibrationController() unten durch die
-  // echte CalibrationController-Implementierung ersetzen, sobald
-  // calibration_controller.dart existiert. Das ist die EINZIGE Stelle,
-  // die sich dafuer aendern muss.
   Future<void> _openCalibrationWizard() async {
-    final controller =
-        PlaceholderCalibrationController(exerciseId: _engine.exerciseId);
+    final deviceId = _bleDeviceId;
+    if (deviceId == null) return;
     final saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (ctx) => CalibrationWizardScreen(
-          controller: controller,
           samples: widget.sensorProvider.samples,
           exerciseId: _engine.exerciseId,
+          deviceId: deviceId,
         ),
       ),
     );
     if (saved == true) {
-      // Reload so der Home-Screen (und der Live-Zaehlpfad, sobald Agent 1/2
-      // ihn an ExerciseProfile anschliessen) den neuen Stand sieht.
+      // Reload so der Home-Screen den neuen Stand sieht.
       _loadCalibration();
     }
   }
