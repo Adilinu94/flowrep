@@ -78,7 +78,10 @@ class WorkoutEngineSim:
                  falling_edge_ratio=0.7, calibration_reps=3,
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
                  lowpass_alpha=0.6, initial_peak_threshold=1.2,
-                 has_valid_calibration=False, min_rep_interval_s=0.8):
+                 has_valid_calibration=False,
+                 min_rep_interval_samples=24, falling_debounce=4,
+                 prominence_ratio=0.30, adaptive_threshold_ratio=0.25,
+                 adaptive_min_confirmed=3, adaptive_window=5):
         self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
@@ -96,34 +99,89 @@ class WorkoutEngineSim:
         # to the current real default matters, e.g. in the ADR-020 test.
         self.has_valid_calibration = has_valid_calibration
 
-        # P1.1 (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md, Fix S1): Sperrzeit
-        # nach jeder GEZAEHLTEN Rep, bevor eine neue Anstiegsflanke wieder
-        # akzeptiert wird. Ohne das zaehlt _detect_peak() jede Ueberschreitung
-        # von peak_threshold als eigene Rep - ein Curl erzeugt aber in
-        # Magnitude-Signalen (accel_mag + gyro_mag*gyro_weight) fast immer
-        # ZWEI Buckel (konzentrisch + exzentrisch), siehe make_double_peak_reps
-        # unten: 20 gezaehlt bei 10 erwarteten Wiederholungen, live in dieser
-        # Datei reproduzierbar (Alt-Suite-Abschnitt).
+        # Agent 1 / Schritt A (AGENT_1_SIGNAL_PIPELINE.md,
+        # RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S1/S2), superseding the
+        # earlier time-based min_rep_interval_s patch (Claude-c00679f3,
+        # commit db206cd): all four values below come from
+        # sweep_live_pfad_refraktaer_und_prominenz() further down in this
+        # file, not from guessing - re-run that function to reproduce or
+        # re-derive them.
         #
-        # Bewusst EIN fester Wert, nicht selbst-lernend aus reps_in_set: die
-        # beobachteten Abstaende zwischen GEZAEHLTEN Reps sind waehrend des
-        # Bugs selbst kontaminiert (Mix aus echtem Rep-Abstand und
-        # Buckel-zu-Buckel-Abstand innerhalb einer Rep) - ein aus diesen
-        # Daten abgeleiteter Median wuerde sich selbst bestaetigen statt den
-        # Fehler zu beheben. Das eigentliche Lernen (medianRepdauer aus
-        # bekannter, verifizierter Anzahl) ist Aufgabe des Known-Count-
-        # Optimierers aus Paket 1 oben (zaehle_edge()/known_count_sweep()) -
-        # min_rep_interval_s hier ist bewusst als Konstruktor-Parameter
-        # gehalten, damit Paket 4 (Engine-Anbindung) spaeter einfach einen
-        # aus dem ExerciseProfile gelernten Wert durchreichen kann, statt
-        # diesen Mechanismus neu zu bauen.
+        # min_rep_interval_samples (S1, noise guard - NOT a double_bump fix,
+        # see below): counted in SAMPLES, not seconds/ms - S3 (firmware
+        # batches without honest pacing, app synthesizes fake even spacing)
+        # means a real-time duration doesn't yet mean what it appears to
+        # mean. Once Schritt C (Agent 4's protocol + honest per-sample
+        # timestamps) lands, this should convert to a real-time duration;
+        # until then, samples are the only unit that stays meaningful
+        # regardless of pacing.
         #
-        # 0.8s Default = RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §3 P1.1
-        # ("Fallback 0,8 s"), empirisch gegen alle Szenarien unten geprueft
-        # (siehe Alt-Suite: Doppel-Peak 10/10 statt 10/20, keine Regression
-        # bei "Sehr langsame Reps"/Robustheits-Suite).
-        self.min_rep_interval_s = min_rep_interval_s
-        self.last_counted_rep_t = None
+        # CORRECTED 2026-07-17 (Claude-c00679f3, after real `flutter test`
+        # via Desktop Commander found a live regression): the first version
+        # of this used 40 samples, the smallest value that fully solved
+        # double_bump (20->10) in isolation. That BROKE three existing Dart
+        # tests (workout_engine_test.dart), which rely on a 35-samples/rep
+        # cadence (_generateSyntheticReps, samplesPerRep=30+rest=5) that
+        # predates this session - 40 > 35 meant every second legitimate rep
+        # fell inside the lockout and got silently dropped (10/10 -> 5/10).
+        # Re-swept with that cadence as a hard constraint (see
+        # sweep_live_pfad_refraktaer_und_prominenz, "Nebenbedingung" /
+        # dart_kadenz column): the largest safe value is 28 samples, and at
+        # NO value <= 28 does double_bump improve at all - its own
+        # hump-to-hump gap is itself > 28 samples, so a single fixed
+        # sample-count refractory cannot satisfy both constraints at once.
+        # 24 samples (a small margin below the 28-sample safe ceiling) is
+        # kept as a defense-in-depth noise guard against very tight,
+        # clearly-spurious re-triggers, NOT as the S1 fix - that is what
+        # Schritt B (g_p, signed projection) below actually is, proven
+        # there to fix double_bump with ZERO refractory needed at all.
+        self.min_rep_interval_samples = min_rep_interval_samples
+        self.sample_count = 0
+        self.last_counted_rep_sample = None
+
+        # falling_debounce (S1, secondary): the falling threshold must be
+        # undershot for this many CONSECUTIVE samples before an excursion
+        # closes. Value adopted unchanged from zaehle_edge()'s own
+        # already-diagnosed default (Paket 1, Agent 2's reference
+        # implementation) - a single noise dip on the long falling edge of
+        # a SLOW rep must not close the excursion early, or you get an
+        # edge detection just above theta followed by a second one once
+        # the refractory expires (their debug finding, 2026-07-16, on
+        # exactly the slow/weak personas). Not modifying zaehle_edge itself
+        # (Agent 2's file) - just reusing the value it already validated.
+        self.falling_debounce = falling_debounce
+        self._falling_debounce_count = 0
+
+        # prominence_ratio (S1/S8 mitigation): an excursion is only counted
+        # if (peak - preceding valley) >= prominence_ratio * (peak_threshold
+        # - baseline). Chosen as a ratio of the existing baseline-relative
+        # excursion (consistent with falling_edge_ratio=0.7 already used
+        # below, not an independent new magic number). Guards against a
+        # lowered adaptive threshold (see below) picking up noise instead
+        # of a real, if smaller, rep.
+        self.prominence_ratio = prominence_ratio
+        self._pre_min = float("inf")
+
+        # adaptive_threshold_ratio (S2): effective theta = min(peak_
+        # threshold, adaptive_threshold_ratio * median(last
+        # adaptive_window CONFIRMED rep peaks)), active only once at least
+        # adaptive_min_confirmed reps have been confirmed in the current
+        # engine lifetime. This fixes WITHIN-SESSION tempo drift (same
+        # user calibrates fast, later slows down) - confirmed via
+        # simulation: 3/10 counted without this, 6/10 with it, for a
+        # calibrate-fast-then-go-slow scenario (see sweep output, section
+        # "S2, realistischer Fall"). It does NOT and CANNOT fix a cold
+        # start where a persona's entire signal stays below peak_threshold
+        # from the first sample (weak/slow personas calibrated against a
+        # 'clean' rep: 0/10, unreachable by any live-path tuning, see same
+        # sweep output) - that structural case is what Guided Calibration
+        # 2.0's own per-user known-count calibration (Paket 1, Agent 2) is
+        # for, not this engine.
+        self.adaptive_threshold_ratio = adaptive_threshold_ratio
+        self.adaptive_min_confirmed = adaptive_min_confirmed
+        self.adaptive_window = adaptive_window
+        self._confirmed_peaks = []
+        self._excursion_falling_threshold = None  # frozen per-excursion, see _detect_peak
 
         self.state = "idle"
         self.peak_threshold = initial_peak_threshold
@@ -136,6 +194,7 @@ class WorkoutEngineSim:
         self.baseline_level = None
 
     def process_sample(self, t, accel_mag, gyro_mag):
+        self.sample_count += 1
         combined = self.signal_processor.process(accel_mag, gyro_mag)
         self.running_envelope = max(combined, self.running_envelope * self.envelope_decay)
 
@@ -188,31 +247,81 @@ class WorkoutEngineSim:
                 self.last_movement_t = t
 
     def _detect_peak(self, t, combined):
-        # P1.1/S1: waehrend der Sperrzeit nach der letzten GEZAEHLTEN Rep wird
-        # eine neue Anstiegsflanke komplett ignoriert (above_threshold bleibt
-        # False) - nicht nur das Zaehlen am Ende unterdrueckt. Das entspricht
-        # dem Pan-Tompkins-Refractory-Muster (RECHERCHE_ZAEHLROBUSTHEIT §2.2):
-        # der zweite Buckel eines Curls wird so nie zu einer eigenen
-        # Exkursion, statt eine zu werden und dann verworfen zu werden.
+        # S2: effektive Schwelle - nur nach unten von peak_threshold weg,
+        # nur sobald genug Reps bestaetigt sind (Bootstrap-Problem: ohne
+        # jede bestaetigte Rep gibt es nichts, wovon adaptiert werden
+        # koennte). Siehe Klassenkommentar zu adaptive_threshold_ratio fuer
+        # den Nachweis/die Grenzen dieses Mechanismus.
+        eff_theta = self.peak_threshold
+        if len(self._confirmed_peaks) >= self.adaptive_min_confirmed:
+            fenster = self._confirmed_peaks[-self.adaptive_window:]
+            eff_theta = min(self.peak_threshold,
+                             self.adaptive_threshold_ratio * float(np.median(fenster)))
+            # Boden, analog zu minThresholdAboveBaseline in workout_engine.dart
+            # (dort: (excursion * 0.5).clamp(0.10, 2.0) nach Guided Calibration).
+            # OHNE das: wenn schon die Kalibrierung selbst auf einem schwachen
+            # Signal stattfand (z.B. calibration_reps=3 direkt auf eine
+            # leise/langsame Persona), kann adaptive_threshold_ratio * median
+            # unter die Baseline rutschen - dann bleibt "above_threshold"
+            # quasi dauerhaft wahr (das Signal pendelt ja immer um die
+            # Baseline), die Exkursion schliesst kaum noch, und die Zaehlung
+            # bricht ein (gefunden: make_slow_reps mit calibration_reps=3
+            # ergab 3/8 statt 8/8, bevor dieser Boden ergaenzt wurde).
+            exkursion_kalibriert = self.peak_threshold - self.baseline_level
+            boden = self.baseline_level + max(0.10, 0.15 * exkursion_kalibriert)
+            eff_theta = max(eff_theta, boden)
+
+        # S1: Anstiegsflanke waehrend der Sperrzeit (in SAMPLES, nicht
+        # Sekunden - S3) komplett ignorieren, nicht nur das Zaehlen am Ende
+        # unterdruecken.
         in_refractory = (
-            self.last_counted_rep_t is not None
-            and (t - self.last_counted_rep_t) < self.min_rep_interval_s
+            self.last_counted_rep_sample is not None
+            and (self.sample_count - self.last_counted_rep_sample) < self.min_rep_interval_samples
         )
-        if not self.above_threshold and combined > self.peak_threshold and not in_refractory:
-            self.above_threshold = True
-            self.current_excursion_peak = combined
-            self.last_movement_t = t
+
+        if not self.above_threshold:
+            self._pre_min = min(self._pre_min, combined)
+            if combined > eff_theta and not in_refractory:
+                self.above_threshold = True
+                self.current_excursion_peak = combined
+                self.last_movement_t = t
+                self._falling_debounce_count = 0
+                # Falling-Schwelle fuer DIESE Exkursion einfrieren, aus dem
+                # eff_theta, das sie ausgeloest hat - nicht aus dem
+                # statischen peak_threshold. Sonst kann eine nur durch ein
+                # abgesenktes eff_theta ausgeloeste (kleinere) Exkursion nie
+                # wieder darunter fallen und schliesst nie (Bug, beim
+                # ersten Entwurf dieses Mechanismus gefunden und hier
+                # dokumentiert statt still korrigiert - siehe Sweep-Output
+                # "S2, realistischer Fall").
+                self._excursion_falling_threshold = (
+                    self.baseline_level + (eff_theta - self.baseline_level) * self.falling_edge_ratio
+                )
         elif self.above_threshold:
             self.current_excursion_peak = max(self.current_excursion_peak, combined)
             self.last_movement_t = t
-            # Baseline-relativ (Fix vom 2026-07-12): sonst kann das Signal
-            # bei niedrigem kalibriertem Threshold nie unter die
-            # Falling-Edge-Schwelle fallen (siehe DEBUGSESSION_2026-07-12.md).
-            falling_threshold = self.baseline_level + (self.peak_threshold - self.baseline_level) * self.falling_edge_ratio
-            if combined < falling_threshold:
+
+            if combined < self._excursion_falling_threshold:
+                self._falling_debounce_count += 1
+            else:
+                self._falling_debounce_count = 0
+
+            if self._falling_debounce_count >= self.falling_debounce:
                 self.above_threshold = False
+                self._falling_debounce_count = 0
+                prominenz = self.prominence_ratio * (self.peak_threshold - self.baseline_level)
+                if prominenz > 0.0 and (self.current_excursion_peak - self._pre_min) < prominenz:
+                    # Zu flacher Ausschlag relativ zum vorausgehenden Tal -
+                    # vermutlich Rauschen, keine Rep. _pre_min NICHT
+                    # zuruecksetzen auf combined hier, sondern erst beim
+                    # naechsten Nicht-ueber-Schwelle-Sample (siehe oben) -
+                    # sonst wuerde ein knapp verworfener Ausschlag selbst
+                    # zum neuen Tal fuer die naechste Pruefung.
+                    return
                 self.reps_in_set.append((t, self.current_excursion_peak))
-                self.last_counted_rep_t = t
+                self._confirmed_peaks.append(self.current_excursion_peak)
+                self.last_counted_rep_sample = self.sample_count
+                self._pre_min = combined
 
     def _end_set(self):
         if self.reps_in_set:
@@ -1087,6 +1196,356 @@ def zaehle_edge(signal, hz, theta, refractory_s, baseline=0.0,
     return reps
 
 
+def _kalibriere_wie_app(combined_erste_rep, baseline, min_ueber_baseline=0.10):
+    """Reproduziert EXAKT die Schwellenformel aus workout_engine.dart Zeile
+    ~341-344 (Auto-Kalibrierung, calibrationReps=1-Standardfall): theta liegt
+    auf halbem Weg zwischen Baseline und dem beobachteten Peak der einzigen
+    Kalibrierungs-Rep, mit einer Mindest-Exkursion ueber der Baseline."""
+    peak = float(np.max(combined_erste_rep))
+    kalibriert = baseline + (peak - baseline) * 0.5
+    return max(kalibriert, baseline + min_ueber_baseline)
+
+
+def sweep_live_pfad_refraktaer_und_prominenz(hz=50, n_reps=10, seed_basis=5000):
+    """Agent 1 / Schritt A (AGENT_1_SIGNAL_PIPELINE.md, RECHERCHE_ZAEHLROBUSTHEIT
+    S1/S2): Parameter-Sweep NUR fuer den Live-Zaehlpfad (WorkoutEngineSim.
+    _detect_peak / Dart _detectPeak) - bewusst getrennt von Agent 2s
+    Known-Count-Kalibrierungspfad (kalibriere_persona/known_count_sweep
+    oben, unveraendert). Nutzt make_persona_6achsen, kandidaten_signale und
+    zaehle_edge unveraendert wieder statt sie zu duplizieren.
+
+    Szenario, das genau S1/S2 entspricht: EINE Kalibrierungs-Rep im
+    clean-Tempo (calibrationReps=1-Standardfall, Formel 1:1 aus
+    workout_engine.dart uebernommen, siehe _kalibriere_wie_app), danach
+    muss dieselbe, EINMAL gesetzte Schwelle/Sperrzeit fuer alle 5 Personas
+    funktionieren - inklusive solcher, die beim Kalibrieren nicht dabei
+    waren (double_bump, weak, slow, inconsistent).
+
+    Sperrzeit wird bewusst in SAMPLES gesucht, nicht in Sekunden (S3: die
+    Zeitbasis ist noch nicht ehrlich, siehe Schritt C) - erst am Ende in
+    Sekunden umgerechnet, weil zaehle_edge() eine Sekunden-Sperrzeit
+    erwartet (reine Simulation, hz ist hier per Definition exakt bekannt).
+    """
+    baseline = 1.0  # 1g Ruhe-Beschleunigung, wie im Generator (ruhe(): 1.0 + Rauschen)
+
+    # 1) Kalibrierung: eine einzelne clean-Rep, exakt wie die App es taete.
+    t_cal, acc_cal, gyro_cal, _ = make_persona_6achsen(
+        "clean", n_reps=1, hz=hz, seed=seed_basis, ruhe_vor_s=0.5, ruhe_nach_s=0.5)
+    sig_cal = kandidaten_signale(acc_cal, gyro_cal, achse=np.array(PERSONA_PROFILES["clean"]["achse"]) /
+                                  np.linalg.norm(PERSONA_PROFILES["clean"]["achse"]),
+                                  gyro_bias=GYRO_BIAS_VEKTOR)
+    theta = _kalibriere_wie_app(sig_cal["combined"], baseline)
+
+    # 2) Testsignale: alle 5 Personas, 10 Reps, EIGENER Seed pro Persona
+    #    (nicht derselbe wie die Kalibrierung, sonst waere das zirkulaer).
+    persona_signale = {}
+    erwartete_reps = {}
+    for i, persona in enumerate(PERSONA_PROFILES):
+        t, acc, gyro, n_halb = make_persona_6achsen(
+            persona, n_reps=n_reps, hz=hz, seed=seed_basis + 1 + i,
+            ruhe_vor_s=0.5, ruhe_nach_s=0.5)
+        achse = np.array(PERSONA_PROFILES[persona]["achse"])
+        achse /= np.linalg.norm(achse)
+        sig = kandidaten_signale(acc, gyro, achse=achse, gyro_bias=GYRO_BIAS_VEKTOR)
+        persona_signale[persona] = sig["combined"]
+        erwartete_reps[persona] = n_reps - n_halb
+
+    # 3) Sperrzeit-Sweep (in Samples), Prominenz und Falling-Debounce erstmal
+    #    aus, um den Refraktaer-Effekt isoliert zu sehen (Debounce/Prominenz
+    #    folgen in Schritt 4/5 - sonst ueberlagern sich drei Freiheitsgrade
+    #    gleichzeitig und das Ergebnis ist nicht mehr nachvollziehbar).
+    print("\n--- Agent 1 / Schritt A: Sperrzeit-Sweep (Samples, isoliert) ---")
+    print(f"theta (kalibriert auf 1x clean-Rep, wie die App) = {theta:.3f}, baseline = {baseline:.3f}")
+
+    # Welche Personas koennen ueberhaupt ueber theta kommen? Personas, deren
+    # eigener Signal-Peak unter theta bleibt, werden NIE gezaehlt - egal wie
+    # die Sperrzeit steht. Das ist ein Schwellen-, kein Sperrzeit-Problem
+    # (siehe S2-Check unten) und darf die Sperrzeit-Wahl nicht blockieren.
+    ueber_theta = {p: float(np.max(persona_signale[p])) > theta for p in PERSONA_PROFILES}
+    print(f"  Personas, deren Peak ueberhaupt ueber theta={theta:.3f} kommt: "
+          + ", ".join(p for p, ok in ueber_theta.items() if ok)
+          + " | NICHT erreichbar (reines Schwellenproblem, s. S2-Check unten): "
+          + ", ".join(p for p, ok in ueber_theta.items() if not ok))
+
+    # KRITISCHE Nebenbedingung, NACHTRÄGLICH ergänzt (Claude-c00679f3,
+    # 2026-07-17, nach echtem `flutter test` via Desktop Commander): die
+    # bestehenden Dart-Tests in workout_engine_test.dart (_generateSyntheticReps,
+    # samplesPerRep=30 + rest=5 = 35 Samples/Rep-Zyklus) sind eine bereits
+    # akzeptierte, bewusste Referenz-Kadenz - DREI verschiedene Bestandstests
+    # verlassen sich darauf. Eine Sperrzeit, die diese Kadenz verletzt, ist
+    # keine Verbesserung, sondern eine neue Regression (live gefunden: 40
+    # Samples brach "counts a clean series..." von 10/10 auf 5/10 ein - jede
+    # zweite Rep wurde durch die eigene Sperrzeit verschluckt).
+    dart_clean_kadenz = np.array(
+        [1.8 * np.sin((i / 30) * np.pi) for _ in range(10) for i in range(30)]
+        + [0.0] * 5 * 0  # Platzhalter, echte Verschachtelung unten
+    )
+    # (obige Zeile bewusst nicht verwendet - korrekte Verschachtelung von
+    # Rep+Rest pro Wiederholung statt aller Reps zuerst, dann Rest:)
+    dart_clean_kadenz = []
+    for _ in range(10):
+        for i in range(30):
+            dart_clean_kadenz.append(1.8 * np.sin((i / 30) * np.pi))
+        dart_clean_kadenz.extend([0.0] * 5)
+    dart_clean_kadenz = np.array(dart_clean_kadenz)
+    dart_theta = 0.0 + (float(np.max(dart_clean_kadenz[:35])) - 0.0) * 0.5
+
+    print(f"  Nebenbedingung: bestehende Dart-Test-Kadenz (35 Samples/Rep, "
+          f"3 Bestandstests hängen daran) muss weiterhin 10/10 liefern.")
+
+    kandidaten_samples = [0, 4, 8, 12, 16, 20, 24, 28, 32, 40, 48]
+    beste_wahl = None
+    dart_kadenz_grenze = None
+    for refr_samples in kandidaten_samples:
+        zeilen = []
+        ok_gesamt = True
+        for persona in PERSONA_PROFILES:
+            reps = zaehle_edge(persona_signale[persona], hz, theta,
+                                refractory_s=refr_samples / hz, baseline=baseline,
+                                falling_debounce=1, prominenz=0.0)
+            erwartet = erwartete_reps[persona]
+            ok = abs(len(reps) - erwartet) <= max(1, round(0.1 * erwartet))
+            if ueber_theta[persona]:
+                ok_gesamt &= ok
+            zeilen.append(f"{persona}={len(reps)}(soll {erwartet}){'OK' if ok else ('n/a' if not ueber_theta[persona] else '!!')}")
+
+        dart_reps = zaehle_edge(dart_clean_kadenz, hz, dart_theta,
+                                 refractory_s=refr_samples / hz, baseline=0.0,
+                                 falling_debounce=1, prominenz=0.0)
+        dart_ok = abs(len(dart_reps) - 10) <= 1
+        if dart_ok:
+            dart_kadenz_grenze = refr_samples
+        zeilen.append(f"dart_kadenz={len(dart_reps)}(soll 10){'OK' if dart_ok else 'BRICHT-BESTANDSTEST'}")
+        ok_gesamt &= dart_ok
+
+        print(f"  refr={refr_samples:3d} samples ({refr_samples/hz*1000:5.0f}ms): " + ", ".join(zeilen))
+        if ok_gesamt and beste_wahl is None:
+            beste_wahl = refr_samples
+    print(f"  Groesste Sperrzeit, die die bestehende Dart-Kadenz NICHT bricht: "
+          f"{dart_kadenz_grenze} Samples.")
+    if beste_wahl is None:
+        # Ehrlicher Befund (nicht wegtunen): innerhalb des durch die
+        # bestehende Dart-Kadenz erzwungenen sicheren Bereichs gibt es
+        # KEINEN Kandidaten, der double_bump zusaetzlich loest - der
+        # Buckel-zu-Buckel-Abstand dort ist selbst groesser als die groesste
+        # noch sichere Sperrzeit. Sperrzeit bleibt trotzdem sinnvoll als
+        # Rauschschutz gegen sehr eng aufeinanderfolgende Spontan-Trigger,
+        # loest aber S1/double_bump NICHT strukturell - das leistet erst
+        # Schritt B (g_p) weiter unten, dort nachweislich OHNE jede
+        # Sperrzeit.
+        beste_wahl = max(0, (dart_kadenz_grenze or 24) - 4)  # Sicherheitsabstand
+        print(f"  WICHTIG: Kein Sperrzeit-Wert innerhalb des sicheren Bereichs "
+              f"loest double_bump (dessen Buckelabstand > {dart_kadenz_grenze} "
+              f"Samples ist). Sperrzeit bleibt als Rauschschutz bei {beste_wahl} "
+              f"Samples (Sicherheitsabstand zur Kadenz-Grenze), LOEST S1 aber "
+              f"NICHT vollstaendig - das leistet Schritt B (g_p) weiter unten.")
+    print(f"  -> gewaehlt: {beste_wahl} Samples "
+          f"({beste_wahl/hz*1000:.0f}ms bei {hz}Hz)")
+
+    # 4) Falling-Debounce: eigener, gezielter Test statt breitem Sweep, denn
+    #    Paket 1 hat den Wert (4) bereits gegen genau slow/weak gefunden und
+    #    dokumentiert (siehe zaehle_edge-Docstring, Debug-Befund 2026-07-16)
+    #    - Agent 1 uebernimmt diesen bereits verifizierten Wert, statt ihn
+    #    ohne Grund neu zu erfinden, und bestaetigt ihn hier nur gegen die
+    #    eigenen 5 Personas.
+    print("\n--- Falling-Debounce (uebernommen aus zaehle_edge-Erfahrung, hier bestaetigt) ---")
+    for debounce in [1, 4]:
+        zeilen = []
+        for persona in PERSONA_PROFILES:
+            reps = zaehle_edge(persona_signale[persona], hz, theta,
+                                refractory_s=beste_wahl / hz, baseline=baseline,
+                                falling_debounce=debounce, prominenz=0.0)
+            zeilen.append(f"{persona}={len(reps)}")
+        print(f"  debounce={debounce}: " + ", ".join(zeilen))
+
+    # 5) Prominenz: kleiner, gezielter Sweep um die halbe Baseline-Exkursion
+    #    (Analogiewert zu falling_edge_ratio=0.7 in _detectPeak - keine
+    #    unabhaengige neue Magic Number, sondern konsistent zum bestehenden
+    #    Verhaeltnis).
+    print("\n--- Prominenz-Sweep (Anteil der Baseline-Theta-Exkursion) ---")
+    exkursion = theta - baseline
+    for anteil in [0.0, 0.15, 0.30, 0.45]:
+        prominenz = anteil * exkursion
+        zeilen = []
+        for persona in PERSONA_PROFILES:
+            reps = zaehle_edge(persona_signale[persona], hz, theta,
+                                refractory_s=beste_wahl / hz, baseline=baseline,
+                                falling_debounce=4, prominenz=prominenz)
+            zeilen.append(f"{persona}={len(reps)}")
+        print(f"  anteil={anteil:.2f} (prominenz={prominenz:.3f}): " + ", ".join(zeilen))
+
+    # 6) S2 explizit: theta bleibt auf dem clean-Kalibrierwert fixiert (wie
+    #    heute in der App) - zaehlt weak/slow trotzdem korrekt? Das ist die
+    #    eigentliche S2-Frage, unabhaengig vom Refraktaerfenster oben.
+    print("\n--- S2-Check: reicht das feste theta (kalibriert auf clean) fuer weak/slow? ---")
+    for persona in ["weak", "slow"]:
+        reps = zaehle_edge(persona_signale[persona], hz, theta,
+                            refractory_s=beste_wahl / hz, baseline=baseline,
+                            falling_debounce=4, prominenz=0.30 * exkursion)
+        erwartet = erwartete_reps[persona]
+        print(f"  {persona}: gezaehlt={len(reps)}, erwartet={erwartet}, "
+              f"theta={theta:.3f} vs. persona-eigener max(combined)={float(np.max(persona_signale[persona])):.3f}")
+    print("  -> Kaltstart-Ergebnis (0/10 fuer beide): ein FESTES theta, einmal auf\n"
+          "     einer clean-Rep kalibriert, kann Personas, deren gesamter Signal-Peak\n"
+          "     darunter liegt, strukturell NIE erreichen - unabhaengig von Sperrzeit,\n"
+          "     Debounce oder Prominenz (die aendern nur, WANN/OB eine bereits ueber\n"
+          "     theta liegende Exkursion gezaehlt wird, nicht OB sie ueberhaupt eine\n"
+          "     wird). Das ist der Fall, fuer den Guided Calibration 2.0 + g_p (Paket\n"
+          "     1 oben, 5/5 Personas) da ist - nicht mit reiner Live-Pfad-Anpassung\n"
+          "     ohne neue Kalibrierungsdaten loesbar. Realistischer und im Live-Pfad\n"
+          "     tatsaechlich loesbar: derselbe Nutzer wird INNERHALB eines Satzes\n"
+          "     langsamer -> Test unten.")
+
+    # Realistischer S2-Fall: EIN Nutzer, dessen Tempo INNERHALB eines Satzes
+    # driftet (typisch: ermuedet, wird langsamer) - nicht ein kompletter
+    # Personenwechsel. Erste 3 Reps im clean-Tempo (bauen bestaetigte Peaks
+    # auf), dann 7 Reps im slow-Tempo. Referenzimplementierung fuer die
+    # Streaming-Portierung nach WorkoutEngineSim/_detectPeak: bewusst ALS
+    # Schleife geschrieben statt ueber zaehle_edge (das nimmt nur ein festes
+    # theta), weil das genau der Mechanismus ist, der dort ankommen muss.
+    print("\n--- S2, realistischer Fall: Tempo-Drift INNERHALB eines Satzes (3x clean -> 7x slow) ---")
+    achse_clean = np.array(PERSONA_PROFILES["clean"]["achse"]); achse_clean /= np.linalg.norm(achse_clean)
+    _, acc_c, gyro_c, _ = make_persona_6achsen("clean", n_reps=3, hz=hz, seed=seed_basis + 900, ruhe_vor_s=0.5, ruhe_nach_s=0.3)
+    _, acc_s, gyro_s, _ = make_persona_6achsen("slow", n_reps=7, hz=hz, seed=seed_basis + 901, ruhe_vor_s=0.3, ruhe_nach_s=0.5)
+    acc_mix = np.vstack([acc_c, acc_s])
+    gyro_mix = np.vstack([gyro_c, gyro_s])
+    sig_mix = kandidaten_signale(acc_mix, gyro_mix, achse=achse_clean, gyro_bias=GYRO_BIAS_VEKTOR)["combined"]
+
+    def zaehle_mit_adaptiver_schwelle(signal, theta_kalibriert, adaptive_ratio,
+                                       min_reps_fuer_adaption=3, fenster=5):
+        """Referenzimplementierung fuer _detectPeak/_detect_peak: effektives
+        theta = min(theta_kalibriert, adaptive_ratio * median(letzte
+        `fenster` bestaetigte Peaks)), erst aktiv sobald mindestens
+        `min_reps_fuer_adaption` Reps bestaetigt sind (Bootstrap-Problem:
+        vor der ersten bestaetigten Rep gibt es nichts, wovon man adaptieren
+        koennte - siehe Kaltstart-Ergebnis oben, das bleibt unveraendert).
+
+        WICHTIG (Bug beim ersten Versuch, hier dokumentiert statt still
+        korrigiert): die Falling-Schwelle MUSS beim Start jeder Exkursion
+        aus dem GERADE AKTIVEN eff_theta berechnet und fuer die Dauer dieser
+        Exkursion eingefroren werden - nicht aus dem urspruenglichen,
+        unveraenderten theta_kalibriert. Sonst kann eine Exkursion, die nur
+        wegen eines abgesenkten eff_theta ueberhaupt ausgeloest hat, nie
+        wieder unter die (dann zu hohe) Falling-Schwelle fallen und schliesst
+        nie - die Rep wird nie gezaehlt, obwohl die Rising Edge korrekt
+        erkannt wurde."""
+        reps, confirmed_peaks = [], []
+        above, exc_peak, pre_min, last_end = False, -np.inf, np.inf, -10**12
+        falling_aktuell = None
+        refr_samples = beste_wahl
+        for i, v in enumerate(signal):
+            eff_theta = theta_kalibriert
+            if len(confirmed_peaks) >= min_reps_fuer_adaption:
+                eff_theta = min(theta_kalibriert,
+                                 adaptive_ratio * float(np.median(confirmed_peaks[-fenster:])))
+            if not above:
+                pre_min = min(pre_min, v)
+                if v > eff_theta and i - last_end >= refr_samples:
+                    above, exc_peak = True, v
+                    falling_aktuell = baseline + (eff_theta - baseline) * 0.7
+            else:
+                exc_peak = max(exc_peak, v)
+                if v < falling_aktuell:
+                    above = False
+                    reps.append((i, exc_peak))
+                    confirmed_peaks.append(exc_peak)
+                    last_end, pre_min = i, v
+        return reps
+
+    ohne = zaehle_mit_adaptiver_schwelle(sig_mix, theta, adaptive_ratio=1.0)  # ratio=1.0 => keine Absenkung
+    mit = zaehle_mit_adaptiver_schwelle(sig_mix, theta, adaptive_ratio=0.25)
+    print(f"  ohne Adaption (ratio=1.0): {len(ohne)} von 10 gezaehlt")
+    print(f"  mit Adaption  (ratio=0.25, ab 3 bestaetigten Reps, Fenster=5): {len(mit)} von 10 gezaehlt")
+    print(f"  -> {'funktioniert wie beabsichtigt' if len(mit) > len(ohne) else 'ADAPTION GREIFT IMMER NOCH NICHT - nachbessern'}: "
+          "die ersten 3 clean-Reps bauen bestaetigte Peaks auf, danach senkt sich\n"
+          "     die Schwelle fuer die folgenden slow-Reps ab, OHNE dass eine neue\n"
+          "     Kalibrierung noetig ist.")
+
+    return {"theta": theta, "baseline": baseline,
+            "refraktaer_samples": beste_wahl, "falling_debounce": 4,
+            "prominenz_anteil": 0.30}
+
+
+def pruefe_strukturellen_gp_fix(hz=50, n_reps=10, seed_basis=6000):
+    """Agent 1 / Schritt B (AGENT_1_SIGNAL_PIPELINE.md P2, RECHERCHE_ZAEHLROBUSTHEIT
+    S8): Beweis, dass der Doppel-Buckel-Fall STRUKTURELL durch das
+    vorzeichenbehaftete g_p geloest wird - nicht nur durch die Sperrzeit
+    aus Schritt A kaschiert. Nutzt kandidaten_signale() (liefert g_p schon
+    fertig, unveraendert wiederverwendet) statt eine eigene Signalberechnung
+    zu duplizieren.
+
+    Mechanismus: bei "form=double" (konzentrisch + exzentrisch als pos./neg.
+    Halbwelle, siehe PERSONA_PROFILES-Kommentar oben) hat g_p pro Rep GENAU
+    einen positiven und einen negativen Lobe. Zaehlt man nur positiv
+    kreuzende Exkursionen (Vorzeichen als Trennkriterium statt Amplitude),
+    ist der zweite Lobe strukturell nie eine eigene Rep-Kandidatur - im
+    Gegensatz zu combined (reine Betragssumme), wo beide Lobes als separate
+    Ueberschreitungen erscheinen (Schritt A braucht dafuer die Sperrzeit).
+
+    Achse: hier bewusst NICHT die PCA-Achse aus der Kalibrierung (Agent 2s
+    CalibrationController existiert zum Zeitpunkt dieser Session noch
+    nicht, siehe Bauplan Abschnitt 6.1) - stattdessen die dominante
+    Gyro-Achse direkt aus den ersten n_kalibrierung Samples (Achse mit der
+    groessten Varianz), als Platzhalter bis Agent 2s rotationAxis verfuegbar
+    ist.
+
+    ZUPT/Integrations-Drift: NICHT umgesetzt, weil nicht noetig - die
+    Zaehlung bleibt reine Peak-/Vorzeichen-Erkennung auf g_p selbst, es
+    wird nirgends integriert (keine Winkel-Akkumulation), also gibt es
+    keine Integrationsdrift, die zurueckgesetzt werden muesste (explizite
+    Dokumentation statt stillschweigendem Weglassen, wie vom Bauplan
+    Abschnitt 6.2.2 verlangt).
+    """
+    achse_clean = np.array(PERSONA_PROFILES["clean"]["achse"]); achse_clean /= np.linalg.norm(achse_clean)
+    t, acc, gyro, _ = make_persona_6achsen("double_bump", n_reps=n_reps, hz=hz,
+                                            seed=seed_basis, ruhe_vor_s=0.5, ruhe_nach_s=0.5)
+
+    # Dominante Achse aus den ersten 2 Sekunden Bewegung schaetzen (Platzhalter
+    # fuer Agent 2s spaeteres rotationAxis-Ergebnis - siehe Docstring oben).
+    bewegungsfenster = gyro[int(0.5 * hz):int(2.5 * hz)] - GYRO_BIAS_VEKTOR
+    varianzen = np.var(bewegungsfenster, axis=0)
+    dominante_achse_idx = int(np.argmax(varianzen))
+    achse_geschaetzt = np.eye(3)[dominante_achse_idx]
+    kosinus_zur_echten_achse = float(np.dot(achse_geschaetzt, achse_clean))
+    print(f"\n--- Agent 1 / Schritt B: struktureller g_p-Fix (double_bump) ---")
+    print(f"  geschaetzte dominante Achse: Index {dominante_achse_idx} "
+          f"(cos zur echten Persona-Achse = {kosinus_zur_echten_achse:.3f})")
+
+    sig = kandidaten_signale(acc, gyro, achse=achse_geschaetzt, gyro_bias=GYRO_BIAS_VEKTOR)
+    g_p = sig["g_p"]
+
+    def zaehle_vorzeichen_strukturell(signal, theta, refractory_samples=0):
+        """Zaehlt nur POSITIV kreuzende Exkursionen - der negative Lobe
+        (exzentrische Phase) ist per Vorzeichen ausgeschlossen, nicht per
+        Sperrzeit. refractory_samples=0 zeigt, dass es strukturell auch
+        OHNE jede Sperrzeit funktioniert (im Gegensatz zu combined)."""
+        reps, above, last_end = [], False, -10**9
+        for i, v in enumerate(signal):
+            if not above and v > theta and i - last_end >= refractory_samples:
+                above = True
+            elif above and v < theta * 0.3:  # zurueck nahe Null = Rep abgeschlossen
+                above = False
+                reps.append(i)
+                last_end = i
+        return reps
+
+    theta_gp = 0.4 * float(np.max(np.abs(g_p)))  # grobe, feste Schwelle nur fuer diesen Strukturbeweis
+    theta_combined = 0.4 * float(np.max(sig["combined"]))  # eigene Skala - kein Aepfel-Birnen-Vergleich
+    reps_ohne_refraktaer = zaehle_vorzeichen_strukturell(g_p, theta_gp, refractory_samples=0)
+    reps_combined_zum_vergleich = zaehle_edge(sig["combined"], hz, theta_combined,
+                                               baseline=1.0, refractory_s=0.0)
+    print(f"  g_p, vorzeichenbasiert, OHNE jede Sperrzeit: {len(reps_ohne_refraktaer)} von {n_reps} gezaehlt")
+    print(f"  combined (Betrag), zum Vergleich, ebenfalls OHNE Sperrzeit: "
+          f"{len(reps_combined_zum_vergleich)} von {n_reps} gezaehlt (bekannter Alt-Pfad-Defekt)")
+    strukturell_ok = abs(len(reps_ohne_refraktaer) - n_reps) <= 1
+    print(f"  -> {'STRUKTURELL GELOEST' if strukturell_ok else 'noch nicht geloest'} "
+          f"(g_p braucht keine Sperrzeit, um die Doppelzaehlung zu vermeiden - "
+          f"combined bleibt bei ca. 2x{n_reps} haengen, exakt der S1/S8-Befund).")
+    if not strukturell_ok:
+        raise SystemExit("Schritt-B-Strukturbeweis fehlgeschlagen - g_p zaehlt nicht wie erwartet.")
+    return {"dominante_achse_idx": dominante_achse_idx, "kosinus_zur_echten_achse": kosinus_zur_echten_achse}
+
+
 def stufe0_ruheanalyse(acc, gyro):
     """Stufe 0 (Ruhe): Baseline, Rausch-Sigma, Gyro-Bias + Qualitaets-Gate
     (ENG-Check: es muessen Samples ankommen; Stillstand verifiziert:
@@ -1525,3 +1984,6 @@ if __name__ == "__main__":
     kalibrierung_ok = run_known_count_calibration_suite(alt_ergebnisse)
     if not kalibrierung_ok:
         raise SystemExit("Known-Count-Kalibrierung (Paket 1) fehlgeschlagen - siehe Ausgabe oben.")
+
+    agent1_ergebnis = sweep_live_pfad_refraktaer_und_prominenz()
+    agent1_schritt_b = pruefe_strukturellen_gp_fix()
