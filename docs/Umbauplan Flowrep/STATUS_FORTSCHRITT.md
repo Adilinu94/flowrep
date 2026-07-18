@@ -143,3 +143,121 @@ Verdacht (nicht abschliessend verifiziert): Interaktion zwischen `adaptiveThresh
   **Nebenbefund zur "main hat 3 rote Tests"-Meldung direkt über diesem Eintrag, NICHT abschließend verifiziert:** `python3 tools/workout_engine_simulation.py` auf aktuellem `main` (`7f20e14`) zeigt die Alt-Suite (Legacy-Zählpfad) weiterhin grün ("Saubere Reps (Demo-Tempo) erwartet=10 gezaehlt=10") – falls dieser Python-Pfad dieselben Parameter wie Agent 1s neuer Dart-Fix nutzt, spräche das dafür, dass die Unterzählung eher beim 1:1-Dart-Port als im Algorithmus selbst liegt (Agent 1s eigener Eintrag oben nennt exakt dieses Muster als generelles Risiko: Dart-Seite "nicht selbst mit flutter test ausgeführt"). Konnte in der verbleibenden Zeit nicht zweifelsfrei nachvollziehen, ob die Alt-Suite dieselben Parameterwerte (`min_rep_interval_samples`/`adaptive_threshold_ratio` etc.) tatsächlich als Default verwendet oder ob das ein anderer Pfad ist – als Hinweis für die nächste Debug-Runde gedacht, nicht als Diagnose.
 
   **Für Adi:** Empfehlung, explizit zu entscheiden, welche der beiden `CalibrationController`-Architekturen die Basis wird, bevor weitere Arbeit (Paket 3/Store-Migration, Agent 4s spätere Engine-Anbindung) draufgesetzt wird – siehe Chat-Antwort für Details und konkrete Optionen. Token für den Push war der bereits im Chat geteilte.
+
+---
+
+## Agent-4-FirmwareHardware (2026-07-17, im Rahmen der 4-Agenten-Koordination, siehe `agenten-baupläne/00_KOORDINATION_UEBERSICHT.md`)
+
+> Eigener Abschnitt statt Eintrag im chronologischen Änderungsprotokoll oben, wie in `agenten-baupläne/AGENT_4_FIRMWARE_HARDWARE.md` Abschnitt 9 vorgeschrieben.
+
+**Ausführende Instanz:** Claude, separate Konversation, von Adi ausdrücklich als "Agent 4, aber ohne physischen Zugriff, so viel Vorarbeit wie möglich" beauftragt. Kein Terminalzugriff auf einen Rechner mit angeschlossenem Gerät, kein PlatformIO-Registry-Zugriff (Sandbox-Netzwerk-Allowlist).
+
+**Analyse (vor jeder Änderung, wie in Abschnitt 2 des Bauplans gefordert):** `git checkout main && git pull origin main` - sauber, keine Überraschungen. `docs/01_protocol.yaml` existierte bereits vollständig (Bauplan-Formulierung ließ offen, ob das der Fall ist), war aber unversioniert. `firmware/src/main.cpp` bereits NimBLE-migriert wie vom Bauplan angenommen. **Präzisierung zu S3:** die Firmware sendet pro Batch bereits einen echten `millis()`-Zeitstempel - "fiktiv" betrifft nicht die Existenz eines Zeitstempels, sondern die (falsche) App-seitige Annahme, dass die 4 Samples innerhalb eines Batches gleichmäßig 20ms auseinanderliegen (`ble_protocol_parser.dart`: `Duration(milliseconds: i*20)`). Tatsächlich wurden sie back-to-back erfasst (I2C-Lesezeit, ~0ms Abstand), nur der ganze Batch war per einmaligem `delay(20)` getaktet - eine Diskrepanz, die nur durch Code-Lesen auffällt, nicht durch bloßes Vorhandensein eines Zeitstempel-Feldes.
+
+**Schritt A (`docs/01_protocol.yaml`, Commit `64d9055` auf Branch `agent4-firmware-hardware`):**
+- `protocol_version: 2` (neu, gab es vorher gar nicht) + neues `protocol_version`-Wire-Feld (uint8, offset 4). Alt-Firmware (v1) sendet dieses Byte nicht - Versionserkennung app-seitig daher über Paketlänge (52 vs. 53 Byte), nicht über den Feldinhalt.
+- Gyro-Skala 0.01 → 0.02 (±655,34°/s statt ±327,67°/s - mehr Marge als die im Bauplan geforderten ±400°/s, bewusst ein "rundes" x2 statt einer krummen Zahl).
+- Neuer `timing:`-Abschnitt: `sample_interval_ms: 20` als firmwareseitig garantierter (nicht mehr nur app-seitig angenommener) Wert dokumentiert.
+- `total_bytes` 52→53, `ble_mtu.minimum_required` 55→56. **Wichtig für Agent 1:** keine Code-Änderung an der MTU-Verhandlung nötig - `ble_sensor_provider.dart` fordert bereits `requiredMtu=185` an (bei Weitem ausreichend), und die beobachtete Hardware negoziiert laut Code-Kommentar dort ohnehin immer 517 (HyperOS-Quirk).
+- `versions:`-Abschnitt mit vollständigem v1→v2-Changelog neu ergänzt, inkl. des bewussten Trade-offs unten.
+- YAML-Syntax mit PyYAML validiert (`yaml.safe_load` erfolgreich, alle Feldwerte stichprobenartig geprüft).
+
+**Schritt B (`firmware/src/main.cpp`, Commit `2c85e94`):**
+- Neues Pacing-Gate direkt nach dem `deviceConnected`/`streaming`-Check in `loop()`: gated jetzt JEDES Sample einzeln über `micros()` gegen `sampleIntervalMicros` (vorher toter Code, nie gelesen), nicht mehr nur den Batch-Versand. Beide alten `delay(20)`-Aufrufe (Dummy-Pfad UND echter IMU-Pfad) entfernt, da das neue Gate das Pacing zentral übernimmt - auch über die Batch-Grenze hinweg (Sample 4 von Batch N zu Sample 1 von Batch N+1 ist jetzt ebenfalls exakt 20ms, vorher ein Sprung).
+- **Bewusster, dokumentierter Trade-off:** dadurch sinkt die effektive Batch-Sende-Rate von vorher ~50Hz (bursty, aber unehrlich) auf ehrlich 12,5Hz (4 × 20ms = 80ms/Batch). Die tatsächliche App-seitige Ankunftsrate war laut früheren Sessions ohnehin nur ~14-20Hz (BLE-/Android-Stack-bedingt, nicht firmware-limitiert) - dieser Trade-off kostet nach aktuellem Kenntnisstand also vermutlich wenig in der Praxis, ist aber NICHT hardware-verifiziert. **Test 4 (CSV-Export) sollte das als Erstes zeigen, sobald physisch möglich.**
+- Gyro-Skalierung `*100.0f`→`*50.0f` an beiden Achsen-Zuweisungsstellen (Dummy-Pfad nutzt ohnehin feste Testwerte, nicht betroffen; echter IMU-Pfad angepasst).
+- `protocol_version`-Zuweisung bei Batch-Start ergänzt (beide Pfade).
+- Struct + `static_assert` auf 53 Byte angepasst, von Hand nachgerechnet (4 Byte timestamp + 1 Byte protocol_version + 4×12 Byte samples = 53), nicht nur behauptet.
+- 2 kleine, direkt angrenzende Doku-Ungenauigkeiten nebenbei korrigiert (fehlendes `01_`-Präfix in einer Kommentarzeile, veraltete 52-Byte-Zahl in einem MTU-Kommentar).
+
+**Nicht verifiziert - explizit offen, nicht schöngeredet:**
+- `pio run`: `HTTPClientError: Host not in allowlist: api.registry.platformio.org` - kann in dieser Sandbox nicht behoben werden (Netzwerk-Allowlist ist fest konfiguriert, nicht von mir änderbar). Stattdessen manuell nachgerechnet (s.o.). **Muss vor dem Flashen auf Adis Maschine nachgeholt werden** - laut früherem Eintrag oben in diesem Dokument (Claude-449d4d43, zweite Fortsetzung) hat `pio run` dort bereits einmal erfolgreich funktioniert, die Umgebung sollte also bereitstehen.
+- Alle vier physischen Tests aus Bauplan-Abschnitt 6/Schritt C: nicht durchgeführt, da physischer Zugriff fehlt. Die Testanleitungen selbst sind unverändert einsatzbereit (siehe `agenten-baupläne/AGENT_4_FIRMWARE_HARDWARE.md`).
+- Branch `agent4-firmware-hardware` liegt lokal in dieser Sandbox vor (2 Commits: `64d9055`, `2c85e94`), ist aber **nicht gepusht** - kein gültiges Push-Token in dieser Konversation (das ursprünglich von Adi geteilte Token wurde nach dem Klonen bewusst aus der Remote-URL entfernt statt es für Pushes weiterzuverwenden, siehe Chat-Verlauf und Guardrail 6.5).
+
+**Für die naechste Session mit physischem/Push-Zugriff:** Branch pushen, `pio run` nachholen, dann Test 1 (`ENG:`/Sample) - der seit mehreren Sessions unbeantwortete, hoechste-Prioritaet-Test - endlich durchfuehren.
+
+### Agent-4-FirmwareHardware, Fortsetzung 2026-07-18 (Session: Grok-4c0deabc)
+
+> Folgeauftrag: pio run, Flashen, Test 1 + Test 2. Terminalzugriff auf Adis Windows-Rechner. Branch gent4-firmware-hardware (Commits 64d9055, 2c85e94, d6dca3, Remote PR #2).
+
+**Umgebung**
+- PlatformIO Core 6.1.19, Flutter vorhanden, Branch sauber auf Remote-Stand gezogen.
+- M5StickC: PnP meldet USB-Enhanced-SERIAL CH9102 (COM3) mit Status **Unknown**; SerialPort.GetPortNames() leer; mode COM3 / esptool: Port existiert nicht aus Sicht des OS.
+
+**Aufgabe 1 – pio run (firmware/)**
+- Ergebnis: **[SUCCESS] in 39,98 s**
+- static_assert(sizeof(SensorBatchWire) == 53, ...) **bestanden** (Compiler-Layout deckt die manuelle Rechnung ab: 4 + 1 + 4×12 = 53).
+- RAM 12,0 % (39480 / 327680), Flash 58,4 % (765221 / 1310720), NimBLE-Arduino 1.4.3, M5StickCPlus2 1.0.2.
+- Keine Code-Änderung nötig; erster echter Compile-Check dieses v2-Firmware-Stands.
+
+**Aufgabe 2 – Flash**
+- Befehl: pio run --target upload --upload-port COM3
+- Ergebnis: **FAILED** – Could not open COM3, the port is busy or doesn't exist / FileNotFoundError (System kann die angegebene Datei nicht finden).
+- Kein Flash durchgeführt. Wartet auf Adi: Gerät einschalten und USB-Verbindung prüfen.
+
+**Kritischer Vorab-Fund (für Tests nach Flash)**
+- App-Parser (pp/lib/data/protocol/ble_protocol_parser.dart) auf main und gent1-signal-pipeline noch **v1**: xpectedTotalBytes = 52, gyroScale = 0.01.
+- Firmware v2 sendet **53** Byte / Gyro-Skala **0.02**.
+- Nach erfolgreichem Flash würde die App mit aktuellem Parser alle Pakete ablehnen (BleProtocolException Längenmismatch) → ENG: samples= bliebe 0, **ohne** dass die Firmware defekt wäre. Parser-Update ist Agent-1-Eigentum (Bauplan: Agent 4 schreibt nicht unter pp/).
+- main.dart nutzt standardmäßig MockSensorProvider – Hardware-Test braucht Build mit BleSensorProvider.
+
+**Test 1 / Test 2**
+- Noch nicht durchgeführt (Flash blockiert durch COM3).
+
+**Nächster Schritt**
+1. Adi: M5StickC Plus2 einschalten (Power-Taste), USB stecken, bestätigen.
+2. Erneut pio run --target upload, dann Serial-Monitor -b 115200.
+3. Test 1 mit Adi als Hände/Augen; bei v2-Firmware + v1-App Parser-Mismatch in Interpretation berücksichtigen.
+
+**Nachtrag Flash (gleiche Session Grok-4c0deabc, 2026-07-18, nach Adis "Gerät an"):**
+- COM3 jetzt Status OK (CH9102).
+- pio run --target upload --upload-port COM3: **[SUCCESS] 39,33 s**
+- Chip: ESP32-PICO-V3-02 rev v3.1, MAC 4c:c3:82:9c:7b:44, App-Partition geschrieben + Hash verified, Hard reset via RTS.
+- Serial-Monitor 115200 (ca. 8 s): IMU-Diagnose aktiv, 
+eal-Pfad, Ruhe-Magnitude ~1,00 g (Beispiele: a≈(-0,97,-0,02,0,25), mag=0,998–1,012). Keine IMU-Fail-Spams im kurzen Fenster.
+- Test 1/2 mit App: noch ausstehend (Adi als Hände/Augen). Hinweis: geflashte Firmware = Protokoll **v2 (53 Byte)**; App-Parser noch v1 (52 Byte).
+
+**Test 1 Ergebnis (Adi, 2026-07-18, nach v2-Flash, vor Parser-Fix) – wörtlich:**
+- Adi: „Ich mache Reps aber in der App ändert sich garnichts bis auf das der Parse Fehler zahl steigt“
+
+**Interpretation (Grok-4c0deabc):**
+- Firmware sendet Daten (Parse-Fehler-Zähler steigt = BLE-Read liefert Bytes).
+- App verwarf sie: (1) le_sensor_provider.dart hardcodierte ytes.length != 52 → _parseErrors++ ohne Parser; (2) Parser war ebenfalls nur v1.
+- Entspricht exakt dem vor dem Flash dokumentierten Protokoll-Mismatch v2(53)/v1(52). Kein IMU-Tot, kein BLE-Disconnect.
+
+**Hotfix (Abweichung von Agent-4-Bauplan „app/ nicht anfassen“ – bewusst, sonst Hardware-Tests blockiert):**
+- le_protocol_parser.dart: Dual-Parse 52 (v1, gyro 0.01) und 53 (v2, gyro 0.02); encode default v2.
+- le_sensor_provider.dart: Längen-Gate 52|53 statt nur 52.
+- Unit-Tests Parser: 6/6 grün (lutter test test/ble_protocol_parser_test.dart).
+- Adi muss App neu bauen/hot-restarten und Test 1 wiederholen.
+
+**App-Deploy + Live-Log-Verifikation (Grok-4c0deabc, 2026-07-18, nach USB-Install freigeschaltet):**
+- main.dart temporar auf BleSensorProvider (Hardware-Test).
+- lutter build apk --debug OK; Install nach Adi-Freigabe: SUCCESS auf 21081111RG.
+- App gestartet, BLE verbunden: MTU 517, read()-Polling ~**11.8 Hz** (passt zur ehrlichen ~12,5 Hz Batch-Rate der v2-Firmware).
+- **Test 1 (samples) – aus Logcat, nicht aus UI-Ablesung:**
+  - (a) **ja**, samples zahlen hoch (ENGINE # laeuft, z.B. #350 → #1900 → #4650).
+  - (b) nach ~1 min Verbindung: tausende Samples / ~1160 Batches.
+  - (c) **Reps in Live-Logs nicht als 1 bestaetigt** – Engine war in state=calibrating mit gespeichertem 	hreshold≈11.67 (combined ~1.0–1.2, bove=false). Zaehlung blockiert durch Kalibrierungs-State/Schwelle, **nicht** durch BLE/Firmware/Parser.
+- Parse-Fehler: nach Parser+Provider-Fix **keine** Laengen-Rejects mehr in den Logs (Batches steigen monoton).
+- 12,5-Hz-Trade-off: beobachtete App-Rate ~11,8 Hz – kein spuerbarer „tot“-Stream.
+
+**Test 2 (3 Curls, Adi, 2026-07-18 ~19:31-19:32, Logcat-Fenster 50s):**
+- Verbindung stabil: ~11,7 Hz, batches ~3100+, ENGINE # bis ~13030.
+- Engine-State in **allen** Log-Zeilen: state=calibrating (nie ctive im Capture) trotz Adis Aussage UI "aktive".
+- 	hreshold fest ~**11,73**; max combined im Fenster ~**1,47**; max gyroMag ~**9,5** deg/s; bove=false durchgehend.
+- **Keine** peakerkannte/gezählte Rep in den Logs (Signal weit unter Threshold).
+- Interpretation: Hardware+BLE+Parser OK (Test-1-Samples grün). Zählung scheitert an Engine-Zustand/Schwelle (Kalibrierungs-Pfad / gespeicherter Threshold), ggf. UI/Log-State-Diskrepanz. Agent-1/Kalib-Thema, nicht Firmware-v2.
+- Trade-off 12,5Hz: Stream blieb stabil, keine Aussetzer im Capture.
+
+**Test 2 Nachtrag – Adi UI-Ablesung (2026-07-18, Session Grok-4c0deabc), wörtlich dokumentiert:**
+
+Adi:
+> eng: samples zahl steigt, state:aktive tresh=8.549 base=steigt Das Reps zählen funktioniert noch garnicht. Wenn den M5 nur beege oder etwas drehe werden reps gezählt.
+
+**Interpretation (nur Dokumentation, kein Fix in dieser Session – Adi: "Darum brauchst du dich jetzt nicht kümmern"):**
+- **Pipeline grün:** samples steigt, state=active (UI), Threshold ~8.549, Baseline steigt (EMA lebt) → Firmware v2 + BLE + Parser v2 liefern nutzbare Samples an die Engine.
+- **Zählqualität rot / unbrauchbar:** Echte Bizeps-Curls werden (noch) nicht zuverlässig als Reps erkannt; **beliebige Bewegung/Drehung des M5** löst dagegen Zählungen aus (False Positives / zu empfindliche oder falsch-orientierte Peak-Erkennung, nicht Streaming-Ausfall).
+- **Abgrenzung Agent-4 vs. Agent-1:** Hardware-Verifikation (pio run, Flash, Samples fließen nach Protokoll v2) ist erledigt. Die beschriebene Zähl-Symptomatik liegt im **Live-Zählpfad / Kalibrierung / Signal-Features** (Agent 1 und ggf. Calib 2.0), **nicht** in Firmware/Protokoll dieser Session.
+- Kein Code-Fix an workout_engine.dart o.ä. in dieser Fortsetzung – bewusst offener Befund für spätere Sessions.

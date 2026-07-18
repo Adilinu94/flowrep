@@ -37,7 +37,8 @@ class BleSensorProvider implements ISensorProvider {
   // We request 185 to avoid the HyperOS MTU-517 off-by-one boundary bug,
   // but HyperOS ignores client MTU requests and always returns the
   // server's MTU (517 from NimBLEDevice::setMTU(517)). The actual
-  // negotiated MTU is 517, which fits the 52-byte payload.
+  // negotiated MTU is 517, which fits the 53-byte protocol-v2 payload
+  // (and the legacy 52-byte v1 payload).
   static const int requiredMtu = 185;
 
   final _connectionController = StreamController<SensorConnectionState>.broadcast();
@@ -73,7 +74,9 @@ class BleSensorProvider implements ISensorProvider {
     return full == target || short == target || full.endsWith(target);
   }
 
-  final int _sampleBytes = 52;
+  // Accepted wire sizes from docs/01_protocol.yaml: 52 = v1, 53 = v2.
+  static const int _sampleBytesV1 = 52;
+  static const int _sampleBytesV2 = 53;
   int _receivedBatches = 0;
   int _parseErrors = 0;
   double _pollingRateHz = 0;
@@ -239,7 +242,8 @@ class BleSensorProvider implements ISensorProvider {
           // Measure read() round-trip time for diagnostics.
           final dt = DateTime.now().microsecondsSinceEpoch - t0;
 
-          if (bytes.length != _sampleBytes) {
+          if (bytes.length != _sampleBytesV1 &&
+              bytes.length != _sampleBytesV2) {
             _parseErrors++;
             continue;
           }

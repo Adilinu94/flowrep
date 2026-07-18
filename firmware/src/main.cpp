@@ -12,7 +12,7 @@
 #include <NimBLEDevice.h>
 
 // UUIDs MUST match app/lib/data/providers/ble_sensor_provider.dart exactly.
-// docs/protocol.yaml is the source of truth for the wire format itself;
+// docs/01_protocol.yaml is the source of truth for the wire format itself;
 // these UUID strings are the GATT addressing on top of that format.
 #define SERVICE_UUID           "0000fee0-0000-1000-8000-00805f9b34fb"
 #define SENSOR_DATA_CHAR_UUID  "0000fee1-0000-1000-8000-00805f9b34fb"
@@ -22,22 +22,26 @@
 #define DEVICE_NAME "GymTracker"
 #define SAMPLE_RATE_HZ 50
 #define SAMPLES_PER_BATCH 4
+#define PROTOCOL_VERSION 2  // siehe docs/01_protocol.yaml versions:
 
-// Must match docs/protocol.yaml exactly: 4-byte timestamp + 4 samples of
-// 12 bytes each (3x int16 accel + 3x int16 gyro) = 52 bytes total.
+// Must match docs/01_protocol.yaml exactly: 4-byte timestamp + 1-byte
+// protocol_version + 4 samples of 12 bytes each (3x int16 accel + 3x
+// int16 gyro) = 53 bytes total (protocol v2 - war 52 Byte vor dem
+// protocol_version-Feld, siehe versions: in 01_protocol.yaml).
 #pragma pack(push, 1)
 struct SensorSampleWire {
   int16_t ax, ay, az;  // scale 0.001 -> g
-  int16_t gx, gy, gz;  // scale 0.01  -> deg/s
+  int16_t gx, gy, gz;  // scale 0.02  -> deg/s (v2; war 0.01 vor dem S4-Fix)
 };
 struct SensorBatchWire {
-  uint32_t timestamp;
+  uint32_t timestamp;        // ms, Erfassungszeitpunkt von samples[0]
+  uint8_t protocol_version;  // NEU in v2, fester Wert PROTOCOL_VERSION
   SensorSampleWire samples[SAMPLES_PER_BATCH];
 };
 #pragma pack(pop)
 
-static_assert(sizeof(SensorBatchWire) == 52,
-              "SensorBatchWire must match docs/protocol.yaml exactly (52 bytes)");
+static_assert(sizeof(SensorBatchWire) == 53,
+              "SensorBatchWire must match docs/01_protocol.yaml v2 exactly (53 bytes)");
 
 NimBLEServer* server = nullptr;
 NimBLECharacteristic* sensorDataChar = nullptr;
@@ -52,6 +56,7 @@ const unsigned long STREAM_START_DELAY_MS = 500;
 SensorBatchWire currentBatch;
 uint8_t sampleIndexInBatch = 0;
 unsigned long lastSampleMicros = 0;
+bool sampleTimerStarted = false;  // avoids a 0-as-sentinel edge case on lastSampleMicros
 const unsigned long sampleIntervalMicros = 1000000UL / SAMPLE_RATE_HZ;
 
 // Debug state displayed on the M5StickCPlus2 screen.
@@ -157,8 +162,8 @@ class ControlPointCallbacks : public NimBLECharacteristicCallbacks {
 void setupBle() {
   NimBLEDevice::init(DEVICE_NAME);
   // NimBLE handles MTU negotiation properly: set the server's max MTU so
-  // the 52-byte payload fits without fragmentation. Bluedroid was the
-  // root cause of the 1-batch streaming bug.
+  // the 53-byte payload (protocol v2) fits without fragmentation.
+  // Bluedroid was the root cause of the 1-batch streaming bug.
   NimBLEDevice::setMTU(517);
   server = NimBLEDevice::createServer();
   server->setCallbacks(new ServerCallbacks());
@@ -355,6 +360,25 @@ void loop() {
     return;
   }
 
+  // Protocol v2 (S3-Fix, docs/01_protocol.yaml "timing:"): pace EVERY
+  // individual sample at sampleIntervalMicros, not just every 4th one at
+  // the batch boundary. Before this, the 4 samples of a batch were
+  // captured back-to-back (I2C read time only, ~0ms gap) and only the
+  // completed BATCH was paced via a single delay(20) - so the app's
+  // "samples are ~20ms apart" assumption (ble_protocol_parser.dart) was
+  // never actually true on the wire. Gating here, per sample, including
+  // across the batch-send boundary, makes it true. Trade-off: the
+  // effective batch-send rate drops from ~50 Hz (bursty) to an honest
+  // 12.5 Hz (4 x 20ms = 80ms/batch) - see versions: in 01_protocol.yaml
+  // for the reasoning.
+  unsigned long nowMicros = micros();
+  if (sampleTimerStarted &&
+      (nowMicros - lastSampleMicros) < sampleIntervalMicros) {
+    return;  // too soon for the next sample - retry next loop() iteration
+  }
+  lastSampleMicros = nowMicros;
+  sampleTimerStarted = true;
+
   // Debug path: send constant dummy data without touching the IMU.
   // Only call notify() if the client has actually subscribed (CCCD written).
   // NimBLE's notify() is a silent no-op when getSubscribedCount() == 0,
@@ -362,6 +386,7 @@ void loop() {
   if (dummyStream) {
     if (sampleIndexInBatch == 0) {
       currentBatch.timestamp = millis();
+      currentBatch.protocol_version = PROTOCOL_VERSION;
     }
     SensorSampleWire& sample = currentBatch.samples[sampleIndexInBatch];
     sample.ax = 100;
@@ -388,7 +413,9 @@ void loop() {
       }
       sampleIndexInBatch = 0;
     }
-    delay(20);  // ~50 Hz
+    // No delay(20) here anymore - pacing is now handled once, per sample,
+    // by the gate above (also applies to this dummy path for consistency,
+    // so dummy-stream testing reflects real-stream timing behaviour).
     return;
   }
 
@@ -423,15 +450,16 @@ void loop() {
 
   if (sampleIndexInBatch == 0) {
     currentBatch.timestamp = millis();
+    currentBatch.protocol_version = PROTOCOL_VERSION;
   }
 
   SensorSampleWire& sample = currentBatch.samples[sampleIndexInBatch];
   sample.ax = static_cast<int16_t>(ax * 1000.0f);   // scale 0.001 -> g
   sample.ay = static_cast<int16_t>(ay * 1000.0f);
   sample.az = static_cast<int16_t>(az * 1000.0f);
-  sample.gx = static_cast<int16_t>(gx * 100.0f);    // scale 0.01 -> deg/s
-  sample.gy = static_cast<int16_t>(gy * 100.0f);
-  sample.gz = static_cast<int16_t>(gz * 100.0f);
+  sample.gx = static_cast<int16_t>(gx * 50.0f);     // scale 0.02 -> deg/s (v2; war *100.0f/0.01 vor dem S4-Fix)
+  sample.gy = static_cast<int16_t>(gy * 50.0f);
+  sample.gz = static_cast<int16_t>(gz * 50.0f);
 
   sampleIndexInBatch++;
 
@@ -447,6 +475,8 @@ void loop() {
       debugState.batchesSent++;
     }
     sampleIndexInBatch = 0;
-    delay(20);  // ~50 Hz pacing — matches SAMPLE_RATE_HZ
+    // No delay(20) here anymore - pacing is now handled once, per sample
+    // (including across this exact batch boundary), by the gate near the
+    // top of loop(). Keeping a second delay here would double-pace.
   }
 }
