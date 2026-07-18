@@ -85,7 +85,7 @@ class WorkoutEngine {
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
     this.calibrationReps = 1,
-    this.minRepIntervalSamples = 40,
+    this.minRepIntervalSamples = 24,
     this.fallingDebounce = 4,
     this.prominenceRatio = 0.30,
     this.adaptiveThresholdRatio = 0.25,
@@ -120,24 +120,38 @@ class WorkoutEngine {
   // personas (clean/double_bump/weak/slow/inconsistent), not guessed -
   // re-run that function to reproduce or re-derive them.
 
-  /// S1 fix: minimum number of SAMPLES (not real time) after a COUNTED rep
-  /// before a new rising edge in [_detectPeak] is accepted at all. Counted
-  /// in samples rather than Duration because S3 (docs/RECHERCHE_ZAEHLROBUSTHEIT)
-  /// means real elapsed time doesn't yet mean what it appears to - the
-  /// firmware sends bursts of 4 without honest per-sample pacing. Sample
-  /// count stays meaningful regardless of how that pacing behaves; once
-  /// Schritt C (Agent 4's protocol + honest timestamps) lands, this should
-  /// convert to a real-time duration.
+  /// S1, noise guard - NOT a double_bump fix, see below: minimum number of
+  /// SAMPLES (not real time) after a COUNTED rep before a new rising edge
+  /// in [_detectPeak] is accepted at all. Counted in samples rather than
+  /// Duration because S3 (docs/RECHERCHE_ZAEHLROBUSTHEIT) means real
+  /// elapsed time doesn't yet mean what it appears to - the firmware sends
+  /// bursts of 4 without honest per-sample pacing. Sample count stays
+  /// meaningful regardless of how that pacing behaves; once Schritt C
+  /// (Agent 4's protocol + honest timestamps) lands, this should convert
+  /// to a real-time duration.
   ///
-  /// Without this, a single curl - which in the magnitude signal
-  /// (`accelMagnitude + gyroMagnitude*gyroWeight`) almost always produces
-  /// two humps, concentric and eccentric - gets counted twice (reproduced
-  /// in tools/workout_engine_simulation.py: 20 counted for 10 expected).
+  /// CORRECTED 2026-07-17 (Claude-c00679f3, after real `flutter test` via
+  /// Desktop Commander found a live regression): the first version of this
+  /// used 40 samples, the smallest value that fully solved the double-hump
+  /// scenario (20 counted -> 10) in isolation. That BROKE three existing
+  /// tests in workout_engine_test.dart, which rely on a 35-samples/rep
+  /// cadence (_generateSyntheticReps, samplesPerRep=30+rest=5) that
+  /// predates this change - 40 > 35 meant every second legitimate rep fell
+  /// inside the lockout and got silently dropped (10/10 counted -> 5/10).
+  /// Re-swept in tools/workout_engine_simulation.py with that cadence as a
+  /// hard constraint: the largest safe value is 28 samples, and at NO
+  /// value <= 28 does the double-hump case improve at all - its own
+  /// hump-to-hump gap is itself bigger than 28 samples, so a single fixed
+  /// sample-count refractory cannot satisfy both constraints simultaneously.
   ///
-  /// 40 samples (800ms @ 50Hz) is the smallest sweep candidate that fixed
-  /// the double-peak scenario (20 -> exactly 10, no residual) without
-  /// disturbing clean/inconsistent - see the Python sweep's "Sperrzeit-
-  /// Sweep" section for the full candidate table.
+  /// 24 samples (a small margin below the 28-sample safe ceiling) is kept
+  /// as a defense-in-depth guard against very tight, clearly-spurious
+  /// re-triggers (sensor noise, not a real second hump), NOT as the S1 fix
+  /// - that is what Schritt B (g_p, signed gyro projection) is for,
+  /// verified in tools/workout_engine_simulation.py to fix the double-hump
+  /// case with ZERO refractory needed at all, since it separates
+  /// concentric/eccentric by sign rather than by timing. Schritt B is not
+  /// yet ported to this engine (see commit history / STATUS_FORTSCHRITT.md).
   final int minRepIntervalSamples;
 
   /// S1, secondary fix: the falling threshold must be undershot for this

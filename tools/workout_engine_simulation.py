@@ -79,7 +79,7 @@ class WorkoutEngineSim:
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
                  lowpass_alpha=0.6, initial_peak_threshold=1.2,
                  has_valid_calibration=False,
-                 min_rep_interval_samples=40, falling_debounce=4,
+                 min_rep_interval_samples=24, falling_debounce=4,
                  prominence_ratio=0.30, adaptive_threshold_ratio=0.25,
                  adaptive_min_confirmed=3, adaptive_window=5):
         self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
@@ -107,16 +107,34 @@ class WorkoutEngineSim:
         # file, not from guessing - re-run that function to reproduce or
         # re-derive them.
         #
-        # min_rep_interval_samples (S1, double-count fix): counted in
-        # SAMPLES, not seconds/ms - S3 (firmware batches without honest
-        # pacing, app synthesizes fake even spacing) means a real-time
-        # duration doesn't yet mean what it appears to mean. Once Schritt C
-        # (Agent 4's protocol + honest per-sample timestamps) lands, this
-        # should convert to a real-time duration; until then, samples are
-        # the only unit that stays meaningful regardless of pacing.
-        # 40 samples @ 50Hz = 800ms, chosen as the smallest sweep candidate
-        # that fixed double_bump (20->10) without disturbing clean/
-        # inconsistent - see sweep output, section "Sperrzeit-Sweep".
+        # min_rep_interval_samples (S1, noise guard - NOT a double_bump fix,
+        # see below): counted in SAMPLES, not seconds/ms - S3 (firmware
+        # batches without honest pacing, app synthesizes fake even spacing)
+        # means a real-time duration doesn't yet mean what it appears to
+        # mean. Once Schritt C (Agent 4's protocol + honest per-sample
+        # timestamps) lands, this should convert to a real-time duration;
+        # until then, samples are the only unit that stays meaningful
+        # regardless of pacing.
+        #
+        # CORRECTED 2026-07-17 (Claude-c00679f3, after real `flutter test`
+        # via Desktop Commander found a live regression): the first version
+        # of this used 40 samples, the smallest value that fully solved
+        # double_bump (20->10) in isolation. That BROKE three existing Dart
+        # tests (workout_engine_test.dart), which rely on a 35-samples/rep
+        # cadence (_generateSyntheticReps, samplesPerRep=30+rest=5) that
+        # predates this session - 40 > 35 meant every second legitimate rep
+        # fell inside the lockout and got silently dropped (10/10 -> 5/10).
+        # Re-swept with that cadence as a hard constraint (see
+        # sweep_live_pfad_refraktaer_und_prominenz, "Nebenbedingung" /
+        # dart_kadenz column): the largest safe value is 28 samples, and at
+        # NO value <= 28 does double_bump improve at all - its own
+        # hump-to-hump gap is itself > 28 samples, so a single fixed
+        # sample-count refractory cannot satisfy both constraints at once.
+        # 24 samples (a small margin below the 28-sample safe ceiling) is
+        # kept as a defense-in-depth noise guard against very tight,
+        # clearly-spurious re-triggers, NOT as the S1 fix - that is what
+        # Schritt B (g_p, signed projection) below actually is, proven
+        # there to fix double_bump with ZERO refractory needed at all.
         self.min_rep_interval_samples = min_rep_interval_samples
         self.sample_count = 0
         self.last_counted_rep_sample = None
@@ -1242,17 +1260,42 @@ def sweep_live_pfad_refraktaer_und_prominenz(hz=50, n_reps=10, seed_basis=5000):
     # Welche Personas koennen ueberhaupt ueber theta kommen? Personas, deren
     # eigener Signal-Peak unter theta bleibt, werden NIE gezaehlt - egal wie
     # die Sperrzeit steht. Das ist ein Schwellen-, kein Sperrzeit-Problem
-    # (siehe S2-Check unten) und darf die Sperrzeit-Wahl nicht blockieren,
-    # sonst gibt es nie einen Kandidaten, der "alle 5 Personas trifft", und
-    # die Sperrzeit-Wahl faellt faelschlich auf einen Fallback zurueck.
+    # (siehe S2-Check unten) und darf die Sperrzeit-Wahl nicht blockieren.
     ueber_theta = {p: float(np.max(persona_signale[p])) > theta for p in PERSONA_PROFILES}
     print(f"  Personas, deren Peak ueberhaupt ueber theta={theta:.3f} kommt: "
           + ", ".join(p for p, ok in ueber_theta.items() if ok)
           + " | NICHT erreichbar (reines Schwellenproblem, s. S2-Check unten): "
           + ", ".join(p for p, ok in ueber_theta.items() if not ok))
 
+    # KRITISCHE Nebenbedingung, NACHTRÄGLICH ergänzt (Claude-c00679f3,
+    # 2026-07-17, nach echtem `flutter test` via Desktop Commander): die
+    # bestehenden Dart-Tests in workout_engine_test.dart (_generateSyntheticReps,
+    # samplesPerRep=30 + rest=5 = 35 Samples/Rep-Zyklus) sind eine bereits
+    # akzeptierte, bewusste Referenz-Kadenz - DREI verschiedene Bestandstests
+    # verlassen sich darauf. Eine Sperrzeit, die diese Kadenz verletzt, ist
+    # keine Verbesserung, sondern eine neue Regression (live gefunden: 40
+    # Samples brach "counts a clean series..." von 10/10 auf 5/10 ein - jede
+    # zweite Rep wurde durch die eigene Sperrzeit verschluckt).
+    dart_clean_kadenz = np.array(
+        [1.8 * np.sin((i / 30) * np.pi) for _ in range(10) for i in range(30)]
+        + [0.0] * 5 * 0  # Platzhalter, echte Verschachtelung unten
+    )
+    # (obige Zeile bewusst nicht verwendet - korrekte Verschachtelung von
+    # Rep+Rest pro Wiederholung statt aller Reps zuerst, dann Rest:)
+    dart_clean_kadenz = []
+    for _ in range(10):
+        for i in range(30):
+            dart_clean_kadenz.append(1.8 * np.sin((i / 30) * np.pi))
+        dart_clean_kadenz.extend([0.0] * 5)
+    dart_clean_kadenz = np.array(dart_clean_kadenz)
+    dart_theta = 0.0 + (float(np.max(dart_clean_kadenz[:35])) - 0.0) * 0.5
+
+    print(f"  Nebenbedingung: bestehende Dart-Test-Kadenz (35 Samples/Rep, "
+          f"3 Bestandstests hängen daran) muss weiterhin 10/10 liefern.")
+
     kandidaten_samples = [0, 4, 8, 12, 16, 20, 24, 28, 32, 40, 48]
     beste_wahl = None
+    dart_kadenz_grenze = None
     for refr_samples in kandidaten_samples:
         zeilen = []
         ok_gesamt = True
@@ -1262,15 +1305,40 @@ def sweep_live_pfad_refraktaer_und_prominenz(hz=50, n_reps=10, seed_basis=5000):
                                 falling_debounce=1, prominenz=0.0)
             erwartet = erwartete_reps[persona]
             ok = abs(len(reps) - erwartet) <= max(1, round(0.1 * erwartet))
-            if ueber_theta[persona]:  # nur die gate-relevant, die theta ueberhaupt erreichen koennen
+            if ueber_theta[persona]:
                 ok_gesamt &= ok
             zeilen.append(f"{persona}={len(reps)}(soll {erwartet}){'OK' if ok else ('n/a' if not ueber_theta[persona] else '!!')}")
+
+        dart_reps = zaehle_edge(dart_clean_kadenz, hz, dart_theta,
+                                 refractory_s=refr_samples / hz, baseline=0.0,
+                                 falling_debounce=1, prominenz=0.0)
+        dart_ok = abs(len(dart_reps) - 10) <= 1
+        if dart_ok:
+            dart_kadenz_grenze = refr_samples
+        zeilen.append(f"dart_kadenz={len(dart_reps)}(soll 10){'OK' if dart_ok else 'BRICHT-BESTANDSTEST'}")
+        ok_gesamt &= dart_ok
+
         print(f"  refr={refr_samples:3d} samples ({refr_samples/hz*1000:5.0f}ms): " + ", ".join(zeilen))
         if ok_gesamt and beste_wahl is None:
             beste_wahl = refr_samples
+    print(f"  Groesste Sperrzeit, die die bestehende Dart-Kadenz NICHT bricht: "
+          f"{dart_kadenz_grenze} Samples.")
     if beste_wahl is None:
-        beste_wahl = 40  # konservativer Fallback (800ms) falls kein Kandidat alle erreichbaren Personas trifft
-        print(f"  WARNUNG: kein Sweep-Kandidat traf alle erreichbaren Personas exakt - Fallback {beste_wahl} Samples.")
+        # Ehrlicher Befund (nicht wegtunen): innerhalb des durch die
+        # bestehende Dart-Kadenz erzwungenen sicheren Bereichs gibt es
+        # KEINEN Kandidaten, der double_bump zusaetzlich loest - der
+        # Buckel-zu-Buckel-Abstand dort ist selbst groesser als die groesste
+        # noch sichere Sperrzeit. Sperrzeit bleibt trotzdem sinnvoll als
+        # Rauschschutz gegen sehr eng aufeinanderfolgende Spontan-Trigger,
+        # loest aber S1/double_bump NICHT strukturell - das leistet erst
+        # Schritt B (g_p) weiter unten, dort nachweislich OHNE jede
+        # Sperrzeit.
+        beste_wahl = max(0, (dart_kadenz_grenze or 24) - 4)  # Sicherheitsabstand
+        print(f"  WICHTIG: Kein Sperrzeit-Wert innerhalb des sicheren Bereichs "
+              f"loest double_bump (dessen Buckelabstand > {dart_kadenz_grenze} "
+              f"Samples ist). Sperrzeit bleibt als Rauschschutz bei {beste_wahl} "
+              f"Samples (Sicherheitsabstand zur Kadenz-Grenze), LOEST S1 aber "
+              f"NICHT vollstaendig - das leistet Schritt B (g_p) weiter unten.")
     print(f"  -> gewaehlt: {beste_wahl} Samples "
           f"({beste_wahl/hz*1000:.0f}ms bei {hz}Hz)")
 
