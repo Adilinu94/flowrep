@@ -195,3 +195,14 @@ eal-Pfad, Ruhe-Magnitude ~1,00 g (Beispiele: a≈(-0,97,-0,02,0,25), mag=0,998�
 - Interpretation: Hardware+BLE+Parser OK (Test-1-Samples grün). Zählung scheitert an Engine-Zustand/Schwelle (Kalibrierungs-Pfad / gespeicherter Threshold), ggf. UI/Log-State-Diskrepanz. Agent-1/Kalib-Thema, nicht Firmware-v2.
 - Trade-off 12,5Hz: Stream blieb stabil, keine Aussetzer im Capture.
 
+**Test 2 Nachtrag – Adi UI-Ablesung (2026-07-18, Session Grok-4c0deabc), wörtlich dokumentiert:**
+
+Adi:
+> eng: samples zahl steigt, state:aktive tresh=8.549 base=steigt Das Reps zählen funktioniert noch garnicht. Wenn den M5 nur beege oder etwas drehe werden reps gezählt.
+
+**Interpretation (nur Dokumentation, kein Fix in dieser Session – Adi: "Darum brauchst du dich jetzt nicht kümmern"):**
+- **Pipeline grün:** samples steigt, state=active (UI), Threshold ~8.549, Baseline steigt (EMA lebt) → Firmware v2 + BLE + Parser v2 liefern nutzbare Samples an die Engine.
+- **Zählqualität rot / unbrauchbar:** Echte Bizeps-Curls werden (noch) nicht zuverlässig als Reps erkannt; **beliebige Bewegung/Drehung des M5** löst dagegen Zählungen aus (False Positives / zu empfindliche oder falsch-orientierte Peak-Erkennung, nicht Streaming-Ausfall).
+- **Abgrenzung Agent-4 vs. Agent-1:** Hardware-Verifikation (pio run, Flash, Samples fließen nach Protokoll v2) ist erledigt. Die beschriebene Zähl-Symptomatik liegt im **Live-Zählpfad / Kalibrierung / Signal-Features** (Agent 1 und ggf. Calib 2.0), **nicht** in Firmware/Protokoll dieser Session.
+- Kein Code-Fix an workout_engine.dart o.ä. in dieser Fortsetzung – bewusst offener Befund für spätere Sessions.
+

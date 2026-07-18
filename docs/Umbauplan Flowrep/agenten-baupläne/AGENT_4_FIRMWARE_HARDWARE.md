@@ -95,10 +95,10 @@ Prüfe die gemeldeten Werte auf Plausibilität (Zeitstempel monoton steigend, We
 
 - [x] `docs/01_protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung. *(2026-07-17: v2, siehe STATUS-UPDATE oben und STATUS_FORTSCHRITT.md)*
 - [x] `pio run` kompiliert fehlerfrei. *(2026-07-18, Session Grok-4c0deabc: [SUCCESS] 39,98 s; static_assert 53 Byte bestanden; RAM 12,0 %, Flash 58,4 %.)*
-- [ ] Test 1 (`ENG:`/Sample) hat ein dokumentiertes Ergebnis – zum ersten Mal seit mehreren Sessions. *(weiterhin offen - braucht Adi physisch)*
-- [ ] Test 2 (Firmware-Update) bestätigt: Verbindung und Grundzählung funktionieren nach dem Flash weiterhin. *(weiterhin offen - braucht Adi physisch, UND den erfolgreichen Compile+Flash davor)*
-- [ ] Tests 3 und 4 haben dokumentierte Ergebnisse (auch wenn "nicht bestanden" – das ist ein valides, wichtiges Ergebnis, keine Fehlfunktion deinerseits). *(weiterhin offen - Test 3 ohnehin erst nach Agent 2+3, Test 4 braucht Adi physisch)*
-- [ ] Alle vier Testergebnisse stehen im Status-Dokument, nicht nur im Chat mit Adi. *(kann erst nach den Tests selbst erfüllt werden)*
+- [x] Test 1 (`ENG:`/Sample) hat ein dokumentiertes Ergebnis – zum ersten Mal seit mehreren Sessions. *(2026-07-18 Grok-4c0deabc: samples steigen (Log+UI); nach v2-Flash zuerst Parse-Fehler, behoben durch App-Parser v1|v2. Details STATUS_FORTSCHRITT.md)*
+- [x] Test 2 (Firmware-Update) dokumentiert (Verbindung + Sample-Pfad OK; **Grundzählung qualitativ nicht OK**). *(2026-07-18: nach Flash verbunden, ~11,8 Hz, state=active, thresh~8.5; echte Curls zählen nicht zuverlässig, M5 nur bewegen/drehen zählt – Adi wörtlich in STATUS. Kein Engine-Fix in Agent-4-Fortsetzung.)*
+- [ ] Tests 3 und 4 haben dokumentierte Ergebnisse (auch wenn "nicht bestanden" – das ist ein valides, wichtiges Ergebnis, keine Fehlfunktion deinerseits). *(weiterhin offen - Test 3 ohnehin erst nach Agent 2+3, Test 4 optional/nicht priorisiert)*
+- [x] Testergebnisse Test 1+2 stehen im Status-Dokument (inkl. Adis Rohaussage), nicht nur im Chat. *(Test 3/4 noch offen)*
 
 ## 8. Git-Workflow (PFLICHT, keine Ausnahmen)
 
