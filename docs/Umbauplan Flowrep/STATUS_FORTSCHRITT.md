@@ -105,3 +105,33 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt · `[!]` blockiert / b
 - **2026-07-14, Claude-d27f1c13:** ⚠️ **Kollision entdeckt:** Der Eintrag direkt unter diesem hier ("Claude-2026-07-14-A (Filesystem-Sitzung, Fortsetzung)") beschreibt fast wortgleich Arbeit, die ich selbst gerade vorbereitet hatte (Python-Simulation ausführen, numpy.bool_-Bug finden) – aber von einer *anderen*, unabhängigen Instanz, die zufällig dieselbe Kennung gewählt hat wie ich vorher. Das `Datum-Buchstabe`-Schema ist damit nachweislich nicht kollisionssicher (siehe korrigierte Regel oben). Ich habe die Dart-Testdatei und den Python-Fix unabhängig nachgeprüft (beide korrekt, siehe Eintrag unten bei Phase 1) statt sie blind zu übernehmen, und die nicht auffindbare Dokumenten-Quellenangabe korrigiert (siehe Abschnitt B).
 - **2026-07-14, Claude-2026-07-14-A (Filesystem-Sitzung, Fortsetzung):** Parallelarbeit einer anderen Instanz vorgefunden und abgeglichen (Dokument-Fixes in `00`–`04`, neuer Dart-Test in `workout_engine_test.dart` – beide konsistent mit eigenem Code, keine Kollision). `workout_engine.dart`/`home_screen.dart` mit `hasValidCalibration`-Fix versehen, Python-Regressionstest ergänzt. Beim tatsächlichen Ausführen (nicht nur Lesen) einen eigenen Bug gefunden und behoben: `results[...] is True/False` funktioniert nicht zuverlässig mit `numpy.bool_` (Identitäts- statt Wertvergleich) – auf `bool(...)` umgestellt. Kompletter Simulationslauf jetzt grün (Exit-Code 0), inkl. aller bestehenden Szenarien; einzige Abweichung ist die vorbestehende, unabhängige Doppel-Peak-Übung (siehe Abschnitt B, neu dokumentiert). Phase 1 damit code-seitig fertig; `flutter analyze`/`flutter test`/Hardware-Test bleiben laut Ausführungsplan zwingend Adis Schritt, siehe USER ACTION im Chat.
 - **2026-07-14, Claude-2026-07-14-A:** Dokumentkorrekturen (Abschnitt A) abgeschlossen. Phase 0 bestätigt. Phase 1 begonnen: Python-Regressionstest für ADR-020 wird als Nächstes ergänzt (muss vor dem Fix fehlschlagen).
+
+
+---
+
+## 2026-07-18 (Session: Agent-3-CalibrationUI, "was kannst du noch tun"-Runde)
+
+**[!!] WICHTIGSTER FUND: main hat aktuell 3 fehlschlagende Tests.** Kommt NICHT von mir und NICHT von agent1-signal-pipeline - main enthielt bereits direkt gepushte Commits (`a5e8aee`, `db206cd`, ohne Branch/Merge) mit einem P1.1-Refractory-Fix, der auf einem sauberen `git checkout main` (Commit `7f20e14`) folgende Tests bricht:
+- "WorkoutEngine counts a clean series of repetitions without double-counting" - erwartet ~10, bekommt 5 (Unterzählung)
+- "WorkoutEngine regression: counting must continue AFTER the calibration reps, not stop there"
+- "WorkoutEngine does not wildly overcount under noisy/shaky input"
+
+Verdacht (nicht abschliessend verifiziert): Interaktion zwischen `adaptiveThresholdRatio` (S2-Fix) und dem bestehenden Peak-Erkennungspfad in `_detectPeak` - der berechnete `effectiveThreshold` scheint in der Praxis zu hoch zu liegen und reale Wiederholungen zu verpassen. **main sollte aktuell NICHT als verlässliche Basis fuer neue Branches gelten, bis das gefixt ist.**
+
+**agent1-signal-pipeline (Branch) separat geprüft:** hat DIESELBEN 4 fehlschlagenden Tests (inkl. eines weiteren: adaptiveThresholdRatio-Test selbst), sowohl mit als auch ohne Merge auf main-7f20e14 - also ein eigenständiges, nicht Merge-bedingtes Problem in diesem Branch. **NICHT gemerged** (ich hatte einen Test-Merge mit `--no-commit`, nach Testlauf mit `git merge --abort` sauber zurückgenommen, main ist unverändert).
+
+**Zwei bereits vorhandene, unkommittete Dateien gesichert** (waren bei jedem meiner bisherigen Checks als `??` im Arbeitsverzeichnis, keinem Branch zugeordnet - reales Verlustrisiko): `calibration_controller.dart` + `models/exercise_profile.dart`, jetzt auf neuem Branch `agent2-calibration-controller` (Commit `7187218`), gepusht. Ich habe sie inhaltlich NICHT verändert, nur commitet.
+
+**Neu: `calibration_controller_test.dart` geschrieben** (5 Tests: Ruhe-Gate Pass/Fail, Achsen-Gate Pass/Fail, voller Known-Count-Durchlauf 5+3 Reps -> valides ExerciseProfile), Commit `b0fac67` auf `agent2-calibration-controller`. Alle 5 gruen. Das war der in der letzten Session notierte Testluecke von Agent 2s Arbeit.
+
+**agent4-firmware-hardware existiert bereits** (Branch gepusht, Commits fuer Protokoll-v2 + Firmware-Zeitbasis/Clipping-Fix + Doku). Nicht inhaltlich geprüft (brauche echtes Gerät, nicht mein Scope) - nur zur Kenntnis genommen.
+
+**Standabgleich der Branches gegenueber main (`7f20e14`):**
+| Branch | Basis | Status |
+|---|---|---|
+| `agent1-signal-pipeline` | main-alt (vor 7f20e14) | 4 Tests rot, NICHT mergefertig |
+| `agent2-calibration-controller` | main (7f20e14) | analyze clean, eigene Tests gruen, aber main selbst hat 3 rote Tests (s.o.) |
+| `agent3-calibration-ui` | main-alt (0acbdf6), haengt inhaltlich von calibration_controller.dart ab | analyze clean, eigene Tests gruen (25/25 zuletzt), noch nicht auf neuen main rebased |
+| `agent4-firmware-hardware` | main-alt (0acbdf6) | ungeprüft (Hardware) |
+
+**Empfehlung an Adi:** main jetzt NICHT als Basis fuer weitere Arbeit nutzen, bevor die 3 Regressionen geklärt sind. Vermutlich am saubersten: jemand mit tieferem Verständnis von `adaptiveThresholdRatio`/`_detectPeak` (Agent 1 selbst, oder eine dedizierte Debug-Runde) schaut sich das gezielt an, bevor irgendein weiterer Merge passiert.
