@@ -125,7 +125,7 @@ void main() {
 
     test(
         'minRepIntervalSamples lockout (Agent 1 / Schritt A, S1 noise '
-        'guard) suppresses a very tight spurious re-trigger, without it '
+        'guard) suppresses a within-reach spurious re-trigger, without it '
         'double-counts', () async {
       // CORRECTED 2026-07-17 (Claude-c00679f3, after real `flutter test`
       // via Desktop Commander found a live regression - see
@@ -135,22 +135,24 @@ void main() {
       // doesn't, not at any value that also keeps the existing 35-samples/
       // rep tests above passing (24 <= 28 <= 35, with no overlap where
       // both a real double-hump AND the existing cadence are protected).
-      // What 24 samples DOES still do: suppress a much TIGHTER,
-      // clearly-spurious re-trigger (sensor jitter, not a second
-      // biomechanical hump) - that's what this test now checks.
+      // What 24 samples DOES still do: suppress a somewhat FASTER
+      // re-trigger that's still within its reach - that's what this test
+      // checks now, using a hump gap verified in
+      // tools/workout_engine_simulation.py (not guessed) to double-count
+      // at refractory=0 and land back near 10 at refractory=24.
       //
       // The actual double-hump fix is Schritt B (g_p, signed gyro
       // projection) - proven in tools/workout_engine_simulation.py
       // (pruefe_strukturellen_gp_fix: 10/10 with ZERO refractory needed),
       // not yet ported to this engine.
-      final samples = _generateSyntheticDoubleHumpReps(
+      final realistic = _generateSyntheticDoubleHumpReps(
         repCount: 10,
-        samplesPerHumpPair: 60,
+        samplesPerHumpPair: 60, // ~30-sample hump gap, matches a normal curl tempo
         restSamplesBetween: 15,
       );
-      final tightJitter = _generateSyntheticDoubleHumpReps(
+      final withinReach = _generateSyntheticDoubleHumpReps(
         repCount: 10,
-        samplesPerHumpPair: 16, // ~8 samples between humps - jitter-tight, not a real rep tempo
+        samplesPerHumpPair: 40, // ~20-sample hump gap - verified below 24, so within the lockout's reach
         restSamplesBetween: 15,
       );
       Future<int> countOf(List<SensorSample> input, int minRepIntervalSamples) async {
@@ -177,16 +179,17 @@ void main() {
         return finishedSet!.countedReps;
       }
 
-      final jitterWithoutLockout = await countOf(tightJitter, 0);
-      final jitterWithLockout = await countOf(tightJitter, 24); // engine default
-      final realisticWithLockout = await countOf(samples, 24); // engine default
+      final withoutLockout = await countOf(withinReach, 0);
+      final withLockout = await countOf(withinReach, 24); // engine default
+      final realisticWithLockout = await countOf(realistic, 24); // engine default
 
-      expect(jitterWithoutLockout, greaterThan(15),
-          reason: 'Sanity check that the tight-jitter input reproduces '
-              'double-counting without any lockout at all.');
-      expect(jitterWithLockout, lessThan(jitterWithoutLockout),
+      expect(withoutLockout, greaterThan(15),
+          reason: 'Sanity check that the within-reach input reproduces '
+              'double-counting without any lockout at all (expected close '
+              'to 2x10=20).');
+      expect(withLockout, lessThan(withoutLockout),
           reason: 'The 24-sample default must still measurably suppress a '
-              'gap this tight (~8 samples) - this is the actual, narrower '
+              'gap this size (~20 samples) - this is the actual, narrower '
               'claim this mechanism makes post-correction.');
       // Deliberately NOT asserting realisticWithLockout is close to 10 -
       // it isn't, and claiming otherwise would just reintroduce the
