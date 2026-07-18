@@ -113,3 +113,17 @@ Bauplan: `docs/Umbauplan Flowrep/AGENT_3_CALIBRATION_UI_PERSISTENCE.md`. Branch 
 **Nicht angefasst, aber gesehen (nicht mein Scope):** ein Ordner `data/` im Repo-Root (Ursprung unklar) und die 5 Bauplan-Dokumente liegen zusaetzlich flach in `docs/Umbauplan Flowrep/` (vermutlich manuell von Adi hineinkopiert, meine eigene Branch-Version liegt in `docs/Umbauplan Flowrep/agenten-baupläne/`).
 
 **Naechste Schritte:** (1) Merge von `agent1-signal-pipeline` falls fertig, (2) Integrations-Runde CalibrationController (echt) <-> Wizard-UI, (3) danach `agent3-calibration-ui` mergen.
+
+
+### Nachtrag 2026-07-17 (Session: Agent-3-CalibrationUI, Integrationsrunde)
+
+Echte Integration mit `calibration_controller.dart` (Agent 2) abgeschlossen, Branch `agent3-calibration-ui` (Commit `f4a161c`), weiterhin nicht gemerged.
+
+- `calibration_contract.dart` + `calibration_controller_placeholder.dart` entfernt (mein eigenes, vorheriges Interface war nicht mehr korrekt).
+- `calibration_wizard_screen.dart` komplett gegen die echte, Callback-basierte API neu gebaut: Stufen werden per "Weiter"-Button beendet (`finishStage()`), nicht automatisch. Qualitaets-Gate-Fehler werden angezeigt, Review-Stufe erlaubt Korrektur der tatsaechlichen Wiederholungszahl (`userCorrectCount`), Uebernehmen ruft `finalize(previous: ...)` mit dem ggf. vorhandenen alten Profil auf (nutzt das eingebaute Bayes'sche Blending).
+- 2 neue Widget-Tests GEGEN DEN ECHTEN CONTROLLER (kein Fake mehr): Ruhe-Gate-Uebergang mit realistischen stillen Samples, Abbrechen-Verhalten.
+- `flutter analyze`: 0 issues. `flutter test`: 25/25 gruen.
+
+**Bewusst nicht getestet:** der volle knownSet/slowSet-Sweep-Flow (haengt von Algorithmus-internen Schwellen ab, die ich nur teilweise nachvollzogen habe) und der tatsaechliche Speichervorgang (`CalibrationStore` braucht in einem reinen Widget-Test einen gemockten Secure-Storage-Plattform-Channel, den ich nicht aufgesetzt habe). Ebenfalls faellt auf: **`calibration_controller.dart` hat noch keine eigene Testdatei** (`calibration_controller_test.dart` existiert nicht) - das war urspruenglich Teil von Agent 2s eigenem Bauplan und sollte nachgeholt werden, ist aber nicht mein Scope.
+
+**Naechste sinnvolle Schritte:** (1) `calibration_controller_test.dart` fuer Agent 2s Algorithmus nachziehen, (2) echter Hardware-Test des kompletten Wizard-Flows (Agent 4), (3) Merge-Reihenfolge klaeren (dieser Branch haengt inhaltlich von `calibration_controller.dart` ab, das noch auf keinem Branch committet ist - vor dem Merge von `agent3-calibration-ui` muss klar sein, wer/wann `calibration_controller.dart` committet).
