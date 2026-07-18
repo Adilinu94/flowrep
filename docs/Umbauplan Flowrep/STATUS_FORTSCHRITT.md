@@ -176,3 +176,14 @@ eal-Pfad, Ruhe-Magnitude ~1,00 g (Beispiele: a≈(-0,97,-0,02,0,25), mag=0,998�
 - Unit-Tests Parser: 6/6 grün (lutter test test/ble_protocol_parser_test.dart).
 - Adi muss App neu bauen/hot-restarten und Test 1 wiederholen.
 
+**App-Deploy + Live-Log-Verifikation (Grok-4c0deabc, 2026-07-18, nach USB-Install freigeschaltet):**
+- main.dart temporar auf BleSensorProvider (Hardware-Test).
+- lutter build apk --debug OK; Install nach Adi-Freigabe: SUCCESS auf 21081111RG.
+- App gestartet, BLE verbunden: MTU 517, read()-Polling ~**11.8 Hz** (passt zur ehrlichen ~12,5 Hz Batch-Rate der v2-Firmware).
+- **Test 1 (samples) – aus Logcat, nicht aus UI-Ablesung:**
+  - (a) **ja**, samples zahlen hoch (ENGINE # laeuft, z.B. #350 → #1900 → #4650).
+  - (b) nach ~1 min Verbindung: tausende Samples / ~1160 Batches.
+  - (c) **Reps in Live-Logs nicht als 1 bestaetigt** – Engine war in state=calibrating mit gespeichertem 	hreshold≈11.67 (combined ~1.0–1.2, bove=false). Zaehlung blockiert durch Kalibrierungs-State/Schwelle, **nicht** durch BLE/Firmware/Parser.
+- Parse-Fehler: nach Parser+Provider-Fix **keine** Laengen-Rejects mehr in den Logs (Batches steigen monoton).
+- 12,5-Hz-Trade-off: beobachtete App-Rate ~11,8 Hz – kein spuerbarer „tot“-Stream.
+
