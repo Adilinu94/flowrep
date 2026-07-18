@@ -11,6 +11,10 @@ app/linux/
 app/macos/
 app/windows/
 
+# Python (tools/workout_engine_simulation.py u.a.)
+__pycache__/
+*.pyc
+
 # PlatformIO
 firmware/.pio/
 firmware/.vscode/
