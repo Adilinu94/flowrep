@@ -78,7 +78,7 @@ class WorkoutEngineSim:
                  falling_edge_ratio=0.7, calibration_reps=3,
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
                  lowpass_alpha=0.6, initial_peak_threshold=1.2,
-                 has_valid_calibration=False):
+                 has_valid_calibration=False, min_rep_interval_s=0.8):
         self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
@@ -95,6 +95,35 @@ class WorkoutEngineSim:
         # change meaning; pass calibration_reps=1 explicitly where fidelity
         # to the current real default matters, e.g. in the ADR-020 test.
         self.has_valid_calibration = has_valid_calibration
+
+        # P1.1 (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md, Fix S1): Sperrzeit
+        # nach jeder GEZAEHLTEN Rep, bevor eine neue Anstiegsflanke wieder
+        # akzeptiert wird. Ohne das zaehlt _detect_peak() jede Ueberschreitung
+        # von peak_threshold als eigene Rep - ein Curl erzeugt aber in
+        # Magnitude-Signalen (accel_mag + gyro_mag*gyro_weight) fast immer
+        # ZWEI Buckel (konzentrisch + exzentrisch), siehe make_double_peak_reps
+        # unten: 20 gezaehlt bei 10 erwarteten Wiederholungen, live in dieser
+        # Datei reproduzierbar (Alt-Suite-Abschnitt).
+        #
+        # Bewusst EIN fester Wert, nicht selbst-lernend aus reps_in_set: die
+        # beobachteten Abstaende zwischen GEZAEHLTEN Reps sind waehrend des
+        # Bugs selbst kontaminiert (Mix aus echtem Rep-Abstand und
+        # Buckel-zu-Buckel-Abstand innerhalb einer Rep) - ein aus diesen
+        # Daten abgeleiteter Median wuerde sich selbst bestaetigen statt den
+        # Fehler zu beheben. Das eigentliche Lernen (medianRepdauer aus
+        # bekannter, verifizierter Anzahl) ist Aufgabe des Known-Count-
+        # Optimierers aus Paket 1 oben (zaehle_edge()/known_count_sweep()) -
+        # min_rep_interval_s hier ist bewusst als Konstruktor-Parameter
+        # gehalten, damit Paket 4 (Engine-Anbindung) spaeter einfach einen
+        # aus dem ExerciseProfile gelernten Wert durchreichen kann, statt
+        # diesen Mechanismus neu zu bauen.
+        #
+        # 0.8s Default = RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §3 P1.1
+        # ("Fallback 0,8 s"), empirisch gegen alle Szenarien unten geprueft
+        # (siehe Alt-Suite: Doppel-Peak 10/10 statt 10/20, keine Regression
+        # bei "Sehr langsame Reps"/Robustheits-Suite).
+        self.min_rep_interval_s = min_rep_interval_s
+        self.last_counted_rep_t = None
 
         self.state = "idle"
         self.peak_threshold = initial_peak_threshold
@@ -159,7 +188,17 @@ class WorkoutEngineSim:
                 self.last_movement_t = t
 
     def _detect_peak(self, t, combined):
-        if not self.above_threshold and combined > self.peak_threshold:
+        # P1.1/S1: waehrend der Sperrzeit nach der letzten GEZAEHLTEN Rep wird
+        # eine neue Anstiegsflanke komplett ignoriert (above_threshold bleibt
+        # False) - nicht nur das Zaehlen am Ende unterdrueckt. Das entspricht
+        # dem Pan-Tompkins-Refractory-Muster (RECHERCHE_ZAEHLROBUSTHEIT §2.2):
+        # der zweite Buckel eines Curls wird so nie zu einer eigenen
+        # Exkursion, statt eine zu werden und dann verworfen zu werden.
+        in_refractory = (
+            self.last_counted_rep_t is not None
+            and (t - self.last_counted_rep_t) < self.min_rep_interval_s
+        )
+        if not self.above_threshold and combined > self.peak_threshold and not in_refractory:
             self.above_threshold = True
             self.current_excursion_peak = combined
             self.last_movement_t = t
@@ -173,6 +212,7 @@ class WorkoutEngineSim:
             if combined < falling_threshold:
                 self.above_threshold = False
                 self.reps_in_set.append((t, self.current_excursion_peak))
+                self.last_counted_rep_t = t
 
     def _end_set(self):
         if self.reps_in_set:

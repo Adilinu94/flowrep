@@ -3,6 +3,15 @@
 BLE/IMU-basiertes automatisches Wiederholungszählen für Krafttraining.
 M5StickC Plus2 (Firmware) + Flutter-App.
 
+> **Hinweis (2026-07-16/17):** Die Tabelle direkt unten ist eine Momentaufnahme
+> von vor der Hardware-Ankunft und mittlerweile in mehreren Punkten überholt
+> (u. a. `app/test/` läuft inzwischen real, 15/15 grün; `firmware/` kompiliert
+> real via `pio run`; `android/` existiert inzwischen im Repo) - Details siehe
+> Änderungsprotokoll in `docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md`. Dieses
+> README als historischen Ausgangspunkt lesen, nicht als aktuellen Stand; für
+> den aktuellen Stand ist `docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md` die
+> lebendige Quelle.
+
 ## Aktueller Stand (siehe Commit-Historie für Details)
 
 Dieser Stand wurde in Claude.ai geschrieben, **bevor die M5StickC-Plus2-Hardware

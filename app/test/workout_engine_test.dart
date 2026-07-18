@@ -49,6 +49,44 @@ double _sin(double x) {
   return x * (1 - x2 / 6 * (1 - x2 / 20 * (1 - x2 / 42)));
 }
 
+/// Like [_generateSyntheticReps], but each rep is TWO humps
+/// (`|sin(phase)|` over a full 0..2*pi period, instead of one hump over
+/// 0..pi) with a genuine return-to-baseline trough between them - a curl's
+/// concentric and eccentric phase, mirrored in
+/// tools/workout_engine_simulation.py make_double_peak_reps(). This is what
+/// S1 (docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md) is about: in a
+/// magnitude-only signal each such rep can look like two separate
+/// excursions to a threshold-only detector.
+List<SensorSample> _generateSyntheticDoubleHumpReps({
+  required int repCount,
+  double peakHeight = 1.8,
+  double baseline = 0.0,
+  int samplesPerHumpPair = 60, // one full rep (both humps), ~1.2s @ 20ms
+  int restSamplesBetween = 15, // ~0.3s, matches make_double_peak_reps
+}) {
+  final samples = <SensorSample>[];
+  var t = DateTime(2026, 1, 1);
+  const step = Duration(milliseconds: 20);
+
+  for (var rep = 0; rep < repCount; rep++) {
+    for (var i = 0; i < samplesPerHumpPair; i++) {
+      final phase = (i / samplesPerHumpPair) * 2 * pi;
+      final magnitude = baseline + (peakHeight - baseline) * sin(phase).abs();
+      samples.add(SensorSample(
+        timestamp: t,
+        ax: 0, ay: magnitude, az: 0,
+        gx: 0, gy: 0, gz: 0,
+      ));
+      t = t.add(step);
+    }
+    for (var i = 0; i < restSamplesBetween; i++) {
+      samples.add(SensorSample(timestamp: t, ax: 0, ay: baseline, az: 0, gx: 0, gy: 0, gz: 0));
+      t = t.add(step);
+    }
+  }
+  return samples;
+}
+
 void main() {
   group('WorkoutEngine', () {
     test('counts a clean series of repetitions without double-counting',
@@ -83,6 +121,64 @@ void main() {
       // guaranteed by design, see GYM_TRACKER_ARCHITEKTUR.md 5.1.2.
       expect(finishedSet!.countedReps, closeTo(10, 1));
       engine.dispose();
+    });
+
+    test(
+        'minRepInterval lockout (P1.1/S1 fix) keeps a double-humped rep '
+        'from being counted twice, without it double-counts', () async {
+      // Reproduces docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S1 (also
+      // reproduced live via tools/workout_engine_simulation.py
+      // make_double_peak_reps: 20 counted for 10 expected before this fix).
+      // Two engines fed the IDENTICAL double-humped input, differing only
+      // in minRepInterval, so this test doesn't depend on knowing the
+      // exact "true" count ahead of time - it demonstrates the lockout
+      // actually suppresses the second hump relative to no lockout at all.
+      final samples = _generateSyntheticDoubleHumpReps(repCount: 10);
+      final stillnessTail = <SensorSample>[];
+      var t = samples.last.timestamp;
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        stillnessTail.add(
+          SensorSample(timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0),
+        );
+      }
+
+      Future<int> runWith(Duration minRepInterval) async {
+        final engine = WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          minRepInterval: minRepInterval,
+        );
+        ExerciseSet? finishedSet;
+        engine.events.listen((e) {
+          if (e.completedSet != null) finishedSet = e.completedSet;
+        });
+        for (final s in [...samples, ...stillnessTail]) {
+          engine.processSample(s);
+        }
+        engine.dispose();
+        expect(finishedSet, isNotNull,
+            reason: 'Expected the set to end after the pause timeout');
+        return finishedSet!.countedReps;
+      }
+
+      // Duration.zero: difference() is never < 0, so the lockout can never
+      // trigger - this is the pre-fix S1 behaviour, kept alive here
+      // on purpose as the regression baseline instead of a second,
+      // unfixed copy of the engine.
+      final withoutLockout = await runWith(Duration.zero);
+      final withLockout = await runWith(const Duration(milliseconds: 800));
+
+      expect(withoutLockout, greaterThan(15),
+          reason: 'Sanity check that this input actually reproduces the '
+              'double-counting bug without a lockout (expected close to '
+              '2x10=20, matching the Python simulation)');
+      expect(withLockout, lessThan(withoutLockout),
+          reason: 'The lockout must measurably reduce the count relative '
+              'to no lockout at all - this is the actual regression guard');
+      expect(withLockout, closeTo(10, 2),
+          reason: '800ms default should land close to the true 10 reps; '
+              'see tools/workout_engine_simulation.py Alt-Suite for the '
+              'more precisely tuned Python-side equivalent (11/10 there)');
     });
 
     test('idle state transitions to calibrating on first movement, not '
