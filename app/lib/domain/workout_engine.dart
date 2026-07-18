@@ -85,7 +85,12 @@ class WorkoutEngine {
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
     this.calibrationReps = 1,
-    this.minRepInterval = const Duration(milliseconds: 800),
+    this.minRepIntervalSamples = 40,
+    this.fallingDebounce = 4,
+    this.prominenceRatio = 0.30,
+    this.adaptiveThresholdRatio = 0.25,
+    this.adaptiveMinConfirmed = 3,
+    this.adaptiveWindow = 5,
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
@@ -106,43 +111,113 @@ class WorkoutEngine {
   final Duration pauseAfter;
   final int calibrationReps;
 
-  /// P1.1 fix for S1 (docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §2.2/§3):
-  /// minimum time after a COUNTED rep before a new rising edge in
-  /// [_detectPeak] is accepted at all. Without this, a single curl - which
-  /// in the magnitude signal (`accelMagnitude + gyroMagnitude*gyroWeight`)
-  /// almost always produces two humps, concentric and eccentric - gets
-  /// counted twice. Reproduced in tools/workout_engine_simulation.py
-  /// (make_double_peak_reps: 20 counted for 10 expected before this fix).
-  ///
-  /// Deliberately a fixed value, not self-learned from [_repsInSet] timing:
-  /// while the double-count bug is active, observed inter-rep gaps are a
-  /// mix of the real rep interval and the hump-to-hump gap within one rep,
-  /// so a median derived from them would reinforce the bug instead of
-  /// fixing it. The real fix for that - median rep duration from a
-  /// *verified* known-count calibration - is what the Known-Count optimizer
-  /// in tools/workout_engine_simulation.py (kalibriere_persona() /
-  /// known_count_sweep(), Guided-Calibration-2.0 Paket 1) already does.
-  /// This constructor parameter exists so a later engine-integration step
-  /// can pass a learned value from an `ExerciseProfile` through the same
-  /// mechanism instead of rebuilding it.
-  ///
-  /// 800ms default matches the Python port's empirically-checked fallback
-  /// (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md §3 P1.1: "Fallback 0,8 s"):
-  /// reduces the double-peak scenario above from 20 counted to 11 (residual
-  /// +1 is the very first rep, before any rep has been counted yet to
-  /// anchor the lockout against - see [_lastCountedRepAt]), with no
-  /// regression across the other scenarios in the simulation suite.
-  final Duration minRepInterval;
+  // Agent 1 / Schritt A (docs/Umbauplan Flowrep/agenten-baupläne/
+  // AGENT_1_SIGNAL_PIPELINE.md, RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md
+  // S1/S2), superseding the earlier Duration-based minRepInterval patch
+  // (Claude-c00679f3, commit a5e8aee): all values below are 1:1 ported
+  // from WorkoutEngineSim in tools/workout_engine_simulation.py, derived
+  // there via sweep_live_pfad_refraktaer_und_prominenz() against 5
+  // personas (clean/double_bump/weak/slow/inconsistent), not guessed -
+  // re-run that function to reproduce or re-derive them.
 
-  /// Timestamp of the last rep actually added to [_repsInSet]. Null until
-  /// the first rep of the current engine lifetime is counted, which means
-  /// [minRepInterval] cannot protect that very first rep's own second hump
-  /// - see [minRepInterval] doc comment. Intentionally not reset in
-  /// [_endSet]: rep cadence for the same exercise/session is not expected
-  /// to reset between sets, and keeping it lets the lockout stay effective
-  /// across a paused-then-resumed set instead of re-exposing the bootstrap
-  /// gap on every set.
-  DateTime? _lastCountedRepAt;
+  /// S1 fix: minimum number of SAMPLES (not real time) after a COUNTED rep
+  /// before a new rising edge in [_detectPeak] is accepted at all. Counted
+  /// in samples rather than Duration because S3 (docs/RECHERCHE_ZAEHLROBUSTHEIT)
+  /// means real elapsed time doesn't yet mean what it appears to - the
+  /// firmware sends bursts of 4 without honest per-sample pacing. Sample
+  /// count stays meaningful regardless of how that pacing behaves; once
+  /// Schritt C (Agent 4's protocol + honest timestamps) lands, this should
+  /// convert to a real-time duration.
+  ///
+  /// Without this, a single curl - which in the magnitude signal
+  /// (`accelMagnitude + gyroMagnitude*gyroWeight`) almost always produces
+  /// two humps, concentric and eccentric - gets counted twice (reproduced
+  /// in tools/workout_engine_simulation.py: 20 counted for 10 expected).
+  ///
+  /// 40 samples (800ms @ 50Hz) is the smallest sweep candidate that fixed
+  /// the double-peak scenario (20 -> exactly 10, no residual) without
+  /// disturbing clean/inconsistent - see the Python sweep's "Sperrzeit-
+  /// Sweep" section for the full candidate table.
+  final int minRepIntervalSamples;
+
+  /// S1, secondary fix: the falling threshold must be undershot for this
+  /// many CONSECUTIVE samples before an excursion is allowed to close.
+  /// Value adopted UNCHANGED from zaehle_edge() in workout_engine_simulation.py
+  /// (Agent 2's / Paket 1's already-tuned reference primitive, not
+  /// reinvented here) - without it, a single noise dip on the long falling
+  /// edge of a slow rep closes the excursion early, and a second, spurious
+  /// detection follows once the lockout above expires. Confirmed against
+  /// all 5 personas in the Python sweep with no regression.
+  final int fallingDebounce;
+
+  /// S1/S8 mitigation: an excursion only counts as a rep if
+  /// `(peak - precedingValley) >= prominenceRatio * (peakThreshold - baselineLevel)`.
+  /// Expressed as a ratio of the existing baseline-relative excursion
+  /// (consistent with [fallingEdgeRatio], not an independent magic number).
+  /// Guards against [adaptiveThresholdRatio] below picking up noise once
+  /// it lowers the effective threshold.
+  final double prominenceRatio;
+
+  /// S2 fix: the effective threshold used by [_detectPeak] is
+  /// `max(minFloor, min(_peakThreshold, adaptiveThresholdRatio * median(last
+  /// adaptiveWindow CONFIRMED rep peaks)))`, active only once at least
+  /// [adaptiveMinConfirmed] reps have been confirmed in the current engine
+  /// lifetime (before that there is nothing to adapt from - the effective
+  /// threshold stays [_peakThreshold]). `minFloor` is
+  /// `baselineLevel + max(0.10, 0.15 * (_peakThreshold - baselineLevel))` -
+  /// without it, a low enough ratio can push the effective threshold below
+  /// baseline noise, and the excursion detector gets stuck permanently
+  /// "above threshold" (found via regression against the Python port's
+  /// existing "Sehr langsame Reps" scenario: 8/8 became 3/8 before this
+  /// floor was added back).
+  ///
+  /// This fixes WITHIN-SESSION tempo drift (same person calibrates at a
+  /// normal pace, later slows down): confirmed via simulation at 3/10 ->
+  /// 6/10 for a calibrate-fast-then-go-slow scenario. It does NOT fix a
+  /// cold start where an entire session's signal stays below
+  /// `_peakThreshold` from the first sample (a structurally different
+  /// person/tempo than whoever calibrated) - that is 0/10, unreachable by
+  /// any live-path tuning, and is what Guided Calibration 2.0's own
+  /// per-user known-count calibration (Paket 1/2, Agent 2) is for instead.
+  final double adaptiveThresholdRatio;
+  final int adaptiveMinConfirmed;
+  final int adaptiveWindow;
+
+  /// Rolling record of CONFIRMED rep peak magnitudes, most recent last,
+  /// used by [adaptiveThresholdRatio]. Not reset in [_endSet] for the same
+  /// reason [_lastCountedRepSample] isn't (see below) - tempo drift can
+  /// span a pause/resume within one session.
+  final List<double> _confirmedPeaks = [];
+
+  /// Sample index (from [diagEngineSampleCount], already incremented on
+  /// every [processSample] call) of the last rep actually added to
+  /// [_repsInSet]. Null until the first rep of the current engine lifetime
+  /// is counted, which means [minRepIntervalSamples] cannot protect that
+  /// very first rep's own second hump - the residual gap this leaves is
+  /// exactly the same bootstrap case documented for [_confirmedPeaks].
+  /// Intentionally not reset in [_endSet]: rep cadence for the same
+  /// exercise/session is not expected to reset between sets, and keeping
+  /// it lets the lockout stay effective across a paused-then-resumed set
+  /// instead of re-exposing the bootstrap gap on every set.
+  int? _lastCountedRepSample;
+
+  /// Falling-debounce counter for the CURRENT excursion, see [fallingDebounce].
+  int _fallingDebounceCount = 0;
+
+  /// Minimum combined-signal value seen since the excursion before last
+  /// closed - the "preceding valley" for [prominenceRatio].
+  double _preMin = double.infinity;
+
+  /// Falling threshold for the CURRENT excursion, frozen at the moment it
+  /// starts from whatever effective threshold triggered it (which may be
+  /// lower than [_peakThreshold] if [adaptiveThresholdRatio] is active) -
+  /// NOT recomputed from the static [_peakThreshold]. Without freezing this
+  /// per-excursion, an excursion triggered only because of a lowered
+  /// effective threshold could never fall back below a falling threshold
+  /// computed from the higher, static one, and would never close (found
+  /// and fixed during the Python-side reference implementation, see
+  /// sweep output "S2, realistischer Fall").
+  double? _excursionFallingThreshold;
 
   /// Falling-edge trigger = peakThreshold * fallingEdgeRatio. Must be < 1.0
   /// to create a hysteresis band; otherwise sensor noise right at the
@@ -399,40 +474,81 @@ class WorkoutEngine {
   }
 
   void _detectPeak(SensorSample s, double combinedSignal) {
-    // P1.1/S1: during the lockout window after the last COUNTED rep, a new
-    // rising edge is ignored entirely (never sets _aboveThreshold) rather
-    // than being allowed to become its own excursion and only being
-    // discarded later - see minRepInterval doc comment for why.
-    final inRefractory = _lastCountedRepAt != null &&
-        s.timestamp.difference(_lastCountedRepAt!) < minRepInterval;
+    // S2: effective threshold, only ever LOWER than _peakThreshold, only
+    // once enough reps are confirmed (bootstrap: nothing to adapt from
+    // before that - see _confirmedPeaks doc comment).
+    var effectiveThreshold = _peakThreshold;
+    if (_confirmedPeaks.length >= adaptiveMinConfirmed) {
+      final window = _confirmedPeaks.sublist(
+        max(0, _confirmedPeaks.length - adaptiveWindow),
+      )..sort();
+      final mid = window.length ~/ 2;
+      final medianPeak = window.length.isOdd
+          ? window[mid]
+          : (window[mid - 1] + window[mid]) / 2;
+      effectiveThreshold = min(_peakThreshold, adaptiveThresholdRatio * medianPeak);
+      // Floor: see _confirmedPeaks doc comment for the regression this
+      // prevents (effective threshold sinking below baseline noise).
+      final calibratedExcursion = _peakThreshold - baselineLevel;
+      final floor = baselineLevel + max(0.10, 0.15 * calibratedExcursion);
+      effectiveThreshold = max(effectiveThreshold, floor);
+    }
 
-    if (!_aboveThreshold && combinedSignal > _peakThreshold && !inRefractory) {
-      _aboveThreshold = true;
-      _currentExcursionPeak = combinedSignal;
-      _lastMovementAt = s.timestamp;
+    // S1: a rising edge during the lockout window (in SAMPLES, not real
+    // time - see minRepIntervalSamples doc comment) after the last COUNTED
+    // rep is ignored entirely, never sets _aboveThreshold, rather than
+    // being allowed to become its own excursion and only being discarded
+    // later.
+    final inRefractory = _lastCountedRepSample != null &&
+        (diagEngineSampleCount - _lastCountedRepSample!) < minRepIntervalSamples;
+
+    if (!_aboveThreshold) {
+      _preMin = min(_preMin, combinedSignal);
+      if (combinedSignal > effectiveThreshold && !inRefractory) {
+        _aboveThreshold = true;
+        _currentExcursionPeak = combinedSignal;
+        _lastMovementAt = s.timestamp;
+        _fallingDebounceCount = 0;
+        // Falling threshold for THIS excursion, frozen from the
+        // effectiveThreshold that triggered it - see
+        // _excursionFallingThreshold doc comment for why this must not be
+        // recomputed from the static _peakThreshold later.
+        _excursionFallingThreshold = baselineLevel +
+            (effectiveThreshold - baselineLevel) * fallingEdgeRatio;
+      }
       return;
     }
 
-    if (_aboveThreshold) {
-      _currentExcursionPeak = max(_currentExcursionPeak, combinedSignal);
-      _lastMovementAt = s.timestamp;
+    _currentExcursionPeak = max(_currentExcursionPeak, combinedSignal);
+    _lastMovementAt = s.timestamp;
 
-      // Falling edge: the signal must drop back down below a threshold
-      // that is relative to the resting BASELINE, not an absolute value.
-      // Without this, gravity (~1.0g) keeps the signal permanently above
-      // a naive `_peakThreshold * fallingEdgeRatio` (e.g. 0.91g), and
-      // the engine never counts a single rep. See the real-hardware
-      // debug session of 2026-07-12 for the diagnosis.
-      final fallingThreshold =
-          baselineLevel + (_peakThreshold - baselineLevel) * fallingEdgeRatio;
-      if (combinedSignal < fallingThreshold) {
-        _aboveThreshold = false;
-        _repsInSet.add(
-          Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
-        );
-        _lastCountedRepAt = s.timestamp;
-        _emitStateEvent();
+    if (combinedSignal < _excursionFallingThreshold!) {
+      _fallingDebounceCount++;
+    } else {
+      _fallingDebounceCount = 0;
+    }
+
+    if (_fallingDebounceCount >= fallingDebounce) {
+      _aboveThreshold = false;
+      _fallingDebounceCount = 0;
+
+      final prominence = prominenceRatio * (_peakThreshold - baselineLevel);
+      if (prominence > 0.0 && (_currentExcursionPeak - _preMin) < prominence) {
+        // Too shallow relative to the preceding valley - likely noise, not
+        // a rep. Deliberately NOT resetting _preMin to combinedSignal
+        // here: it only updates on the next non-excursion sample (above),
+        // otherwise a just-rejected shallow excursion would itself become
+        // the new valley for the next check.
+        return;
       }
+
+      _repsInSet.add(
+        Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
+      );
+      _confirmedPeaks.add(_currentExcursionPeak);
+      _lastCountedRepSample = diagEngineSampleCount;
+      _preMin = combinedSignal;
+      _emitStateEvent();
     }
   }
 
@@ -486,7 +602,11 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _repsInSet.clear();
-    _lastCountedRepAt = null;
+    _lastCountedRepSample = null;
+    _confirmedPeaks.clear();
+    _fallingDebounceCount = 0;
+    _preMin = double.infinity;
+    _excursionFallingThreshold = null;
     _lastCalibrationPeakCount = 0;
     _diagMaxAccel = 0;
     _diagMaxGyro = 0;
@@ -657,7 +777,11 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _lastMovementAt = null;
-    _lastCountedRepAt = null;
+    _lastCountedRepSample = null;
+    _confirmedPeaks.clear();
+    _fallingDebounceCount = 0;
+    _preMin = double.infinity;
+    _excursionFallingThreshold = null;
     _repsInSet.clear();
     _state = WorkoutState.idle;
     _emitStateEvent();
@@ -696,7 +820,11 @@ class WorkoutEngine {
     _repsInSet.clear();
     _runningEnvelope = 0.0;
     _lastMovementAt = null;
-    _lastCountedRepAt = null;
+    _lastCountedRepSample = null;
+    _confirmedPeaks.clear();
+    _fallingDebounceCount = 0;
+    _preMin = double.infinity;
+    _excursionFallingThreshold = null;
     // Don't reset _baselineLevel — let the EMA adapt naturally from
     // whatever the current signal level is. A null baseline (fresh
     // engine) would re-initialise on the next sample; keeping the

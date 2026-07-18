@@ -124,13 +124,15 @@ void main() {
     });
 
     test(
-        'minRepInterval lockout (P1.1/S1 fix) keeps a double-humped rep '
-        'from being counted twice, without it double-counts', () async {
+        'minRepIntervalSamples lockout (Agent 1 / Schritt A, S1 fix) keeps '
+        'a double-humped rep from being counted twice, without it '
+        'double-counts', () async {
       // Reproduces docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S1 (also
       // reproduced live via tools/workout_engine_simulation.py
-      // make_double_peak_reps: 20 counted for 10 expected before this fix).
-      // Two engines fed the IDENTICAL double-humped input, differing only
-      // in minRepInterval, so this test doesn't depend on knowing the
+      // sweep_live_pfad_refraktaer_und_prominenz(): 20 counted for 10
+      // expected before this fix, exactly 10 after). Two engines fed the
+      // IDENTICAL double-humped input, differing only in
+      // minRepIntervalSamples, so this test doesn't depend on knowing the
       // exact "true" count ahead of time - it demonstrates the lockout
       // actually suppresses the second hump relative to no lockout at all.
       final samples = _generateSyntheticDoubleHumpReps(repCount: 10);
@@ -143,10 +145,10 @@ void main() {
         );
       }
 
-      Future<int> runWith(Duration minRepInterval) async {
+      Future<int> runWith(int minRepIntervalSamples) async {
         final engine = WorkoutEngine(
           exerciseId: 'bicep_curl',
-          minRepInterval: minRepInterval,
+          minRepIntervalSamples: minRepIntervalSamples,
         );
         ExerciseSet? finishedSet;
         engine.events.listen((e) {
@@ -161,12 +163,12 @@ void main() {
         return finishedSet!.countedReps;
       }
 
-      // Duration.zero: difference() is never < 0, so the lockout can never
-      // trigger - this is the pre-fix S1 behaviour, kept alive here
-      // on purpose as the regression baseline instead of a second,
-      // unfixed copy of the engine.
-      final withoutLockout = await runWith(Duration.zero);
-      final withLockout = await runWith(const Duration(milliseconds: 800));
+      // 0 samples: the lockout window is empty, so it can never trigger -
+      // this is the pre-fix S1 behaviour, kept alive here on purpose as
+      // the regression baseline instead of a second, unfixed copy of the
+      // engine.
+      final withoutLockout = await runWith(0);
+      final withLockout = await runWith(40); // 800ms @ 50Hz, engine default
 
       expect(withoutLockout, greaterThan(15),
           reason: 'Sanity check that this input actually reproduces the '
@@ -175,10 +177,88 @@ void main() {
       expect(withLockout, lessThan(withoutLockout),
           reason: 'The lockout must measurably reduce the count relative '
               'to no lockout at all - this is the actual regression guard');
-      expect(withLockout, closeTo(10, 2),
-          reason: '800ms default should land close to the true 10 reps; '
-              'see tools/workout_engine_simulation.py Alt-Suite for the '
-              'more precisely tuned Python-side equivalent (11/10 there)');
+      expect(withLockout, closeTo(10, 1),
+          reason: '40 samples (800ms @ 50Hz) should land at or very near '
+              'the true 10 reps; see tools/workout_engine_simulation.py '
+              'Alt-Suite for the Python-side equivalent (exactly 10/10 '
+              'there - a tolerance of 1 covers minor differences between '
+              'this synthetic Dart signal and the Python one)');
+      engine.dispose();
+    });
+
+    test(
+        'adaptiveThresholdRatio (Agent 1 / Schritt A, S2 fix) counts more '
+        'reps of a within-session tempo drop than with adaptation '
+        'disabled', () async {
+      // Reproduces the "S2, realistischer Fall" section of
+      // sweep_live_pfad_refraktaer_und_prominenz() in
+      // tools/workout_engine_simulation.py: calibrate at a normal pace (3
+      // reps, matching calibrationReps default... no, matching
+      // adaptiveMinConfirmed=3 default here), then slow down for the rest
+      // of the set. Comparable Python result: 3/10 without adaptation,
+      // 6/10 with it - same mechanism, not necessarily the same exact
+      // count here (different synthetic generator), so this asserts the
+      // relative improvement rather than a specific number.
+      //
+      // NOT tested here (matches the Python sweep's explicit finding): a
+      // COLD start where the entire session is below _peakThreshold from
+      // sample 1 is unreachable by adaptiveThresholdRatio at all - that
+      // needs Guided Calibration 2.0's own per-user calibration (Agent 2),
+      // not this engine.
+      final fastReps = _generateSyntheticReps(
+          repCount: 3, peakHeight: 1.8, baseline: 0.0);
+      var t = fastReps.isEmpty ? DateTime(2026, 1, 1) : fastReps.last.timestamp;
+      final slowReps = <SensorSample>[];
+      // Same shape as _generateSyntheticReps, just a lower peak and a
+      // later start time, continuing on from where fastReps left off.
+      for (var rep = 0; rep < 7; rep++) {
+        for (var i = 0; i < 30; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          final phase = (i / 30) * 3.14159265;
+          slowReps.add(SensorSample(
+            timestamp: t, ax: 0, ay: 0.65 * _sin(phase), az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+        }
+        for (var i = 0; i < 5; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          slowReps.add(SensorSample(timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0));
+        }
+      }
+      final mixed = [...fastReps, ...slowReps];
+
+      Future<int> runWith(double adaptiveThresholdRatio) async {
+        final engine = WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          adaptiveThresholdRatio: adaptiveThresholdRatio,
+        );
+        var totalCounted = 0;
+        engine.events.listen((e) {
+          if (e.completedSet != null) totalCounted = e.completedSet!.countedReps;
+        });
+        for (final s in mixed) {
+          engine.processSample(s);
+        }
+        // Force the set to end so countedReps reflects everything fed in,
+        // even the still-open final rep of the tail.
+        final tailStart = mixed.last.timestamp;
+        for (var i = 0; i < 250; i++) {
+          engine.processSample(SensorSample(
+            timestamp: tailStart.add(Duration(milliseconds: 20 * (i + 1))),
+            ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0,
+          ));
+        }
+        engine.dispose();
+        return totalCounted;
+      }
+
+      final withoutAdaptation = await runWith(1.0); // ratio=1.0: never lowers below _peakThreshold
+      final withAdaptation = await runWith(0.25); // engine default
+
+      expect(withAdaptation, greaterThan(withoutAdaptation),
+          reason: 'The whole point of S2: the same slowed-down reps should '
+              'be counted more often once the effective threshold is '
+              'allowed to adapt down from recently confirmed peaks, not '
+              'stay pinned to the fast-tempo calibration value.');
     });
 
     test('idle state transitions to calibrating on first movement, not '
