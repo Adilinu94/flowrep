@@ -187,3 +187,11 @@ eal-Pfad, Ruhe-Magnitude ~1,00 g (Beispiele: a≈(-0,97,-0,02,0,25), mag=0,998�
 - Parse-Fehler: nach Parser+Provider-Fix **keine** Laengen-Rejects mehr in den Logs (Batches steigen monoton).
 - 12,5-Hz-Trade-off: beobachtete App-Rate ~11,8 Hz – kein spuerbarer „tot“-Stream.
 
+**Test 2 (3 Curls, Adi, 2026-07-18 ~19:31-19:32, Logcat-Fenster 50s):**
+- Verbindung stabil: ~11,7 Hz, batches ~3100+, ENGINE # bis ~13030.
+- Engine-State in **allen** Log-Zeilen: state=calibrating (nie ctive im Capture) trotz Adis Aussage UI "aktive".
+- 	hreshold fest ~**11,73**; max combined im Fenster ~**1,47**; max gyroMag ~**9,5** deg/s; bove=false durchgehend.
+- **Keine** peakerkannte/gezählte Rep in den Logs (Signal weit unter Threshold).
+- Interpretation: Hardware+BLE+Parser OK (Test-1-Samples grün). Zählung scheitert an Engine-Zustand/Schwelle (Kalibrierungs-Pfad / gespeicherter Threshold), ggf. UI/Log-State-Diskrepanz. Agent-1/Kalib-Thema, nicht Firmware-v2.
+- Trade-off 12,5Hz: Stream blieb stabil, keine Aussetzer im Capture.
+
