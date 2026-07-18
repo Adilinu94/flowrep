@@ -153,3 +153,26 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt · `[!]` blockiert / b
 1. Adi: M5StickC Plus2 einschalten (Power-Taste), USB stecken, bestätigen.
 2. Erneut pio run --target upload, dann Serial-Monitor -b 115200.
 3. Test 1 mit Adi als Hände/Augen; bei v2-Firmware + v1-App Parser-Mismatch in Interpretation berücksichtigen.
+
+**Nachtrag Flash (gleiche Session Grok-4c0deabc, 2026-07-18, nach Adis "Gerät an"):**
+- COM3 jetzt Status OK (CH9102).
+- pio run --target upload --upload-port COM3: **[SUCCESS] 39,33 s**
+- Chip: ESP32-PICO-V3-02 rev v3.1, MAC 4c:c3:82:9c:7b:44, App-Partition geschrieben + Hash verified, Hard reset via RTS.
+- Serial-Monitor 115200 (ca. 8 s): IMU-Diagnose aktiv, 
+eal-Pfad, Ruhe-Magnitude ~1,00 g (Beispiele: a≈(-0,97,-0,02,0,25), mag=0,998–1,012). Keine IMU-Fail-Spams im kurzen Fenster.
+- Test 1/2 mit App: noch ausstehend (Adi als Hände/Augen). Hinweis: geflashte Firmware = Protokoll **v2 (53 Byte)**; App-Parser noch v1 (52 Byte).
+
+**Test 1 Ergebnis (Adi, 2026-07-18, nach v2-Flash, vor Parser-Fix) – wörtlich:**
+- Adi: „Ich mache Reps aber in der App ändert sich garnichts bis auf das der Parse Fehler zahl steigt“
+
+**Interpretation (Grok-4c0deabc):**
+- Firmware sendet Daten (Parse-Fehler-Zähler steigt = BLE-Read liefert Bytes).
+- App verwarf sie: (1) le_sensor_provider.dart hardcodierte ytes.length != 52 → _parseErrors++ ohne Parser; (2) Parser war ebenfalls nur v1.
+- Entspricht exakt dem vor dem Flash dokumentierten Protokoll-Mismatch v2(53)/v1(52). Kein IMU-Tot, kein BLE-Disconnect.
+
+**Hotfix (Abweichung von Agent-4-Bauplan „app/ nicht anfassen“ – bewusst, sonst Hardware-Tests blockiert):**
+- le_protocol_parser.dart: Dual-Parse 52 (v1, gyro 0.01) und 53 (v2, gyro 0.02); encode default v2.
+- le_sensor_provider.dart: Längen-Gate 52|53 statt nur 52.
+- Unit-Tests Parser: 6/6 grün (lutter test test/ble_protocol_parser_test.dart).
+- Adi muss App neu bauen/hot-restarten und Test 1 wiederholen.
+
