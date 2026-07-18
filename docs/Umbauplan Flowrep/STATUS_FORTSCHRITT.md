@@ -120,3 +120,36 @@ Legende: `[ ]` offen · `[~]` in Arbeit · `[x]` erledigt · `[!]` blockiert / b
 - Branch `agent4-firmware-hardware` liegt lokal in dieser Sandbox vor (2 Commits: `64d9055`, `2c85e94`), ist aber **nicht gepusht** - kein gültiges Push-Token in dieser Konversation (das ursprünglich von Adi geteilte Token wurde nach dem Klonen bewusst aus der Remote-URL entfernt statt es für Pushes weiterzuverwenden, siehe Chat-Verlauf und Guardrail 6.5).
 
 **Für die naechste Session mit physischem/Push-Zugriff:** Branch pushen, `pio run` nachholen, dann Test 1 (`ENG:`/Sample) - der seit mehreren Sessions unbeantwortete, hoechste-Prioritaet-Test - endlich durchfuehren.
+
+### Agent-4-FirmwareHardware, Fortsetzung 2026-07-18 (Session: Grok-4c0deabc)
+
+> Folgeauftrag: pio run, Flashen, Test 1 + Test 2. Terminalzugriff auf Adis Windows-Rechner. Branch gent4-firmware-hardware (Commits 64d9055, 2c85e94, d6dca3, Remote PR #2).
+
+**Umgebung**
+- PlatformIO Core 6.1.19, Flutter vorhanden, Branch sauber auf Remote-Stand gezogen.
+- M5StickC: PnP meldet USB-Enhanced-SERIAL CH9102 (COM3) mit Status **Unknown**; SerialPort.GetPortNames() leer; mode COM3 / esptool: Port existiert nicht aus Sicht des OS.
+
+**Aufgabe 1 – pio run (firmware/)**
+- Ergebnis: **[SUCCESS] in 39,98 s**
+- static_assert(sizeof(SensorBatchWire) == 53, ...) **bestanden** (Compiler-Layout deckt die manuelle Rechnung ab: 4 + 1 + 4×12 = 53).
+- RAM 12,0 % (39480 / 327680), Flash 58,4 % (765221 / 1310720), NimBLE-Arduino 1.4.3, M5StickCPlus2 1.0.2.
+- Keine Code-Änderung nötig; erster echter Compile-Check dieses v2-Firmware-Stands.
+
+**Aufgabe 2 – Flash**
+- Befehl: pio run --target upload --upload-port COM3
+- Ergebnis: **FAILED** – Could not open COM3, the port is busy or doesn't exist / FileNotFoundError (System kann die angegebene Datei nicht finden).
+- Kein Flash durchgeführt. Wartet auf Adi: Gerät einschalten und USB-Verbindung prüfen.
+
+**Kritischer Vorab-Fund (für Tests nach Flash)**
+- App-Parser (pp/lib/data/protocol/ble_protocol_parser.dart) auf main und gent1-signal-pipeline noch **v1**: xpectedTotalBytes = 52, gyroScale = 0.01.
+- Firmware v2 sendet **53** Byte / Gyro-Skala **0.02**.
+- Nach erfolgreichem Flash würde die App mit aktuellem Parser alle Pakete ablehnen (BleProtocolException Längenmismatch) → ENG: samples= bliebe 0, **ohne** dass die Firmware defekt wäre. Parser-Update ist Agent-1-Eigentum (Bauplan: Agent 4 schreibt nicht unter pp/).
+- main.dart nutzt standardmäßig MockSensorProvider – Hardware-Test braucht Build mit BleSensorProvider.
+
+**Test 1 / Test 2**
+- Noch nicht durchgeführt (Flash blockiert durch COM3).
+
+**Nächster Schritt**
+1. Adi: M5StickC Plus2 einschalten (Power-Taste), USB stecken, bestätigen.
+2. Erneut pio run --target upload, dann Serial-Monitor -b 115200.
+3. Test 1 mit Adi als Hände/Augen; bei v2-Firmware + v1-App Parser-Mismatch in Interpretation berücksichtigen.

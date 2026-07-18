@@ -94,7 +94,7 @@ Prüfe die gemeldeten Werte auf Plausibilität (Zeitstempel monoton steigend, We
 ## 7. Definition of Done
 
 - [x] `docs/01_protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung. *(2026-07-17: v2, siehe STATUS-UPDATE oben und STATUS_FORTSCHRITT.md)*
-- [ ] `pio run` kompiliert fehlerfrei. *(NICHT verifizierbar ohne PlatformIO-Registry-Zugriff in dieser Sandbox - manuell nachgerechnet statt kompiliert, siehe STATUS-UPDATE oben. Muss vor dem Flashen auf Adis Maschine nachgeholt werden.)*
+- [x] `pio run` kompiliert fehlerfrei. *(2026-07-18, Session Grok-4c0deabc: [SUCCESS] 39,98 s; static_assert 53 Byte bestanden; RAM 12,0 %, Flash 58,4 %.)*
 - [ ] Test 1 (`ENG:`/Sample) hat ein dokumentiertes Ergebnis – zum ersten Mal seit mehreren Sessions. *(weiterhin offen - braucht Adi physisch)*
 - [ ] Test 2 (Firmware-Update) bestätigt: Verbindung und Grundzählung funktionieren nach dem Flash weiterhin. *(weiterhin offen - braucht Adi physisch, UND den erfolgreichen Compile+Flash davor)*
 - [ ] Tests 3 und 4 haben dokumentierte Ergebnisse (auch wenn "nicht bestanden" – das ist ein valides, wichtiges Ergebnis, keine Fehlfunktion deinerseits). *(weiterhin offen - Test 3 ohnehin erst nach Agent 2+3, Test 4 braucht Adi physisch)*
