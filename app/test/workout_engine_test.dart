@@ -16,8 +16,18 @@ List<SensorSample> _generateSyntheticReps({
   required int repCount,
   double peakHeight = 1.8,
   double baseline = 0.0,
-  int samplesPerRep = 30, // ~0.6s at 50Hz-equivalent 20ms steps
-  int restSamplesBetween = 5,
+  // 1.2s movement + 0.3s rest = 1.5s/rep at 20ms steps, matching the tempo
+  // already used by tools/workout_engine_simulation.py make_clean_reps()
+  // and the 60bpm (~2s/rep) protocol cited in
+  // docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md Abschnitt 2.5 (J. Strength
+  // & Conditioning Research 2012). Raised from the original 30/5 (700ms/rep,
+  // ~86 rpm) when the P1.1 refractory guard (WorkoutEngine.minRepInterval,
+  // default 800ms) was added - at 700ms/rep every second rep fell inside the
+  // refractory window purely from unrealistically fast synthetic timing,
+  // not from any real double-counting. See minRepInterval doc comment in
+  // workout_engine.dart.
+  int samplesPerRep = 60, // ~1.2s at 50Hz-equivalent 20ms steps
+  int restSamplesBetween = 15, // ~0.3s
 }) {
   final samples = <SensorSample>[];
   var t = DateTime(2026, 1, 1);
@@ -47,6 +57,39 @@ double _sin(double x) {
   // accurate enough for 0..pi over a handful of terms.
   final x2 = x * x;
   return x * (1 - x2 / 6 * (1 - x2 / 20 * (1 - x2 / 42)));
+}
+
+/// Generates a "double-bump" rep profile: TWO magnitude bumps per physical
+/// rep (concentric + eccentric), mirroring make_double_peak_reps() in
+/// tools/workout_engine_simulation.py. Uses dart:math's sin() (already
+/// imported above for Random) rather than the 0..pi-only _sin() helper,
+/// since this needs the full 0..2*pi range.
+List<SensorSample> _generateDoubleBumpReps({
+  required int repCount,
+  double peakHeight = 1.9,
+  double baseline = 1.0,
+  int samplesPerRep = 80, // 1.6s at 20ms steps, matches the Python scenario
+  int restSamplesBetween = 15, // 0.3s
+}) {
+  final samples = <SensorSample>[];
+  var t = DateTime(2026, 1, 1);
+  const step = Duration(milliseconds: 20);
+
+  for (var rep = 0; rep < repCount; rep++) {
+    for (var i = 0; i < samplesPerRep; i++) {
+      final phase = (i / samplesPerRep) * 2 * pi;
+      final magnitude = baseline + (peakHeight - baseline) * sin(phase).abs();
+      samples.add(SensorSample(
+        timestamp: t, ax: 0, ay: magnitude, az: 0, gx: 0, gy: 0, gz: 0,
+      ));
+      t = t.add(step);
+    }
+    for (var i = 0; i < restSamplesBetween; i++) {
+      samples.add(SensorSample(timestamp: t, ax: 0, ay: baseline, az: 0, gx: 0, gy: 0, gz: 0));
+      t = t.add(step);
+    }
+  }
+  return samples;
 }
 
 void main() {
@@ -82,6 +125,81 @@ void main() {
       // threshold itself is still being refined - exact 10/10 is not
       // guaranteed by design, see GYM_TRACKER_ARCHITEKTUR.md 5.1.2.
       expect(finishedSet!.countedReps, closeTo(10, 1));
+      engine.dispose();
+    });
+
+    test(
+        'P1.1 regression: a single physical rep with two magnitude bumps '
+        '(concentric + eccentric) must not be counted twice (fix for S1 in '
+        'docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md - before this fix, '
+        'the live counting path had NO minimum time gap between reps at '
+        'all, and tools/workout_engine_simulation.py\'s "Doppel-Peak" '
+        'scenario counted 20 for 10 expected; WorkoutEngine.minRepInterval '
+        'now gates a new rising edge for 800ms after the last counted rep, '
+        'bringing the same scenario to 11/10 in the Python mirror)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+
+      final samples = _generateDoubleBumpReps(repCount: 10);
+      for (final s in samples) {
+        engine.processSample(s);
+      }
+      var t = samples.last.timestamp;
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(
+          SensorSample(timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0),
+        );
+      }
+
+      expect(finishedSet, isNotNull,
+          reason: 'Expected the set to end after the pause timeout');
+      expect(finishedSet!.countedReps, closeTo(10, 1),
+          reason: 'Without the refractory guard this counts ~20 (every '
+              'bump treated as its own rep). +/-1 tolerance, same as the '
+              'other counting-accuracy tests in this file.');
+      engine.dispose();
+    });
+
+    test(
+        'P1.1 does not suppress legitimate fast-but-separate consecutive '
+        'reps (minRepInterval must only reject a SECOND bump of the SAME '
+        'rep, not a genuinely new one - guards against an overly aggressive '
+        'refractory value)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+
+      // 1.0s/rep (faster than the 1.5s default used elsewhere in this file,
+      // but still well above minRepInterval's 800ms default) - a brisk but
+      // realistic single-bump tempo.
+      final samples = _generateSyntheticReps(
+        repCount: 10,
+        samplesPerRep: 40, // 0.8s movement
+        restSamplesBetween: 10, // 0.2s rest -> 1.0s/rep total
+      );
+      for (final s in samples) {
+        engine.processSample(s);
+      }
+      var t = samples.last.timestamp;
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(
+          SensorSample(timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0),
+        );
+      }
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(10, 1),
+          reason: 'A brisk but genuinely separate 1.0s/rep cadence must '
+              'not be suppressed by the refractory guard - if this drops '
+              'well below 10, minRepInterval is too aggressive for real '
+              'use and needs to come down from the 800ms fallback.');
       engine.dispose();
     });
 
@@ -198,7 +316,11 @@ void main() {
       var t = DateTime(2026, 1, 1);
       const step = Duration(milliseconds: 20);
       const repCount = 10;
-      const samplesPerRep = 30;
+      // 60/15 (1.5s/rep) instead of the original 30/5 (700ms/rep) - see
+      // _generateSyntheticReps doc comment above for why: at 700ms/rep,
+      // P1.1's minRepInterval (800ms default) would suppress every second
+      // legitimate rep purely from unrealistic synthetic timing.
+      const samplesPerRep = 60;
 
       for (var rep = 0; rep < repCount; rep++) {
         for (var i = 0; i < samplesPerRep; i++) {
@@ -214,7 +336,7 @@ void main() {
           ));
           t = t.add(step);
         }
-        for (var i = 0; i < 5; i++) {
+        for (var i = 0; i < 15; i++) {
           engine.processSample(SensorSample(
             timestamp: t, ax: 0, ay: 0.0, az: 0, gx: 0, gy: 0, gz: 0,
           ));

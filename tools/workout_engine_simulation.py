@@ -78,13 +78,27 @@ class WorkoutEngineSim:
                  falling_edge_ratio=0.7, calibration_reps=3,
                  pause_after_s=4.0, baseline_ema_alpha=0.01,
                  lowpass_alpha=0.6, initial_peak_threshold=1.2,
-                 has_valid_calibration=False):
+                 has_valid_calibration=False, min_rep_interval_s=0.8):
         self.signal_processor = SignalProcessor(gyro_weight=gyro_weight, lowpass_alpha=lowpass_alpha)
         self.envelope_decay = envelope_decay
         self.falling_edge_ratio = falling_edge_ratio
         self.calibration_reps = calibration_reps
         self.pause_after_s = pause_after_s
         self.baseline_ema_alpha = baseline_ema_alpha
+        # P1.1 (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md, S1/Fix S1, Abschnitt
+        # 3 "P1 - Zaehl-Quick-Wins"): Sperrzeit nach jeder gezaehlten Rep.
+        # Ohne das zaehlt ein Doppel-Buckel-Signal (konzentrischer +
+        # exzentrischer Buckel derselben Rep, siehe make_double_peak_reps())
+        # zwei Reps statt einer - der Live-Pfad hatte bislang UEBERHAUPT
+        # keinen Mindestabstand (nur der Kalibrierungspfad in
+        # GuidedCalibrationSim/_findPeaksWithIndices hat MIN_PEAK_DISTANCE_
+        # SAMPLES, das ist ein separater Pfad). Default 0.8s = der im Konzept
+        # dokumentierte Fallback-Wert (0,55 x medianRepdauer, Fallback 0,8s),
+        # bis Guided Calibration 2.0 (Paket 2-4) einen echten, aus der
+        # Kalibrierung gelernten Wert liefert und in applyCalibration()
+        # durchreicht.
+        self.min_rep_interval_s = min_rep_interval_s
+        self.last_rep_end_t = None
         # ADR-020 (docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md):
         # True once a valid calibration (guided, or loaded from persistence)
         # is in place. Mirrors WorkoutEngine.hasValidCalibration in
@@ -159,6 +173,14 @@ class WorkoutEngineSim:
                 self.last_movement_t = t
 
     def _detect_peak(self, t, combined):
+        # P1.1 Refractory-Guard: eine neue steigende Flanke wird ignoriert,
+        # solange wir innerhalb der Sperrzeit nach der letzten GEZAEHLTEN Rep
+        # sind. Ein bereits laufender above_threshold-Excursion (falls die
+        # Sperrzeit waehrenddessen ausgelaufen ist) wird davon nicht
+        # beruehrt - nur der *Start* einer neuen Excursion ist gesperrt.
+        if (not self.above_threshold and self.last_rep_end_t is not None
+                and (t - self.last_rep_end_t) < self.min_rep_interval_s):
+            return
         if not self.above_threshold and combined > self.peak_threshold:
             self.above_threshold = True
             self.current_excursion_peak = combined
@@ -173,6 +195,7 @@ class WorkoutEngineSim:
             if combined < falling_threshold:
                 self.above_threshold = False
                 self.reps_in_set.append((t, self.current_excursion_peak))
+                self.last_rep_end_t = t
 
     def _end_set(self):
         if self.reps_in_set:
@@ -1423,10 +1446,16 @@ def run_known_count_calibration_suite(alt_ergebnisse):
     for name, (erw, gez) in alt_ergebnisse.items():
         mark = ""
         if name.startswith("Doppel-Peak"):
-            mark = (f"  <-- bekannter, pre-existing Defekt im Legacy-Zaehlpfad "
-                    f"(gezaehlt {gez}/{erw}): jede Rep erzeugt zwei Magnitude-Buckel, der "
-                    f"alte combined-Pfad zaehlt doppelt. Nicht Fix-Ziel von Paket 1; der "
-                    f"double_bump-Persona-Pfad oben zeigt, dass Known-Count + g_p das loest.")
+            mark = (f"  <-- war bis P1.1 ein bekannter Defekt im Legacy-"
+                    f"Zaehlpfad (urspruenglich 20/{erw}): jede Rep erzeugt "
+                    f"zwei Magnitude-Buckel, der alte combined-Pfad zaehlte "
+                    f"beide. War nicht Fix-Ziel von Paket 1 (siehe "
+                    f"double_bump-Persona oben: Known-Count + Achsen-"
+                    f"projektion loest es auf der Kalibrierungs-Seite "
+                    f"strukturell). Auf der Live-Pfad-Seite seit P1.1 "
+                    f"(min_rep_interval_s auf WorkoutEngineSim/_detectPeak, "
+                    f"RECHERCHE_ZAEHLROBUSTHEIT S1) mit {gez}/{erw} "
+                    f"innerhalb der +/-1-Toleranz.")
         print(f"{name:45s} erwartet={erw:3d}  gezaehlt={gez:3d}{mark}")
 
     return n_ok == len(ergebnisse)

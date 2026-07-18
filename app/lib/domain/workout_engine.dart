@@ -84,6 +84,7 @@ class WorkoutEngine {
     SignalProcessor? signalProcessor,
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
+    this.minRepInterval = const Duration(milliseconds: 800),
     this.calibrationReps = 1,
     this.fallingEdgeRatio = 0.7,
     this.baselineEmaAlpha = 0.01,
@@ -103,6 +104,22 @@ class WorkoutEngine {
   final SignalProcessor _signalProcessor;
   final double envelopeDecayRate;
   final Duration pauseAfter;
+
+  /// Refractory/lockout window after a rep is counted (P1.1, fix for S1 in
+  /// docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md): a new rising edge is
+  /// ignored while `now - <end of last counted rep> < minRepInterval`. A
+  /// single curl produces two magnitude bumps in the `combined` signal (one
+  /// concentric, one eccentric) - without this guard, each bump crosses the
+  /// threshold independently and the same physical rep is counted twice
+  /// (verified via tools/workout_engine_simulation.py: the "Doppel-Peak"
+  /// scenario counted 20 for 10 expected). An already-open excursion is
+  /// never cut off by this guard - only the *start* of a new one is gated.
+  /// Default 0.8s is the fallback value from the research doc (target
+  /// formula: 0.55 x median rep duration from calibration, not yet wired up
+  /// - Guided Calibration 2.0 Paket 2-4 will pass a calibration-derived
+  /// value here via applyCalibration()).
+  final Duration minRepInterval;
+
   final int calibrationReps;
 
   /// Falling-edge trigger = peakThreshold * fallingEdgeRatio. Must be < 1.0
@@ -177,6 +194,11 @@ class WorkoutEngine {
   bool _aboveThreshold = false;
   double _currentExcursionPeak = 0.0;
   DateTime? _lastMovementAt;
+
+  /// Timestamp of the falling edge of the last COUNTED rep. Null until the
+  /// first rep is counted. Drives the [minRepInterval] refractory guard in
+  /// [_detectPeak].
+  DateTime? _lastRepEndAt;
 
   /// Slow-moving estimate of the resting ("quiet") signal level. Only
   /// updated from samples that are NOT part of an above-threshold
@@ -360,6 +382,16 @@ class WorkoutEngine {
   }
 
   void _detectPeak(SensorSample s, double combinedSignal) {
+    // P1.1 refractory guard: ignore the *start* of a new excursion while
+    // we're still inside minRepInterval after the last counted rep. Does
+    // not touch an excursion that's already open (_aboveThreshold == true)
+    // - only gates new rising edges. See minRepInterval doc comment above.
+    if (!_aboveThreshold &&
+        _lastRepEndAt != null &&
+        s.timestamp.difference(_lastRepEndAt!) < minRepInterval) {
+      return;
+    }
+
     if (!_aboveThreshold && combinedSignal > _peakThreshold) {
       _aboveThreshold = true;
       _currentExcursionPeak = combinedSignal;
@@ -384,6 +416,7 @@ class WorkoutEngine {
         _repsInSet.add(
           Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
         );
+        _lastRepEndAt = s.timestamp;
         _emitStateEvent();
       }
     }
@@ -439,6 +472,7 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _repsInSet.clear();
+    _lastRepEndAt = null;
     _lastCalibrationPeakCount = 0;
     _diagMaxAccel = 0;
     _diagMaxGyro = 0;
@@ -609,6 +643,7 @@ class WorkoutEngine {
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _lastMovementAt = null;
+    _lastRepEndAt = null;
     _repsInSet.clear();
     _state = WorkoutState.idle;
     _emitStateEvent();
@@ -647,6 +682,7 @@ class WorkoutEngine {
     _repsInSet.clear();
     _runningEnvelope = 0.0;
     _lastMovementAt = null;
+    _lastRepEndAt = null;
     // Don't reset _baselineLevel — let the EMA adapt naturally from
     // whatever the current signal level is. A null baseline (fresh
     // engine) would re-initialise on the next sample; keeping the
