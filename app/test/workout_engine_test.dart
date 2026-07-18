@@ -183,7 +183,6 @@ void main() {
               'Alt-Suite for the Python-side equivalent (exactly 10/10 '
               'there - a tolerance of 1 covers minor differences between '
               'this synthetic Dart signal and the Python one)');
-      engine.dispose();
     });
 
     test(
