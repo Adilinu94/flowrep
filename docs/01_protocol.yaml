@@ -5,6 +5,15 @@
 # Ändert sich hier etwas, ändert sich das Protokoll überall gleichzeitig - nicht in Prosa
 # an zwei Stellen getrennt beschreiben.
 
+# Version 2 (2026-07-17, Agent 4 / RECHERCHE_ZAEHLROBUSTHEIT S3+S4). Vorher
+# gab es KEIN Versionsfeld - "Version 1" ist rückwirkend der Name für den
+# bis hierhin live deployten, unversionierten 52-Byte-Stand. Siehe
+# `versions:` unten für die vollständige Historie und was sich geändert hat.
+# Wire-Erkennung alt vs. neu: Paketlaenge 52 Byte = v1 (kein Versions-Byte
+# im Payload), 53 Byte = v2 (Versions-Byte vorhanden). Nicht am Inhalt des
+# Versions-Bytes selbst festmachen, weil v1-Firmware es gar nicht sendet.
+protocol_version: 2
+
 service:
   name: "GymTracker"
   characteristics:
@@ -12,7 +21,7 @@ service:
     - name: "SensorData"
       properties: [notify]
       payload:
-        total_bytes: 52
+        total_bytes: 53
         byte_order: little_endian
         fields:
           - name: timestamp
@@ -20,11 +29,26 @@ service:
             offset: 0
             length: 4
             unit: milliseconds
+            note: >
+              Erfassungszeitpunkt (millis() seit Boot) von samples[0].
+              Siehe `timing:` unten fuer die Zeitpunkte von samples[1..3]
+              (nicht einzeln uebertragen, sondern aus dem festen,
+              firmware-garantierten Sample-Intervall abgeleitet).
+          - name: protocol_version
+            type: uint8
+            offset: 4
+            length: 1
+            note: >
+              NEU in v2. Fester Wert 2. Existiert in v1-Paketen nicht (v1 =
+              52 Byte gesamt, dieses Feld fehlt komplett - nicht mit 0
+              verwechseln). Zweck: App kann Firmware-Version erkennen statt
+              still falsch zu parsen (siehe superseded_specs unten und
+              ADR-001-Hinweis in ble_protocol_parser.dart).
           - name: samples
             type: array
             count: 4
             item_length: 12
-            start_offset: 4
+            start_offset: 5
             item_fields:
               - name: accel_x
                 type: int16
@@ -44,17 +68,24 @@ service:
               - name: gyro_x
                 type: int16
                 offset: 6
-                scale: 0.01
+                scale: 0.02
                 unit: degrees_per_second
+                note: >
+                  Skalierung in v2 von 0.01 auf 0.02 angehoben (S4-Fix).
+                  0.01 clippte bei int16-Maximum exakt +-327.67 deg/s;
+                  echte, kraeftige Curls erreichen ~344 deg/s (siehe
+                  RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S4). 0.02 ergibt
+                  +-655.34 deg/s - komfortable Sicherheitsspanne, keine
+                  krumme Handschriftgrenze.
               - name: gyro_y
                 type: int16
                 offset: 8
-                scale: 0.01
+                scale: 0.02
                 unit: degrees_per_second
               - name: gyro_z
                 type: int16
                 offset: 10
-                scale: 0.01
+                scale: 0.02
                 unit: degrees_per_second
 
     - name: "ControlPoint"
@@ -94,15 +125,55 @@ service:
               2: STREAMING
               3: LOW_POWER_SLEEP
 
+# --- Zeitbasis (S3-Fix, ab v2 verbindlich) ---
+# Vorher (v1, RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S3): die Firmware
+# fasste 4 Samples so schnell wie moeglich zusammen (I2C-Lesezeit, faktisch
+# ~0ms Abstand) und wartete danach EINMAL delay(20) vor dem naechsten
+# Batch. Die App nahm trotzdem an, alle 4 Samples seien gleichmaessig 20ms
+# auseinander (ble_protocol_parser.dart: "Duration(milliseconds: i*20)")
+# - eine unbegruendete, faktisch falsche Annahme ueber Daten, die die
+# Firmware so nie geliefert hat.
+# Ab v2 ist das keine Annahme mehr, sondern eine Garantie: die Firmware
+# gated JEDE einzelne Sample-Erfassung (nicht nur den Batch-Versand) auf
+# sample_interval_ms, inklusive ueber Batch-Grenzen hinweg. samples[0]
+# jedes Batches traegt den echten timestamp; samples[1..3] UND das erste
+# Sample des naechsten Batches folgen exakt sample_interval_ms danach -
+# die App-Annahme (s.o.) ist damit erstmals tatsaechlich wahr, nicht nur
+# angenommen. App-seitig ist dafuer KEINE Aenderung an der
+# Timestamp-Berechnung noetig (nur an Paketlaenge/Version/Gyro-Skala).
+timing:
+  sample_interval_ms: 20
+  guarantee: >
+    Jedes einzelne Sample (nicht nur jeder Batch) wird firmwareseitig
+    exakt sample_interval_ms nach dem vorherigen erfasst - gilt auch fuer
+    den Uebergang vom letzten Sample eines Batches zum ersten Sample des
+    naechsten. samples[i].timestamp = batch.timestamp + i * sample_interval_ms.
+    Effektive Batch-Sende-Rate sinkt dadurch von vorher ~50 Hz (bursty,
+    unehrlich) auf ehrlich 12.5 Hz (4 Samples x 20ms = 80ms/Batch) -
+    bewusster Trade-off, siehe changelog-Eintrag in versions: unten fuer
+    die Begruendung.
+  verify_in_phase: 0
+  verification_method: >
+    ENG:/samples-Test (Abschnitt 6, Test 1 in
+    AGENT_4_FIRMWARE_HARDWARE.md) UND CSV-Export-Test (Test 4) -
+    Zeitstempel-Spalte muss nach dem Firmware-Update in exakt 20ms-
+    Schritten monoton steigen, nicht mehr in 4er-Buendeln springen.
+
 # --- Verbindliche Rahmenbedingungen, nicht verhandelbar ohne ADR-Update ---
 constraints:
   ble_mtu:
-    minimum_required: 55
+    minimum_required: 56
     reason: >
-      Standard-ATT-MTU ist 23 Byte (20 Byte Nutzlast). Der 52-Byte-Payload
-      passt darin NICHT. MTU muss beim Verbindungsaufbau explizit auf
-      mindestens 55 Byte verhandelt werden (requestMtu() auf Android).
-      Ohne diese Verhandlung schlägt die Notification fehl oder wird fragmentiert.
+      Standard-ATT-MTU ist 23 Byte (20 Byte Nutzlast). Der jetzt 53-Byte-
+      Payload (v2, vorher 52) passt darin NICHT. MTU muss beim
+      Verbindungsaufbau explizit auf mindestens 56 Byte (53 + 3 Byte
+      ATT-Notify-Overhead) verhandelt werden (requestMtu() auf Android).
+      Ohne diese Verhandlung schlägt die Notification fehl oder wird
+      fragmentiert.
+      KEINE App-Code-Aenderung noetig: ble_sensor_provider.dart fordert
+      bereits requiredMtu=185 an (weit ueber 56) und beobachtete
+      Hardware negiiert ohnehin immer 517 (HyperOS-Quirk, siehe
+      Kommentar dort) - dieser Wert war schon vor v2 grosszuegig genug.
     verify_in_phase: 0
 
   package_choice:
@@ -114,6 +185,14 @@ constraints:
     - description: "30-Byte / 5-Samples-Format ohne Gyroskop und ohne Timestamp"
       found_in: "bauplan_projektgym.md, Phase 4"
       status: OBSOLET — nicht implementieren
+    - description: >
+        Version 1 (unversioniert, 52 Byte, Gyro-Skala 0.01 -> Clipping bei
+        +-327.67 deg/s, bursty Batch-Timing ohne echtes Sample-Intervall)
+      found_in: "firmware/src/main.cpp vor dem Agent-4-Firmware-Fix (2026-07-17)"
+      status: >
+        Durch v2 ersetzt (siehe versions: unten). War live deployt, kein
+        Implementierungsfehler - ersetzt wegen S3/S4 aus
+        RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md.
 
   gyro_usage_note: >
     Gyroskop-Daten werden übertragen und für Segmentierung/State-Transitions
@@ -128,3 +207,28 @@ validation:
     UND Dart-seitigen Parser gegen genau diese Datei generieren oder manuell abgleichen.
     Bei jeder Abweichung: STOPPEN und Rückfrage stellen, nicht selbst entscheiden
     (siehe ESKALATIONS_PLAYBOOK.md, Regel 1).
+
+# --- Versionshistorie ---
+versions:
+  - version: 1
+    status: "abgeloest durch v2, siehe superseded_specs oben"
+    summary: >
+      Impliziter Ausgangsstand, nie explizit versioniert. 52 Byte
+      (4 timestamp + 4x12 samples). Gyro-Skala 0.01 (+-327.67 deg/s,
+      clippt bei echten kraeftigen Curls ~344 deg/s). Batch-Timing bursty:
+      4 Samples faktisch back-to-back erfasst, dann delay(20) EINMAL pro
+      Batch - App nahm gleichmaessige 20ms-Abstaende an, ohne dass die
+      Firmware das je garantiert hatte.
+  - version: 2
+    date: "2026-07-17"
+    author: "Agent 4 (Claude, Firmware/Protokoll/Hardware-Verifikation)"
+    status: "Protokoll + Firmware-Code fertig, NICHT auf echtem Geraet geflasht/verifiziert (kein physischer Zugriff verfuegbar)"
+    changes:
+      - "NEU: protocol_version-Feld (uint8, offset 4) im Payload - S3/S4-Begleitmassnahme, damit die App Alt- von Neu-Firmware unterscheiden kann"
+      - "Gyro-Skala 0.01 -> 0.02 (S4-Fix, +-655.34 statt +-327.67 deg/s)"
+      - "Sample-Intervall firmwareseitig garantiert gleichmaessig (S3-Fix, siehe timing: oben) statt nur angenommen - Kehrseite: effektive Batch-Rate sinkt von ~50 Hz (unehrlich/bursty) auf ehrlich 12.5 Hz"
+      - "total_bytes 52 -> 53, ble_mtu.minimum_required 55 -> 56 (keine App-Code-Aenderung noetig, requiredMtu=185 deckt das bereits ab)"
+    open_before_merge:
+      - "pio run Kompilier-Check (siehe AGENT_4_FIRMWARE_HARDWARE.md Abschnitt 7)"
+      - "Flash + ENG:/samples-Test auf echtem M5StickC Plus2 (Adi, Test 1+2)"
+      - "Pruefen ob die gesunkene effektive Batch-Rate (12.5 Hz statt ~50 Hz bursty) in der Praxis spuerbar ist - CSV-Export-Test (Test 4) zeigt die tatsaechliche App-seitige Ankunftsrate"
