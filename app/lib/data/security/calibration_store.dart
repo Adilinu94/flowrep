@@ -1,4 +1,8 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+
+import '../../domain/models/exercise_profile.dart';
 
 /// Persists calibration parameters across app restarts using encrypted
 /// storage (Android Keystore / iOS Keychain — DSGVO-compliant per ADR-010).
@@ -18,6 +22,12 @@ class CalibrationStore {
   static const _keyMinThreshold = 'calib_min_threshold_above_baseline';
   static const _keyBaseline = 'calib_baseline_level';
   static const _keyDeviceId = 'calib_device_id';
+
+  /// v2 (Konzept 2.0, §6 Migration): ein JSON-Dokument mit per exerciseId
+  /// gekeyeten [ExerciseProfile]s. Das v1-Format (die vier Einzel-Keys
+  /// oben) wird nie wieder geschrieben, aber weiterhin gelesen
+  /// (Migration on Read, siehe [loadProfile]).
+  static const _keyProfilesV2 = 'calib_profiles_v2';
 
   /// Saves the calibration result for a device. Only the latest calibration
   /// is kept (V1: single device, single exercise).
@@ -58,7 +68,45 @@ class CalibrationStore {
     );
   }
 
-  /// DSGVO: deletes all stored calibration data. Only removes
+  /// v2 (Konzept 2.0, Paket 4): speichert ein [ExerciseProfile] im
+  /// gemeinsamen JSON-Dokument unter [_keyProfilesV2], keyed by
+  /// exerciseId (Mehrfach-Uebungs-faehig, siehe ExerciseProfile-Doc).
+  Future<void> saveProfile({required ExerciseProfile profile}) async {
+    final raw = await _storage.read(key: _keyProfilesV2);
+    final Map<String, dynamic> all = raw != null
+        ? jsonDecode(raw) as Map<String, dynamic>
+        : <String, dynamic>{};
+    all[profile.exerciseId] = profile.toJson();
+    await _storage.write(key: _keyProfilesV2, value: jsonEncode(all));
+  }
+
+  /// Laedt das [ExerciseProfile] fuer [exerciseId]. Migration on Read
+  /// (Konzept §6): existiert noch kein v2-Profil, aber v1-Einzelwerte fuer
+  /// [deviceId] (aus [load]), wird daraus automatisch ein Legacy-Profil
+  /// gewrapt (ExerciseProfile.needsRecalibration liefert dann true).
+  /// Gibt null zurueck, wenn weder v2- noch v1-Daten existieren.
+  Future<ExerciseProfile?> loadProfile({
+    required String exerciseId,
+    required String deviceId,
+  }) async {
+    final raw = await _storage.read(key: _keyProfilesV2);
+    if (raw != null) {
+      final all = jsonDecode(raw) as Map<String, dynamic>;
+      final entry = all[exerciseId];
+      if (entry != null) {
+        return ExerciseProfile.fromJson(entry as Map<String, dynamic>);
+      }
+    }
+    final legacy = await load(deviceId: deviceId);
+    if (legacy == null) return null;
+    return ExerciseProfile.legacy(
+      exerciseId: exerciseId,
+      peakThreshold: legacy.peakThreshold,
+      minThresholdAboveBaseline: legacy.minThresholdAboveBaseline,
+    );
+  }
+
+  /// DSGVO: deletes all stored calibration data (v1 UND v2). Only removes
   /// calibration-specific keys — does NOT touch the database encryption
   /// key managed by [DatabaseKeyManager].
   Future<void> deleteAll() async {
@@ -67,6 +115,7 @@ class CalibrationStore {
       _storage.delete(key: _keyPeakThreshold),
       _storage.delete(key: _keyMinThreshold),
       _storage.delete(key: _keyBaseline),
+      _storage.delete(key: _keyProfilesV2),
     ]);
   }
 }

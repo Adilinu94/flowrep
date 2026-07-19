@@ -10,6 +10,7 @@ import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
 import '../../domain/workout_engine.dart';
+import 'calibration/calibration_wizard_screen.dart';
 
 /// Phase 0/1 screen: connect button, status text, live rep counter.
 /// Works with both MockSensorProvider and BleSensorProvider.
@@ -274,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_connectionState == SensorConnectionState.connected && !_isMock) ...[
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
-                  onPressed: _showCalibrationDialog,
+                  onPressed: _openCalibrationWizard,
                   icon: const Icon(Icons.tune),
                   label: const Text('Mit Assistent kalibrieren'),
                   style: ElevatedButton.styleFrom(
@@ -337,10 +338,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (deviceId == null) return;
     _bleDeviceId = deviceId;
 
-    final data = await _calibrationStore.load(deviceId: deviceId);
-    if (data != null && mounted) {
+    // Engine-Anbindung Guided Calibration 2.0 (2026-07-18): bislang wurde
+    // hier NUR das alte v1-Format geladen - ein per Wizard gespeichertes
+    // ExerciseProfile (v2) wurde nie gelesen, die Kalibrierung wirkte sich
+    // also nie auf den Live-Zaehlpfad aus (siehe STATUS_FORTSCHRITT.md,
+    // Befund "ExerciseProfile nicht in workout_engine.dart verdrahtet").
+    // v2 hat Vorrang; CalibrationStore.loadProfile() faellt intern bereits
+    // auf v1 zurueck, wenn kein v2-Profil existiert (Migration-on-Read),
+    // daher reicht hier EIN Aufruf statt zwei getrennter Pfade.
+    final profile = await _calibrationStore.loadProfile(
+      exerciseId: _engine.exerciseId,
+      deviceId: deviceId,
+    );
+    if (profile != null && mounted) {
       setState(() {
-        _calibratedThreshold = data.peakThreshold;
+        _calibratedThreshold = profile.theta;
       });
       // Apply persisted calibration IN PLACE — do NOT dispose and recreate
       // the engine. Previously, disposing + recreating caused a race
@@ -350,9 +362,16 @@ class _HomeScreenState extends State<HomeScreen> {
       // startGuidedCalibration() on the OLD (disposed) engine — silently
       // doing nothing. Found during the E2E hardware test on 2026-07-16.
       // See WorkoutEngine.applyCalibration() for the full diagnosis.
+      //
+      // minThresholdAboveBaseline: ExerciseProfile hat noch kein exaktes
+      // Aequivalent (siehe Konzept-2.0-Nachtrag). 0.10 spiegelt den
+      // bisherigen Engine-Default (siehe WorkoutEngine-Konstruktor) -
+      // bewusste, dokumentierte Annahme, kein aus dem Profil abgeleiteter
+      // Wert. Sollte Schritt B (g_p-Signalumstellung) eigene Anforderungen
+      // an diesen Wert mitbringen, hier anpassen.
       _engine.applyCalibration(
-        peakThreshold: data.peakThreshold,
-        minThresholdAboveBaseline: data.minThresholdAboveBaseline,
+        peakThreshold: profile.theta,
+        minThresholdAboveBaseline: 0.10,
       );
     }
   }
@@ -384,6 +403,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Absichtlich noch vorhanden, aber nicht mehr verdrahtet (siehe
+  // _openCalibrationWizard unten) - erst entfernen, wenn Guided
+  // Calibration 2.0 auf echter Hardware bestaetigt ist.
+  // ignore: unused_element
   void _showCalibrationDialog() {
     showDialog(
       context: context,
@@ -393,6 +416,30 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _CalibrationDialog(engine: _engine),
       ),
     );
+  }
+
+  // Guided Calibration 2.0 (Konzept-Dokument, Paket 4-9). Ersetzt den
+  // Aufruf von _showCalibrationDialog() oben als Einstiegspunkt fuer den
+  // "Mit Assistent kalibrieren"-Button. _showCalibrationDialog() und
+  // _CalibrationDialog bleiben bewusst im Code (siehe deren Definition
+  // unten) statt geloescht zu werden, bis die neue Kalibrierung 2.0 auf
+  // echter Hardware end-to-end bestaetigt ist.
+  Future<void> _openCalibrationWizard() async {
+    final deviceId = _bleDeviceId;
+    if (deviceId == null) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (ctx) => CalibrationWizardScreen(
+          samples: widget.sensorProvider.samples,
+          exerciseId: _engine.exerciseId,
+          deviceId: deviceId,
+        ),
+      ),
+    );
+    if (saved == true) {
+      // Reload so der Home-Screen den neuen Stand sieht.
+      _loadCalibration();
+    }
   }
 
   @override
