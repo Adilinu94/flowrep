@@ -338,10 +338,21 @@ class _HomeScreenState extends State<HomeScreen> {
     if (deviceId == null) return;
     _bleDeviceId = deviceId;
 
-    final data = await _calibrationStore.load(deviceId: deviceId);
-    if (data != null && mounted) {
+    // Engine-Anbindung Guided Calibration 2.0 (2026-07-18): bislang wurde
+    // hier NUR das alte v1-Format geladen - ein per Wizard gespeichertes
+    // ExerciseProfile (v2) wurde nie gelesen, die Kalibrierung wirkte sich
+    // also nie auf den Live-Zaehlpfad aus (siehe STATUS_FORTSCHRITT.md,
+    // Befund "ExerciseProfile nicht in workout_engine.dart verdrahtet").
+    // v2 hat Vorrang; CalibrationStore.loadProfile() faellt intern bereits
+    // auf v1 zurueck, wenn kein v2-Profil existiert (Migration-on-Read),
+    // daher reicht hier EIN Aufruf statt zwei getrennter Pfade.
+    final profile = await _calibrationStore.loadProfile(
+      exerciseId: _engine.exerciseId,
+      deviceId: deviceId,
+    );
+    if (profile != null && mounted) {
       setState(() {
-        _calibratedThreshold = data.peakThreshold;
+        _calibratedThreshold = profile.theta;
       });
       // Apply persisted calibration IN PLACE — do NOT dispose and recreate
       // the engine. Previously, disposing + recreating caused a race
@@ -351,9 +362,16 @@ class _HomeScreenState extends State<HomeScreen> {
       // startGuidedCalibration() on the OLD (disposed) engine — silently
       // doing nothing. Found during the E2E hardware test on 2026-07-16.
       // See WorkoutEngine.applyCalibration() for the full diagnosis.
+      //
+      // minThresholdAboveBaseline: ExerciseProfile hat noch kein exaktes
+      // Aequivalent (siehe Konzept-2.0-Nachtrag). 0.10 spiegelt den
+      // bisherigen Engine-Default (siehe WorkoutEngine-Konstruktor) -
+      // bewusste, dokumentierte Annahme, kein aus dem Profil abgeleiteter
+      // Wert. Sollte Schritt B (g_p-Signalumstellung) eigene Anforderungen
+      // an diesen Wert mitbringen, hier anpassen.
       _engine.applyCalibration(
-        peakThreshold: data.peakThreshold,
-        minThresholdAboveBaseline: data.minThresholdAboveBaseline,
+        peakThreshold: profile.theta,
+        minThresholdAboveBaseline: 0.10,
       );
     }
   }
