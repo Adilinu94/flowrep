@@ -386,6 +386,36 @@ class WorkoutEngine {
       _signalProcessor.observeForAxisLearning(s);
       gp = _signalProcessor.signedGyroProjection(s);
     }
+    if (gp != null && _gpThreshold == null) {
+      // Self-contained g_p auto-calibration, decoupled on purpose from the
+      // combined-signal auto-calibration below: axis learning takes
+      // axisLearningWindowSamples (~100, ~2s) to complete, which can
+      // easily be LONGER than a single calibrationReps=1 rep - if this
+      // instead tried to read gp only during WorkoutState.calibrating (the
+      // first version of this code did exactly that), it would frequently
+      // still be null by the time that state's calibration completes, and
+      // _gpThreshold would silently never get set at all (found via real
+      // flutter test, not simulation - the Python proof always calibrated
+      // g_p directly from a single already-defined rep, so it never hit
+      // this ordering issue). So instead: track the largest |g_p| seen at
+      // all, on any sample, since the axis became known, and finalise a
+      // threshold the first time that peak has clearly come back down -
+      // i.e. this rep, whichever one it turns out to be, is treated as
+      // g_p's own one-rep calibration, independently of which sample
+      // index the COMBINED signal happened to finish its own calibration
+      // on.
+      final absGp = gp.abs();
+      if (absGp > _gpPeakDuringCalibrationAbs) {
+        _gpPeakDuringCalibrationAbs = absGp;
+        _gpSignAtPeakDuringCalibration = gp >= 0 ? 1 : -1;
+      }
+      const minGpPeakForCalibration = 20.0; // deg/s - a real curl, not noise
+      if (_gpPeakDuringCalibrationAbs > minGpPeakForCalibration &&
+          absGp < _gpPeakDuringCalibrationAbs * 0.3) {
+        _gpThreshold = _gpPeakDuringCalibrationAbs * 0.5;
+        _gpDirection = _gpSignAtPeakDuringCalibration;
+      }
+    }
 
     // DIAGNOSTIC: log every 50th sample, plus during calibrating every 10th
     final bool shouldLog = _diagEngineSampleCount % 50 == 0 ||
@@ -460,9 +490,8 @@ class WorkoutEngine {
 
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
-        if (gp != null && gp.abs() > _gpPeakDuringCalibrationAbs) {
-          _gpPeakDuringCalibrationAbs = gp.abs();
-          _gpSignAtPeakDuringCalibration = gp >= 0 ? 1 : -1;
+        if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
+          _detectPeakSigned(gp);
         }
         if (_repsInSet.length >= calibrationReps) {
           // Median rather than mean: robust against a single outlier
@@ -479,15 +508,10 @@ class WorkoutEngine {
               baselineLevel + (medianPeak - baselineLevel) * 0.5;
           _peakThreshold =
               max(calibrated, baselineLevel + minThresholdAboveBaseline);
-          // Schritt B: calibrate the shadow g_p threshold from the SAME
-          // calibration rep(s), using whichever sign had the larger
-          // excursion as the "primary" direction (see field doc comment -
-          // there's no a-priori reason the learned axis's positive
-          // direction lines up with the concentric phase).
-          if (useSignedProjectionCounting && _gpPeakDuringCalibrationAbs > 0) {
-            _gpThreshold = _gpPeakDuringCalibrationAbs * 0.5;
-            _gpDirection = _gpSignAtPeakDuringCalibration;
-          }
+          // Schritt B's own g_p threshold is calibrated independently, see
+          // the self-contained tracking near the top of this method - not
+          // tied to this specific state-completion moment (it used to be;
+          // see that comment for why that ordering was wrong).
           _state = WorkoutState.active;
           _emitStateEvent();
         }
