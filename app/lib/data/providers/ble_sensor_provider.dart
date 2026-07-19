@@ -6,18 +6,19 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../../domain/workout_engine.dart';
 import '../logger.dart';
 import '../protocol/ble_protocol_parser.dart';
+import 'batch_dedup_tracker.dart';
 import 'sensor_provider.dart';
 
 /// Real hardware implementation of ISensorProvider. Talks to the
 /// "GymTracker" GATT service defined in docs/protocol.yaml.
 ///
-/// NOT hardware-tested: written in Claude.ai before the M5StickC Plus2
-/// arrived, per ADR (see docs/adr/ARCHITECTURE_DECISION_RECORDS.md and the
-/// chat note accompanying this commit). Treat this file as a careful draft,
-/// not verified working code, until it has been run against real hardware.
-/// The first thing to check on real hardware: does deviceName match
-/// exactly what the firmware advertises ("GymTracker"), and does MTU
-/// negotiation actually reach >= 55 bytes (see protocol.yaml constraints).
+/// Hardware-verified (2026-07-18, commit accf44d): live logcat against a
+/// real M5StickC Plus2 showed protocol v2 parsing correctly at ~11.8 Hz
+/// (nominal 12.5 Hz per docs/01_protocol.yaml timing:, close enough to
+/// account for BLE/GATT round-trip variance), with ENGINE sample counts
+/// rising as expected. Rep counting itself was still gated by calibration
+/// state/threshold in that same test - a WorkoutEngine concern, not a
+/// connection/parsing one, and outside this file's scope.
 class BleSensorProvider implements ISensorProvider {
   static const String deviceName = 'GymTracker';
 
@@ -82,8 +83,28 @@ class BleSensorProvider implements ISensorProvider {
   double _pollingRateHz = 0;
   int _pollStartMicros = 0;
   int _pollBatchCount = 0;
-  int _lastBatchTimestampMs = -1;  // deduplication: skip batches already read
+  // S5 (RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md): was a bare
+  // `_lastBatchTimestampMs` + silent `continue`, so duplicate reads and
+  // (more importantly) any gap suggesting a batch was never read at all
+  // were both invisible. Extracted into a pure, unit-tested class
+  // (batch_dedup_tracker.dart) so the counts below are real, not assumed.
+  final _dedupTracker = BatchDedupTracker(expectedBatchIntervalMs: 80);
   int _diagSampleCount = 0;         // diagnostics: how many samples fed to engine
+
+  /// How many `read()` results were exact duplicates of the previous
+  /// batch (expected and harmless - the firmware's characteristic value
+  /// just hadn't changed yet between two polls).
+  int get duplicateReads => _dedupTracker.duplicateSkips;
+
+  /// Estimated number of batches that were likely produced by the
+  /// firmware but never seen by any `read()` call (a real gap between
+  /// two DIFFERENT accepted timestamps, larger than one batch interval).
+  /// This is the number S5 was originally about - previously not tracked
+  /// at all. Should stay at/near 0 now that the firmware's honestly-paced
+  /// v2 batch rate (~12.5 Hz, docs/01_protocol.yaml) is comfortably below
+  /// this app's ~30 Hz poll rate; a persistently non-zero value here means
+  /// that assumption no longer holds and is worth a fresh look.
+  int get estimatedMissedBatches => _dedupTracker.estimatedMissedBatches;
 
   @override
   Future<void> connect() async {
@@ -229,7 +250,7 @@ class BleSensorProvider implements ISensorProvider {
 
     _pollStartMicros = DateTime.now().microsecondsSinceEpoch;
     _pollBatchCount = 0;
-    _lastBatchTimestampMs = -1;  // reset on reconnect to avoid stale dedup
+    _dedupTracker.reset();  // reset on reconnect to avoid stale dedup/gap state
     _diagSampleCount = 0;        // reset diagnostics for new session
 
     Future<void> poll() async {
@@ -247,15 +268,17 @@ class BleSensorProvider implements ISensorProvider {
             _parseErrors++;
             continue;
           }
-          // Deduplication: the firmware updates the characteristic at
-          // ~50 Hz, but we poll at ~30 Hz. Without dedup, the same batch
-          // would be read and fed to the Workout Engine multiple times,
-          // corrupting the EMA filter and rep counting.
+          // Deduplication + gap detection (S5): the v2 firmware updates the
+          // characteristic at an honestly-paced ~12.5 Hz (80ms/batch,
+          // docs/01_protocol.yaml timing:), while we poll at ~30 Hz - so in
+          // practice most polls should either see a genuinely new batch or
+          // a duplicate of the one just processed, not silently miss one
+          // outright. shouldSkip() tracks both cases instead of assuming
+          // this and never checking again (see batch_dedup_tracker.dart).
           final list = Uint8List.fromList(bytes);
           final batchTimestampMs =
               ByteData.sublistView(list).getUint32(0, Endian.little);
-          if (batchTimestampMs == _lastBatchTimestampMs) continue;
-          _lastBatchTimestampMs = batchTimestampMs;
+          if (_dedupTracker.shouldSkip(batchTimestampMs)) continue;
 
           final samples = _parser.parseBatch(list);
           _receivedBatches++;
@@ -280,7 +303,9 @@ class BleSensorProvider implements ISensorProvider {
                 'ay=${s.ay.toStringAsFixed(3)} az=${s.az.toStringAsFixed(3)}) '
                 'mag=${s.accelMagnitude.toStringAsFixed(3)} '
                 'gyro_mag=${s.gyroMagnitude.toStringAsFixed(1)} '
-                'totalSamples=$_diagSampleCount');
+                'totalSamples=$_diagSampleCount '
+                'dupes=${_dedupTracker.duplicateSkips} '
+                'estMissed=${_dedupTracker.estimatedMissedBatches}');
           }
 
           // Log read() timing for rate diagnostics.
