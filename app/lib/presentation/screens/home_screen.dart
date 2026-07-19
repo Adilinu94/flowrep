@@ -10,6 +10,7 @@ import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
 import '../../domain/workout_engine.dart';
+import 'calibration/calibration_wizard_screen.dart';
 
 /// Phase 0/1 screen: connect button, status text, live rep counter.
 /// Works with both MockSensorProvider and BleSensorProvider.
@@ -274,7 +275,7 @@ class _HomeScreenState extends State<HomeScreen> {
               if (_connectionState == SensorConnectionState.connected && !_isMock) ...[
                 const SizedBox(height: 12),
                 ElevatedButton.icon(
-                  onPressed: _showCalibrationDialog,
+                  onPressed: _openCalibrationWizard,
                   icon: const Icon(Icons.tune),
                   label: const Text('Mit Assistent kalibrieren'),
                   style: ElevatedButton.styleFrom(
@@ -384,6 +385,10 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // Absichtlich noch vorhanden, aber nicht mehr verdrahtet (siehe
+  // _openCalibrationWizard unten) - erst entfernen, wenn Guided
+  // Calibration 2.0 auf echter Hardware bestaetigt ist.
+  // ignore: unused_element
   void _showCalibrationDialog() {
     showDialog(
       context: context,
@@ -393,6 +398,30 @@ class _HomeScreenState extends State<HomeScreen> {
         child: _CalibrationDialog(engine: _engine),
       ),
     );
+  }
+
+  // Guided Calibration 2.0 (Konzept-Dokument, Paket 4-9). Ersetzt den
+  // Aufruf von _showCalibrationDialog() oben als Einstiegspunkt fuer den
+  // "Mit Assistent kalibrieren"-Button. _showCalibrationDialog() und
+  // _CalibrationDialog bleiben bewusst im Code (siehe deren Definition
+  // unten) statt geloescht zu werden, bis die neue Kalibrierung 2.0 auf
+  // echter Hardware end-to-end bestaetigt ist.
+  Future<void> _openCalibrationWizard() async {
+    final deviceId = _bleDeviceId;
+    if (deviceId == null) return;
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (ctx) => CalibrationWizardScreen(
+          samples: widget.sensorProvider.samples,
+          exerciseId: _engine.exerciseId,
+          deviceId: deviceId,
+        ),
+      ),
+    );
+    if (saved == true) {
+      // Reload so der Home-Screen den neuen Stand sieht.
+      _loadCalibration();
+    }
   }
 
   @override

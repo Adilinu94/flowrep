@@ -273,3 +273,57 @@ Adi:
   **Ergebnis: keine Änderung committet.** Nach dieser Prüfung keinen echten Bug gefunden, der einen Eingriff rechtfertigen würde – nichts angefasst, um funktionierenden, bereits getesteten Code nicht ohne Grund zu riskieren. "Push und commit" bezieht sich damit auf diesen Dokumentations-Eintrag, nicht auf Code.
 
   **Wichtig für die Koordination:** Agent-3-CalibrationUI hat in ihrer letzten Session (Eintrag oben, "was kannst du noch tun"-Runde) angeboten, main + `agent2-calibration-controller` + `agent3-calibration-ui` final zusammenzuführen, sobald diese Architektur-Entscheidung bestätigt ist – die ist jetzt gefallen. Damit kein doppelter/kollidierender Merge-Versuch entsteht: diese Session merged NICHTS branchübergreifend, das bleibt bei Agent 3 (oder wo auch immer Adi das jetzt bestätigt). Mein eigener `agent2-calibration-controller-contract-port`-Branch bleibt unverändert als reine Referenz stehen, ist kein Merge-Kandidat.
+
+### 2026-07-17 (Session: Agent-3-CalibrationUI, ausgefuehrt von Claude)
+
+Bauplan: `docs/Umbauplan Flowrep/AGENT_3_CALIBRATION_UI_PERSISTENCE.md`. Branch `agent3-calibration-ui`, gepusht, NICHT nach main gemerged (2 Commits: `b4f7639`, `eee01e4`).
+
+**Erledigt (Schritt A + B des Bauplans):**
+- `calibration_contract.dart`: CalibrationStage-Enum + CalibrationController-Interface (vorlaeufig, siehe wichtigen Punkt unten).
+- `calibration_controller_placeholder.dart`: temporaerer Platzhalter, macht den Wizard end-to-end lauffaehig/vorfuehrbar ohne echten Algorithmus.
+- `calibration_wizard_screen.dart`: 5-stufiger Wizard (Ruhe/1 Rep/5 Reps/3 langsame Reps/Review), Abbrechen + Neu starten.
+- `home_screen.dart`: Kalibrierungs-Button navigiert jetzt zum neuen Wizard. Alter `_showCalibrationDialog`/`_CalibrationDialog` bewusst NICHT geloescht (mit Kommentar markiert), bis Calibration 2.0 auf echter Hardware bestaetigt ist.
+- `calibration_store.dart`: `saveProfile()`/`loadProfile()` fuer `ExerciseProfile`, Migration-on-Read fuer altes v1-Format, `deleteAll()` erweitert.
+- `calibration_store_test.dart`: 7 neue Tests.
+- Verifiziert: `flutter analyze` 0 issues, `flutter test` alle 23 Tests gruen.
+
+**[!] Wichtig, braucht eine eigene Integrations-Runde:** `app/lib/domain/calibration_controller.dart` (Agent 2s echte Known-Count-Implementierung, Referenz auf Commit `d76ebbb`) existiert bereits im Arbeitsverzeichnis (untracked, nicht von mir erstellt). Sie hat ein ANDERES Interface als das, was ich in `calibration_contract.dart` definiert hatte: eigene `CalibrationStage`-Enum (`rest/singleRep/knownSet/slowSet/review/done/failed` statt meiner `restBaseline/singleRepAxis/knownCountFit/tempoCheck/review/failed`), Callback-basiert (`onStageAdvanced`, `onQualityGateFail`, `onReviewDataReady`) statt Stream-basiert, explizites `start()`/`finishStage()` statt Auto-Advance, und eine reichhaltigere `CalibrationReviewData`/`RepMark`-Struktur fuer die Review-Stufe, die mein aktueller Review-Screen noch nicht nutzt. Ich habe das NICHT selbst integriert (bewusste Entscheidung, siehe Begruendung unten) - `calibration_wizard_screen.dart` laeuft aktuell nur gegen den Platzhalter. Empfehlung: eigener, fokussierter Durchgang, der `calibration_contract.dart` entweder an die echte Klasse anpasst oder ganz entfernt und den Wizard direkt gegen `CalibrationController` verdrahtet.
+
+**[!] Live-Kollision waehrend der Arbeit beobachtet:** Beim ersten Edit von `calibration_store.dart` fand ich zwischen meinem eigenen `read` und `edit_block` bereits fremde, halb-fertige Aenderungen vor (doppelte Imports, ein `_keyProfilesV2`-Feld, das nicht von mir stammte) - eine andere Session hat zeitgleich an derselben Datei gearbeitet, obwohl ich auf einem eigenen Branch war. **Branch-Isolation schuetzt nicht vor Kollisionen auf demselben lokalen Checkout, wenn zwei Sessions gleichzeitig dieselbe Datei auf derselben Festplatte bearbeiten** - das ist unabhaengig vom Git-Branch, da beide Sessions denselben Arbeitsbaum sehen, bevor irgendwas committet ist. Ich habe die doppelten Imports bereinigt und bin dem `_keyProfilesV2`-Design gefolgt statt ein eigenes zu bauen, um die Kollision nicht zu verschaerfen. **Empfehlung an Adi: pro Agent nicht nur einen eigenen Branch, sondern moeglichst auch einen eigenen lokalen Checkout/Ordner verwenden, wenn mehrere Sessions wirklich gleichzeitig laufen.**
+
+**Ebenfalls bereits vorgefunden (nicht von mir erstellt), auf dem ich aufgebaut habe:** `app/lib/domain/models/exercise_profile.dart` - eine bereits sehr durchdachte `ExerciseProfile`-Klasse (PCA-Achse, `ChosenSignal`-Enum, Bayes'sches Blending bei Rekalibrierung, `legacy()`-Factory, JSON-Serialisierung). Ich habe meine urspruenglich geplante eigene `CalibrationResult`-Klasse verworfen und stattdessen direkt gegen `ExerciseProfile` gebaut - deutlich besseres Ergebnis als mein urspruenglicher Plan.
+
+**Nicht angefasst, aber gesehen (nicht mein Scope):** ein Ordner `data/` im Repo-Root (Ursprung unklar) und die 5 Bauplan-Dokumente liegen zusaetzlich flach in `docs/Umbauplan Flowrep/` (vermutlich manuell von Adi hineinkopiert, meine eigene Branch-Version liegt in `docs/Umbauplan Flowrep/agenten-baupläne/`).
+
+**Naechste Schritte:** (1) Merge von `agent1-signal-pipeline` falls fertig, (2) Integrations-Runde CalibrationController (echt) <-> Wizard-UI, (3) danach `agent3-calibration-ui` mergen.
+
+
+### Nachtrag 2026-07-17 (Session: Agent-3-CalibrationUI, Integrationsrunde)
+
+Echte Integration mit `calibration_controller.dart` (Agent 2) abgeschlossen, Branch `agent3-calibration-ui` (Commit `f4a161c`), weiterhin nicht gemerged.
+
+- `calibration_contract.dart` + `calibration_controller_placeholder.dart` entfernt (mein eigenes, vorheriges Interface war nicht mehr korrekt).
+- `calibration_wizard_screen.dart` komplett gegen die echte, Callback-basierte API neu gebaut: Stufen werden per "Weiter"-Button beendet (`finishStage()`), nicht automatisch. Qualitaets-Gate-Fehler werden angezeigt, Review-Stufe erlaubt Korrektur der tatsaechlichen Wiederholungszahl (`userCorrectCount`), Uebernehmen ruft `finalize(previous: ...)` mit dem ggf. vorhandenen alten Profil auf (nutzt das eingebaute Bayes'sche Blending).
+- 2 neue Widget-Tests GEGEN DEN ECHTEN CONTROLLER (kein Fake mehr): Ruhe-Gate-Uebergang mit realistischen stillen Samples, Abbrechen-Verhalten.
+- `flutter analyze`: 0 issues. `flutter test`: 25/25 gruen.
+
+**Bewusst nicht getestet:** der volle knownSet/slowSet-Sweep-Flow (haengt von Algorithmus-internen Schwellen ab, die ich nur teilweise nachvollzogen habe) und der tatsaechliche Speichervorgang (`CalibrationStore` braucht in einem reinen Widget-Test einen gemockten Secure-Storage-Plattform-Channel, den ich nicht aufgesetzt habe). Ebenfalls faellt auf: **`calibration_controller.dart` hat noch keine eigene Testdatei** (`calibration_controller_test.dart` existiert nicht) - das war urspruenglich Teil von Agent 2s eigenem Bauplan und sollte nachgeholt werden, ist aber nicht mein Scope.
+
+**Naechste sinnvolle Schritte:** (1) `calibration_controller_test.dart` fuer Agent 2s Algorithmus nachziehen, (2) echter Hardware-Test des kompletten Wizard-Flows (Agent 4), (3) Merge-Reihenfolge klaeren (dieser Branch haengt inhaltlich von `calibration_controller.dart` ab, das noch auf keinem Branch committet ist - vor dem Merge von `agent3-calibration-ui` muss klar sein, wer/wann `calibration_controller.dart` committet).
+
+
+---
+
+## 2026-07-18 (Fortsetzung, Agent-3-CalibrationUI): main-Regression eingegrenzt - und waehrenddessen von der echten Agent-1-Session gefixt
+
+**Root Cause gefunden:** NICHT die adaptive Schwelle (meine erste Hypothese, getestet und als wirkungslos verworfen - Edit gemacht, verifiziert dass sie am Testergebnis nichts aendert, sauber zurueckgenommen, nichts davon ist committet). Die tatsaechliche Ursache: `minRepIntervalSamples = 40` (~800ms Sperrzeit) war laenger als der Wiederholungs-Takt im "clean series"-Test (35 Samples/Rep = 700ms) - dadurch wurde JEDE ZWEITE Wiederholung von der eigenen Sperrzeit der vorherigen verschluckt (10 real -> 5 gezaehlt, exakt die Haelfte).
+
+**Waehrend ich das eingrenzte, hat die tatsaechliche Agent-1-Session (Commit `2e2a074`, "Claude-c00679f3" laut Testkommentar) genau das bereits gefunden und gefixt** - `minRepIntervalSamples` 40 -> 24. Ich habe NICHTS davon selbst committet, nur per `git pull` uebernommen und verifiziert.
+
+**Ergebnis nach dem Pull:** 3 der 4 urspruenglichen Regressionen sind jetzt gruen. Die letzte ("very tight spurious re-trigger") ist ein bereits DOKUMENTIERTES, bekanntes Limit von `minRepIntervalSamples` allein - im Testkommentar selbst erklaert: kein Wert loest gleichzeitig das echte Doppel-Hub-Problem UND die normale Kadenz; die eigentliche Loesung ist Schritt B (g_p, vorzeichenbehaftete Gyro-Projektion, in der Simulation mit 10/10 ohne jede Sperrzeit bewiesen), aber noch nicht in workout_engine.dart portiert. **Ich habe hier bewusst NICHT weiter editiert** - die Session, die das dokumentiert hat, ist erkennbar mitten in der Arbeit daran, ein Eingriff von mir haette nur Kollisionsrisiko ohne Mehrwert bedeutet.
+
+**[!] Neue, wichtigere Kollisions-Beobachtung als der calibration_store.dart-Fund von gestern:** Waehrend dieser Sitzung wechselte der ausgecheckte Branch unter mir von `agent1-signal-pipeline` zu `agent4-firmware-hardware`, OHNE dass ich das selbst ausgeloest habe - eine andere, zeitgleich laufende Session hat auf demselben Rechner offenbar `git checkout` in einem eigenen Terminal ausgefuehrt. Der ausgecheckte Branch ist Zustand des GESAMTEN Repos (`.git/HEAD`), nicht pro Terminal/Session - zwei Sessions auf demselben Checkout koennen sich also nicht nur beim Datei-Inhalt in die Quere kommen (wie gestern bei calibration_store.dart), sondern auch beim Branch selbst. Ich habe das rechtzeitig bemerkt (Zeilenzahl der Datei passte nicht mehr zu meiner Erwartung) und nichts Falsches committet, aber das haette leicht uebersehen werden koennen. **Verstaerkt meine Empfehlung von gestern: bei echt paralleler Arbeit lieber getrennte lokale Checkouts pro Agent statt ein gemeinsamer Ordner mit Branch-Wechseln.**
+
+**Zusatzfund:** `STATUS_FORTSCHRITT.md` selbst ist inzwischen auf mindestens zwei Branches unterschiedlich gewachsen (auf `agent4-firmware-hardware` gab es bereits einen Merge-Commit "resolve STATUS_FORTSCHRITT conflict"). Dieser Eintrag hier landet auf `agent3-calibration-ui` - beim finalen Zusammenfuehren aller Branches muss diese Datei wahrscheinlich manuell/inhaltlich zusammengefuehrt werden, ein reiner Git-Merge wird hier vermutlich nicht ausreichen.
+
+**main selbst weiterhin ungepatcht** (die kaputten Commits von gestern sind noch dort) - Empfehlung unveraendert: nicht als Basis nutzen, bis `agent1-signal-pipeline` gemerged ist.
