@@ -22,6 +22,24 @@ import '../../domain/repositories/i_workout_repository.dart';
 
 part 'drift_database.g.dart';
 
+// @DataClassName on all four tables below (2026-07-19 fix for the 6
+// "return_of_invalid_type"/"undefined_getter" flutter analyze errors in
+// drift_database.g.dart): Drift derives a table's auto-generated data
+// class name by singularizing the TABLE class name - "WorkoutSessions"
+// (table) -> "WorkoutSession" (auto data class) - which collides with
+// the UNRELATED domain model class of the same singular name in
+// domain/models/workout_models.dart (imported here as `domain`, and
+// consistently used AS `domain.WorkoutSession` etc. throughout this
+// file's hand-written repository code below - that part was already
+// correct; the collision was specifically in Drift's OWN generated
+// code, which has no knowledge of that import alias and generates the
+// bare, unprefixed name it derives from the table class). Giving each
+// table's generated row/data class an explicit, distinct name removes
+// the collision at its source instead of working around it downstream.
+// No other change needed in this file: every drift-row usage below is
+// through type inference (`final rows = await _db.select(...).get();`),
+// never a bare, unqualified type annotation.
+@DataClassName('WorkoutSessionRow')
 class WorkoutSessions extends Table {
   TextColumn get id => text()();
   DateTimeColumn get startedAt => dateTime()();
@@ -31,6 +49,7 @@ class WorkoutSessions extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('ExerciseSetRow')
 class ExerciseSets extends Table {
   TextColumn get id => text()();
   TextColumn get sessionId => text().references(WorkoutSessions, #id)();
@@ -43,12 +62,14 @@ class ExerciseSets extends Table {
   Set<Column> get primaryKey => {id};
 }
 
+@DataClassName('RepRow')
 class Reps extends Table {
   TextColumn get setId => text().references(ExerciseSets, #id)();
   DateTimeColumn get timestamp => dateTime()();
   RealColumn get peakMagnitude => real()();
 }
 
+@DataClassName('CorrectionEventRow')
 class CorrectionEvents extends Table {
   TextColumn get id => text()();
   TextColumn get setId => text().references(ExerciseSets, #id)();
