@@ -95,6 +95,7 @@ class WorkoutEngine {
     this.baselineEmaAlpha = 0.01,
     this.minThresholdAboveBaseline = 0.10,
     this.hasValidCalibration = false,
+    this.useSignedProjectionCounting = false,
     double gyroWeight = 0.05,
     double lowPassAlpha = 0.6,
     this.initialPeakThreshold,
@@ -203,6 +204,24 @@ class WorkoutEngine {
   /// span a pause/resume within one session.
   final List<double> _confirmedPeaks = [];
 
+  // --- Schritt B (P2, S8) shadow-counting state - only touched when
+  // useSignedProjectionCounting is true. Entirely separate from the
+  // combined-signal fields above; does not read or write any of them. ---
+  double? _gpThreshold; // set once, from the same calibration rep(s) as _peakThreshold
+  int _gpDirection = 1; // +1 or -1: which sign of g_p corresponds to a rep's primary excursion
+  double _gpPeakDuringCalibrationAbs = 0.0; // |g_p| high-water mark while calibrating
+  int _gpSignAtPeakDuringCalibration = 1;
+  bool _gpAboveThreshold = false;
+  int _gpRepCount = 0;
+
+  /// Rep count from the Schritt B signed-gyro-projection shadow path, or
+  /// null if [useSignedProjectionCounting] is false or the axis/threshold
+  /// haven't been learned yet (see [SignalProcessor.isSignedProjectionReady]
+  /// and [_gpThreshold]). See [useSignedProjectionCounting] doc comment for
+  /// what this is and isn't yet.
+  int? get signedProjectionRepCount =>
+      useSignedProjectionCounting && _gpThreshold != null ? _gpRepCount : null;
+
   /// Sample index (from [diagEngineSampleCount], already incremented on
   /// every [processSample] call) of the last rep actually added to
   /// [_repsInSet]. Null until the first rep of the current engine lifetime
@@ -267,6 +286,23 @@ class WorkoutEngine {
   /// See docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md, ADR-020.
   // ignore: prefer_final_fields
   bool hasValidCalibration;
+
+  /// Agent 1 / Schritt B (P2, S8, docs/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md,
+  /// tools/workout_engine_simulation.py pruefe_strukturellen_gp_fix): when
+  /// true, the engine ALSO runs a parallel, signed-gyro-projection-based
+  /// rep count (see [signedProjectionRepCount]) alongside the existing
+  /// combined-magnitude [_detectPeak] path, which remains completely
+  /// unaffected and is still what [ExerciseSet.countedReps] reports.
+  ///
+  /// Deliberately a SHADOW counter, not a replacement, for now: g_p fixes
+  /// the double-hump case structurally in simulation (10/10 with zero
+  /// refractory, vs. combined's ~19-20/10 under the same condition - see
+  /// the Python proof), but this Dart port has not been run against real
+  /// hardware, unlike the combined-signal path (verified 2026-07-18,
+  /// commit accf44d). Flip this on to compare the two counts against a
+  /// real workout before considering a switch of which one actually gates
+  /// [ExerciseSet.countedReps].
+  final bool useSignedProjectionCounting;
 
   /// True for a brief window right after guided calibration finishes.
   /// Calibration completes as soon as the Nth peak is CONFIRMED (one
@@ -343,6 +379,44 @@ class WorkoutEngine {
 
     final combinedSignal = _signalProcessor.process(s);
 
+    // Schritt B shadow path: entirely opt-in, computed unconditionally
+    // alongside (never instead of) the combined-signal path above.
+    double? gp;
+    if (useSignedProjectionCounting) {
+      _signalProcessor.observeForAxisLearning(s);
+      gp = _signalProcessor.signedGyroProjection(s);
+    }
+    if (gp != null && _gpThreshold == null) {
+      // Self-contained g_p auto-calibration, decoupled on purpose from the
+      // combined-signal auto-calibration below: axis learning takes
+      // axisLearningWindowSamples (~100, ~2s) to complete, which can
+      // easily be LONGER than a single calibrationReps=1 rep - if this
+      // instead tried to read gp only during WorkoutState.calibrating (the
+      // first version of this code did exactly that), it would frequently
+      // still be null by the time that state's calibration completes, and
+      // _gpThreshold would silently never get set at all (found via real
+      // flutter test, not simulation - the Python proof always calibrated
+      // g_p directly from a single already-defined rep, so it never hit
+      // this ordering issue). So instead: track the largest |g_p| seen at
+      // all, on any sample, since the axis became known, and finalise a
+      // threshold the first time that peak has clearly come back down -
+      // i.e. this rep, whichever one it turns out to be, is treated as
+      // g_p's own one-rep calibration, independently of which sample
+      // index the COMBINED signal happened to finish its own calibration
+      // on.
+      final absGp = gp.abs();
+      if (absGp > _gpPeakDuringCalibrationAbs) {
+        _gpPeakDuringCalibrationAbs = absGp;
+        _gpSignAtPeakDuringCalibration = gp >= 0 ? 1 : -1;
+      }
+      const minGpPeakForCalibration = 20.0; // deg/s - a real curl, not noise
+      if (_gpPeakDuringCalibrationAbs > minGpPeakForCalibration &&
+          absGp < _gpPeakDuringCalibrationAbs * 0.3) {
+        _gpThreshold = _gpPeakDuringCalibrationAbs * 0.5;
+        _gpDirection = _gpSignAtPeakDuringCalibration;
+      }
+    }
+
     // DIAGNOSTIC: log every 50th sample, plus during calibrating every 10th
     final bool shouldLog = _diagEngineSampleCount % 50 == 0 ||
         (_state == WorkoutState.calibrating && _diagEngineSampleCount % 10 == 0);
@@ -416,6 +490,9 @@ class WorkoutEngine {
 
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
+        if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
+          _detectPeakSigned(gp);
+        }
         if (_repsInSet.length >= calibrationReps) {
           // Median rather than mean: robust against a single outlier
           // calibration rep (e.g. the device getting bumped) skewing the
@@ -431,6 +508,10 @@ class WorkoutEngine {
               baselineLevel + (medianPeak - baselineLevel) * 0.5;
           _peakThreshold =
               max(calibrated, baselineLevel + minThresholdAboveBaseline);
+          // Schritt B's own g_p threshold is calibrated independently, see
+          // the self-contained tracking near the top of this method - not
+          // tied to this specific state-completion moment (it used to be;
+          // see that comment for why that ordering was wrong).
           _state = WorkoutState.active;
           _emitStateEvent();
         }
@@ -438,6 +519,9 @@ class WorkoutEngine {
 
       case WorkoutState.active:
         _detectPeak(s, combinedSignal);
+        if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
+          _detectPeakSigned(gp);
+        }
         if (_lastMovementAt != null &&
             s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
           _endSet();
@@ -566,6 +650,27 @@ class WorkoutEngine {
     }
   }
 
+  /// Schritt B (P2, S8) shadow counting: rising/falling edge on the SIGNED
+  /// g_p signal instead of _peakThreshold-gated combined magnitude. No
+  /// refractory, no debounce, no prominence - proven in
+  /// tools/workout_engine_simulation.py (pruefe_strukturellen_gp_fix) not
+  /// to need any of that, because the opposite-signed lobe (the OTHER
+  /// half of the same rep, e.g. the eccentric phase) never crosses a
+  /// same-signed threshold in the first place. Callers pass the raw
+  /// signed [gp] value; normalisation by [_gpDirection] (which sign is
+  /// "the primary excursion direction", learned during calibration - see
+  /// [_gpSignAtPeakDuringCalibration]) happens inside this method.
+  void _detectPeakSigned(double gp) {
+    final normalized = gp * _gpDirection;
+    final threshold = _gpThreshold!;
+    if (!_gpAboveThreshold && normalized > threshold) {
+      _gpAboveThreshold = true;
+    } else if (_gpAboveThreshold && normalized < threshold * 0.3) {
+      _gpAboveThreshold = false;
+      _gpRepCount++;
+    }
+  }
+
   void _endSet() {
     if (_repsInSet.isEmpty) {
       _state = WorkoutState.idle;
@@ -620,6 +725,15 @@ class WorkoutEngine {
     _confirmedPeaks.clear();
     _fallingDebounceCount = 0;
     _preMin = double.infinity;
+    // Schritt B: NOT re-calibrated by guided calibration (that's a
+    // separate path, _findGyroValidatedPeaks, not _detectPeak) - reset to
+    // "not yet calibrated" rather than carry over a threshold from a
+    // possibly-stale earlier auto-calibration.
+    _gpThreshold = null;
+    _gpDirection = 1;
+    _gpPeakDuringCalibrationAbs = 0.0;
+    _gpAboveThreshold = false;
+    _gpRepCount = 0;
     _excursionFallingThreshold = null;
     _lastCalibrationPeakCount = 0;
     _diagMaxAccel = 0;
@@ -795,6 +909,11 @@ class WorkoutEngine {
     _confirmedPeaks.clear();
     _fallingDebounceCount = 0;
     _preMin = double.infinity;
+    _gpThreshold = null;
+    _gpDirection = 1;
+    _gpPeakDuringCalibrationAbs = 0.0;
+    _gpAboveThreshold = false;
+    _gpRepCount = 0;
     _excursionFallingThreshold = null;
     _repsInSet.clear();
     _state = WorkoutState.idle;
@@ -838,6 +957,13 @@ class WorkoutEngine {
     _confirmedPeaks.clear();
     _fallingDebounceCount = 0;
     _preMin = double.infinity;
+    _gpAboveThreshold = false;
+    _gpRepCount = 0;
+    // NOT resetting _gpThreshold/_gpDirection here: guided calibration
+    // (this method) doesn't produce a g_p calibration at all (see
+    // startGuidedCalibration doc comment above) - if one exists, it came
+    // from an earlier auto-calibration in this same session and stays
+    // valid; if none exists, this is a no-op either way.
     _excursionFallingThreshold = null;
     // Don't reset _baselineLevel — let the EMA adapt naturally from
     // whatever the current signal level is. A null baseline (fresh

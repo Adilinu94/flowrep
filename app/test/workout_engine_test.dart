@@ -87,6 +87,45 @@ List<SensorSample> _generateSyntheticDoubleHumpReps({
   return samples;
 }
 
+/// For the Schritt B (g_p) shadow-counting tests: a signed GYRO signal
+/// (not accel) with a genuine positive lobe (concentric) followed by a
+/// genuine negative lobe (eccentric) per rep - `sin(phase)` over a full
+/// 0..2*pi period, NOT `.abs()`'d like [_generateSyntheticDoubleHumpReps]
+/// above. This is what g_p actually looks like on real hardware; the
+/// magnitude-only helper above is deliberately the wrong shape for this
+/// (it's testing what combined/_detectPeak sees, which never has a sign).
+List<SensorSample> _generateSyntheticSignedGyroReps({
+  required int repCount,
+  double peakDegPerS = 200,
+  int samplesPerRep = 60,
+  int restSamplesBetween = 15,
+  int axis = 2, // 0=gx, 1=gy, 2=gz - which axis carries the signal
+}) {
+  final samples = <SensorSample>[];
+  var t = DateTime(2026, 1, 1);
+  const step = Duration(milliseconds: 20);
+
+  for (var rep = 0; rep < repCount; rep++) {
+    for (var i = 0; i < samplesPerRep; i++) {
+      final phase = (i / samplesPerRep) * 2 * pi;
+      final gyroValue = peakDegPerS * sin(phase);
+      samples.add(SensorSample(
+        timestamp: t,
+        ax: 0, ay: 0, az: 0,
+        gx: axis == 0 ? gyroValue : 0,
+        gy: axis == 1 ? gyroValue : 0,
+        gz: axis == 2 ? gyroValue : 0,
+      ));
+      t = t.add(step);
+    }
+    for (var i = 0; i < restSamplesBetween; i++) {
+      samples.add(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0));
+      t = t.add(step);
+    }
+  }
+  return samples;
+}
+
 void main() {
   group('WorkoutEngine', () {
     test('counts a clean series of repetitions without double-counting',
@@ -278,6 +317,100 @@ void main() {
               'be counted more often once the effective threshold is '
               'allowed to adapt down from recently confirmed peaks, not '
               'stay pinned to the fast-tempo calibration value.');
+    });
+
+    test(
+        'useSignedProjectionCounting (Agent 1 / Schritt B, P2/S8 '
+        'structural fix) counts a double-humped rep correctly WITHOUT '
+        'needing any refractory, unlike the combined-signal path',
+        () async {
+      // The actual structural fix, not the Schritt A noise-guard mitigation
+      // above: g_p separates concentric/eccentric by SIGN. A signed gyro
+      // signal with a genuine positive lobe then negative lobe (see
+      // _generateSyntheticSignedGyroReps) should count once per rep on the
+      // g_p shadow path even with the DEFAULT 24-sample refractory, which
+      // (per the Schritt A tests above) does NOT fix a comparably-shaped
+      // combined-signal double-hump.
+      final signed = _generateSyntheticSignedGyroReps(repCount: 10);
+
+      final tail = <SensorSample>[];
+      var t = signed.last.timestamp;
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        tail.add(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0));
+      }
+
+      final engine = WorkoutEngine(
+        exerciseId: 'bicep_curl',
+        useSignedProjectionCounting: true,
+      );
+      expect(engine.signedProjectionRepCount, isNull,
+          reason: 'Before any samples are processed, neither the axis nor '
+              'the g_p threshold have been learned yet.');
+
+      for (final s in [...signed, ...tail]) {
+        engine.processSample(s);
+      }
+      engine.dispose();
+
+      expect(engine.signedProjectionRepCount, isNotNull,
+          reason: 'After 10 reps worth of samples (well past the 100-sample '
+              'axis-learning window and the first calibration rep), the '
+              'shadow count should be available.');
+      expect(engine.signedProjectionRepCount, closeTo(10, 2),
+          reason: 'g_p should count close to the true 10 reps - see '
+              'tools/workout_engine_simulation.py pruefe_strukturellen_gp_fix '
+              'for the Python-side equivalent (exactly 10/10 there, but '
+              'that proof reads g_p from sample 1 - it does not model the '
+              'axisLearningWindowSamples=100 bootstrap cost this Dart port '
+              'actually has to pay before the shadow counter can start at '
+              'all, real value observed here: 8/10). Deliberately not '
+              'shrinking that window just to tighten this number - fewer '
+              'samples means a less reliable variance-based axis estimate '
+              'on real hardware, which matters far more than this test '
+              'looking cleaner.');
+    });
+
+    test(
+        'useSignedProjectionCounting defaults to false and leaves '
+        'countedReps/state completely unchanged when off', () async {
+      // The isolation guarantee this whole feature depends on: turning
+      // Schritt B off (the default) must reproduce EXACTLY the existing,
+      // hardware-verified combined-signal behaviour - same input, same
+      // count, just without a shadow number attached.
+      final signed = _generateSyntheticSignedGyroReps(repCount: 10);
+      final tail = <SensorSample>[];
+      var t = signed.last.timestamp;
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        tail.add(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 0));
+      }
+
+      Future<int?> run({required bool useSignedProjectionCounting}) async {
+        final engine = WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: useSignedProjectionCounting,
+        );
+        ExerciseSet? finishedSet;
+        engine.events.listen((e) {
+          if (e.completedSet != null) finishedSet = e.completedSet;
+        });
+        for (final s in [...signed, ...tail]) {
+          engine.processSample(s);
+        }
+        engine.dispose();
+        expect(engine.signedProjectionRepCount,
+            useSignedProjectionCounting ? isNotNull : isNull);
+        return finishedSet?.countedReps;
+      }
+
+      final countedOff = await run(useSignedProjectionCounting: false);
+      final countedOn = await run(useSignedProjectionCounting: true);
+
+      expect(countedOff, equals(countedOn),
+          reason: 'countedReps comes entirely from the combined-signal '
+              'path (_detectPeak), which Schritt B never writes to - '
+              'toggling the shadow counter must not change it.');
     });
 
     test('idle state transitions to calibrating on first movement, not '
