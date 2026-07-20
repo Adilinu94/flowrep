@@ -372,12 +372,15 @@ void main() {
     });
 
     test(
-        'useSignedProjectionCounting defaults to false and leaves '
-        'countedReps/state completely unchanged when off', () async {
-      // The isolation guarantee this whole feature depends on: turning
-      // Schritt B off (the default) must reproduce EXACTLY the existing,
-      // hardware-verified combined-signal behaviour - same input, same
-      // count, just without a shadow number attached.
+        'useSignedProjectionCounting off reproduces the exact historical '
+        'combined-signal count; on, it takes over countedReps once g_p is '
+        'ready (2026-07-19: no longer a pure shadow metric, see '
+        '_gpIsAuthoritative doc comment for the real-hardware false-'
+        'positive fix this enables)', () async {
+      // Half of the original isolation guarantee still holds and still
+      // matters: OFF (the default) must reproduce EXACTLY the existing,
+      // hardware-verified combined-signal behaviour, unaffected by any of
+      // the Schritt B machinery even existing in the class.
       final signed = _generateSyntheticSignedGyroReps(repCount: 10);
       final tail = <SensorSample>[];
       var t = signed.last.timestamp;
@@ -407,10 +410,108 @@ void main() {
       final countedOff = await run(useSignedProjectionCounting: false);
       final countedOn = await run(useSignedProjectionCounting: true);
 
-      expect(countedOff, equals(countedOn),
-          reason: 'countedReps comes entirely from the combined-signal '
-              'path (_detectPeak), which Schritt B never writes to - '
-              'toggling the shadow counter must not change it.');
+      expect(countedOff, equals(19),
+          reason: 'OFF must match the pre-Schritt-B combined-signal '
+              'baseline for this exact signal shape (empirically 19, not '
+              '~10 - this generator is gyro-only and produces a busier '
+              'combined-magnitude trace than a real single-hump curl '
+              'would, unrelated to g_p entirely) - the actual number here '
+              'matters far less than it staying IDENTICAL to whatever it '
+              'was before this fix, since OFF must be a complete no-op.');
+      expect(countedOn, isNotNull);
+      expect(countedOn, isNot(equals(countedOff)),
+          reason: 'This is now the INTENDED difference, not a bug: once '
+              'g_p is ready it becomes authoritative for countedReps '
+              '(_gpIsAuthoritative), specifically because the old '
+              'combined-signal-only countedReps could not tell a real '
+              'curl apart from arbitrary device motion (real-hardware '
+              'complaint, Adi 2026-07-18). If this ever accidentally '
+              'passes with countedOn == countedOff again, check whether '
+              '_gpIsAuthoritative actually went true during this run '
+              'before assuming the isolation guarantee came back.');
+    });
+
+    test(
+        'real-hardware bugfix 2026-07-19: arbitrary, non-repeating-axis '
+        'device motion (Adi, verbatim, 2026-07-18: "wenn ich den M5 nur '
+        'bewege oder etwas drehe werden reps gezaehlt") is no longer '
+        'counted once g_p has taken over, even though the SAME motion '
+        'reliably fooled the old combined-signal-only countedReps', () async {
+      // Calibrate for real curls first (theta from real hardware log
+      // values, 8.5-11.7), exactly the way home_screen.dart actually
+      // applies a loaded ExerciseProfile today (applyCalibration with
+      // just peakThreshold - see its call site for why there is no
+      // separate ExerciseProfile-specific method).
+      final engine = WorkoutEngine(
+        exerciseId: 'bicep_curl',
+        useSignedProjectionCounting: true,
+      );
+      engine.applyCalibration(peakThreshold: 9.5, minThresholdAboveBaseline: 0.10);
+
+      // First, real curls (single dominant axis, repeated) to get g_p's
+      // OWN threshold learned - this is what a real workout looks like
+      // before someone starts flailing the device around.
+      final rng = Random(11);
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 20);
+      for (var rep = 0; rep < 6; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * pi;
+          final gx = 130.0 * sin(phase);
+          final accel = 1.0 + 0.6 * sin(phase);
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: accel, az: 0, gx: gx, gy: 0, gz: 0,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 15; i++) {
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0));
+          t = t.add(step);
+        }
+      }
+      expect(engine.signedProjectionRepCount, isNotNull,
+          reason: 'g_p must be calibrated by now - the rest of this test '
+              'is meaningless otherwise (would silently fall back to the '
+              'old, known-broken combined path and pass for the wrong '
+              'reason).');
+
+      // Now: 8 bursts of ARBITRARY motion, each on a randomly chosen,
+      // DIFFERENT axis - 150-190 deg/s, the exact range seen in real
+      // hardware logs (Schritt-B test above: gyroMag up to 182.7). Not a
+      // curl: no consistent axis across bursts, which is exactly what
+      // g_p's calibration checks for.
+      var falsePositiveBursts = 0;
+      for (var burst = 0; burst < 8; burst++) {
+        final before = engine.signedProjectionRepCount!;
+        final axis = rng.nextInt(3);
+        final amp = 150.0 + rng.nextDouble() * 40.0;
+        final sign = rng.nextBool() ? 1.0 : -1.0;
+        for (var i = 0; i < 25; i++) {
+          final phase = (i / 25) * pi;
+          final g = sign * amp * sin(phase);
+          final gx = axis == 0 ? g : 0.0, gy = axis == 1 ? g : 0.0, gz = axis == 2 ? g : 0.0;
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0 + 0.4 * sin(phase), az: 0, gx: gx, gy: gy, gz: gz,
+          ));
+          t = t.add(step);
+        }
+        for (var i = 0; i < 10; i++) {
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0));
+          t = t.add(step);
+        }
+        if (engine.signedProjectionRepCount! > before) falsePositiveBursts++;
+      }
+
+      expect(falsePositiveBursts, lessThanOrEqualTo(1),
+          reason: 'Before this fix, the equivalent check against the old '
+              'combined-signal countedReps got a false positive on '
+              'basically every single burst in this amplitude range '
+              '(measured: 30/30 independent runs, 325+ false reps across '
+              '360 bursts). g_p, once authoritative, should reject nearly '
+              'all of them - allowing at most 1 is deliberate slack for '
+              'the small chance a random axis roughly lines up with the '
+              'learned one, not a claim of perfection.');
+      engine.dispose();
     });
 
     test('idle state transitions to calibrating on first movement, not '
