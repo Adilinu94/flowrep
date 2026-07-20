@@ -1546,6 +1546,145 @@ def pruefe_strukturellen_gp_fix(hz=50, n_reps=10, seed_basis=6000):
     return {"dominante_achse_idx": dominante_achse_idx, "kosinus_zur_echten_achse": kosinus_zur_echten_achse}
 
 
+def make_incidental_movement(n_events, hz=50, seed=9000, ruhe_zwischen_s=(0.4, 1.2),
+                              gyro_peak_range=(40.0, 160.0), accel_bump_range=(0.05, 0.35),
+                              dauer_s_range=(0.3, 0.9)):
+    """Inzidentelle Geraetebewegung OHNE Trainingsabsicht (Handy greifen, Arm
+    umlagern, kurz hinsehen/drehen) - reproduziert STATUS_FORTSCHRITT.md
+    2026-07-18 (Adi, woertlich): "Wenn den M5 nur beege oder etwas drehe
+    werden reps gezaehlt."
+
+    Kernunterschied zu den Curl-Personas oben (PERSONA_PROFILES): JEDES
+    Event zieht seine EIGENE, zufaellige Rotationsachse statt der einen
+    festen Persona-Achse - Alltagsbewegung folgt keiner konsistenten
+    anatomischen Achse wie ein Bizeps-Curl. Amplituden bewusst im selben
+    Bereich wie die schwaecheren Curl-Personas (weak/slow), NICHT
+    kuenstlich klein gewaehlt - der Beschwerdepunkt ist kleine, beilaeufige
+    Bewegung, nicht nur grobe Fehlbedienung.
+    """
+    rng = np.random.default_rng(seed)
+    dt = 1.0 / hz
+    acc_rows, gyro_rows = [], []
+
+    def ruhe(dauer_s):
+        for _ in range(max(1, int(dauer_s * hz))):
+            acc_rows.append([rng.normal(0, 0.02), rng.normal(0, 0.02),
+                             1.0 + rng.normal(0, 0.02)])
+            gyro_rows.append(GYRO_BIAS_VEKTOR + rng.normal(0, 3.0, 3))
+
+    ruhe(1.0)
+    for _ in range(n_events):
+        achse = rng.normal(0, 1, 3)
+        achse /= np.linalg.norm(achse)
+        steps = max(4, int(rng.uniform(*dauer_s_range) * hz))
+        g_peak = rng.uniform(*gyro_peak_range)
+        a_bump = rng.uniform(*accel_bump_range)
+        for i in range(steps):
+            s = np.sin(np.pi * i / steps)  # ein Buckel: eine unbedachte Drehung, keine Rep-Form
+            gyro_rows.append(achse * (g_peak * s) + GYRO_BIAS_VEKTOR
+                             + rng.normal(0, 3.0, 3))
+            a_b = a_bump * abs(s)
+            acc_rows.append([rng.normal(0, 0.02), 0.25 * a_b + rng.normal(0, 0.02),
+                             1.0 + a_b + rng.normal(0, 0.02)])
+        ruhe(rng.uniform(*ruhe_zwischen_s))
+    t = np.arange(len(acc_rows)) * dt
+    return t, np.array(acc_rows), np.array(gyro_rows)
+
+
+def pruefe_falschzaehlung_bei_alltagsbewegung(hz=50, n_validation_reps=10,
+                                               n_incidental_events=15, seed_basis=7000):
+    """STATUS_FORTSCHRITT.md 2026-07-18 (Adi, woertlich): "eng: samples
+    zahl steigt, state:aktive tresh=8.549 base=steigt Das Reps zaehlen
+    funktioniert noch garnicht. Wenn den M5 nur beege oder etwas drehe
+    werden reps gezaehlt." Prueft strukturell, ob Schritt Bs g_p (bisher
+    NUR Schatten-Zaehler - useSignedProjectionCounting-Default false,
+    home_screen.dart konstruiert WorkoutEngine(exerciseId: 'bicep_curl')
+    ohne den Parameter zu setzen) das strukturell besser abfaengt als der
+    aktuell live zaehlende combined-Pfad.
+
+    Kalibrierung exakt wie die App (ein Curl, calibrationReps=1,
+    _kalibriere_wie_app fuer combined; dieselbe Platzhalter-Achsenschaetzung
+    wie in pruefe_strukturellen_gp_fix fuer g_p). Zaehl-Parameter fuer
+    combined 1:1 aus workout_engine.dart uebernommen (minRepIntervalSamples=
+    24, fallingDebounce=4, prominenceRatio=0.30, fallingEdgeRatio=0.7) -
+    keine Sim-eigenen Defaults.
+    """
+    MIN_REP_INTERVAL_SAMPLES = 24
+    FALLING_DEBOUNCE = 4
+    PROMINENCE_RATIO = 0.30
+    FALLING_EDGE_RATIO = 0.7
+    MIN_THRESHOLD_ABOVE_BASELINE = 0.10
+    BASELINE = 1.0
+
+    # 1) Kalibrierung: ein echter Curl, genau wie die App (calibrationReps=1).
+    t_kal, acc_kal, gyro_kal, _ = make_persona_6achsen(
+        "clean", n_reps=1, hz=hz, seed=seed_basis, ruhe_vor_s=0.5, ruhe_nach_s=0.1)
+    sig_kal_combined = kandidaten_signale(
+        acc_kal, gyro_kal, achse=np.array([1.0, 0.0, 0.0]), gyro_bias=GYRO_BIAS_VEKTOR)["combined"]
+    theta_combined = _kalibriere_wie_app(sig_kal_combined, BASELINE, MIN_THRESHOLD_ABOVE_BASELINE)
+
+    # g_p-Achse + Schwelle: dieselbe Platzhalter-Varianz-Heuristik wie
+    # pruefe_strukturellen_gp_fix (dominante Gyro-Achse aus der Bewegung
+    # der Kalibrierungs-Rep selbst, 2s-Fenster wie dort).
+    bewegungsfenster = gyro_kal[int(0.5 * hz):int(2.5 * hz)] - GYRO_BIAS_VEKTOR
+    dominante_achse_idx = int(np.argmax(np.var(bewegungsfenster, axis=0)))
+    achse_gp = np.eye(3)[dominante_achse_idx]
+    g_p_kal = kandidaten_signale(acc_kal, gyro_kal, achse=achse_gp, gyro_bias=GYRO_BIAS_VEKTOR)["g_p"]
+    theta_gp = 0.5 * float(np.max(np.abs(g_p_kal)))  # 1:1 workout_engine.dart _gpThreshold-Formel
+
+    def zaehle_gp(signal, theta):
+        """1:1 WorkoutEngine._detectPeakSigned: steigt ueber theta, faellt
+        unter theta*0.3 -> Rep abgeschlossen."""
+        reps, above = [], False
+        for v in signal:
+            if not above and v > theta:
+                above = True
+            elif above and v < theta * 0.3:
+                above = False
+                reps.append(v)
+        return reps
+
+    def zaehle_combined(signal):
+        return zaehle_edge(signal, hz, theta_combined, refractory_s=MIN_REP_INTERVAL_SAMPLES / hz,
+                            baseline=BASELINE, falling_ratio=FALLING_EDGE_RATIO,
+                            prominenz=PROMINENCE_RATIO * (theta_combined - BASELINE),
+                            falling_debounce=FALLING_DEBOUNCE)
+
+    # 2) Sanity-Check: echte Validierungs-Reps muessen auf BEIDEN Pfaden
+    #    weiterhin sauber zaehlen - sonst waere g_p nur um den Preis neuer
+    #    False Negatives "besser".
+    t_val, acc_val, gyro_val, _ = make_persona_6achsen(
+        "clean", n_reps=n_validation_reps, hz=hz, seed=seed_basis + 1, ruhe_vor_s=0.3, ruhe_nach_s=0.3)
+    sig_val = kandidaten_signale(acc_val, gyro_val, achse=achse_gp, gyro_bias=GYRO_BIAS_VEKTOR)
+    val_combined = len(zaehle_combined(sig_val["combined"]))
+    val_gp = len(zaehle_gp(sig_val["g_p"], theta_gp))
+
+    # 3) Der eigentliche Test: reine Alltagsbewegung, KEINE Reps enthalten.
+    t_inz, acc_inz, gyro_inz = make_incidental_movement(
+        n_incidental_events, hz=hz, seed=seed_basis + 2)
+    sig_inz = kandidaten_signale(acc_inz, gyro_inz, achse=achse_gp, gyro_bias=GYRO_BIAS_VEKTOR)
+    inz_combined = len(zaehle_combined(sig_inz["combined"]))
+    inz_gp = len(zaehle_gp(sig_inz["g_p"], theta_gp))
+
+    print(f"\n--- Falschzaehlung bei Alltagsbewegung (STATUS_FORTSCHRITT.md 2026-07-18) ---")
+    print(f"  Kalibrierung: theta_combined={theta_combined:.3f} (baseline={BASELINE:.2f}), "
+          f"theta_gp={theta_gp:.1f} deg/s, geschaetzte g_p-Achse-Index={dominante_achse_idx}")
+    print(f"  Sanity (echte Reps, n={n_validation_reps}): "
+          f"combined={val_combined}, g_p={val_gp}")
+    print(f"  Alltagsbewegung ohne Trainingsabsicht ({n_incidental_events} Events, erwartet 0): "
+          f"combined={inz_combined} False Positives, g_p={inz_gp} False Positives")
+
+    val_ok = abs(val_combined - n_validation_reps) <= 1 and abs(val_gp - n_validation_reps) <= 1
+    gp_deutlich_besser = inz_gp < inz_combined
+    print(f"  -> Sanity {'OK' if val_ok else 'VERLETZT'}; "
+          f"g_p {'strukturell robuster' if gp_deutlich_besser else 'NICHT robuster'} "
+          f"gegen Alltagsbewegung als combined.")
+    return {"theta_combined": theta_combined, "theta_gp": theta_gp,
+            "val_combined": val_combined, "val_gp": val_gp,
+            "inz_combined": inz_combined, "inz_gp": inz_gp,
+            "val_ok": val_ok, "gp_besser": gp_deutlich_besser}
+
+
 def stufe0_ruheanalyse(acc, gyro):
     """Stufe 0 (Ruhe): Baseline, Rausch-Sigma, Gyro-Bias + Qualitaets-Gate
     (ENG-Check: es muessen Samples ankommen; Stillstand verifiziert:
@@ -1987,3 +2126,8 @@ if __name__ == "__main__":
 
     agent1_ergebnis = sweep_live_pfad_refraktaer_und_prominenz()
     agent1_schritt_b = pruefe_strukturellen_gp_fix()
+
+    alltag_ergebnis = pruefe_falschzaehlung_bei_alltagsbewegung()
+    if not alltag_ergebnis["val_ok"]:
+        raise SystemExit("Sanity-Check (echte Reps) bei der Alltagsbewegungs-Pruefung "
+                          "fehlgeschlagen - siehe Ausgabe oben.")
