@@ -41,7 +41,12 @@ dependencies:
   # pre-existing plaintext database directly (VACUUM INTO + PRAGMA rekey)
   # before drift itself is involved - needs the sqlite3 API directly, not
   # just transitively through drift.
-  sqlite3: ^2.4.0
+  # 2.4.0 -> ^3.4.0 (2026-07-19, real `flutter pub get` via Desktop
+  # Commander): drift ^2.32.0 transitively requires sqlite3 ^3.1.5+;
+  # ^2.4.0 as originally written could never resolve. Confirmed drift's
+  # own sqlite3 constraint is satisfied by 3.4.0 (pub's own suggested
+  # fix). See git history for the pre-verification version.
+  sqlite3: ^3.4.0
   path_provider: ^2.1.4
   path: ^1.9.0
   # Ergaenzt: von calibration_store.dart benoetigt (ADR-020-Fix brachte

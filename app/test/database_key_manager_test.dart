@@ -30,7 +30,7 @@ class _FakeSecureStorage extends FlutterSecureStorage {
     LinuxOptions? lOptions,
     WebOptions? webOptions,
     MacOsOptions? mOptions,
-    WindowsOptions? woptions,
+    WindowsOptions? wOptions,
   }) async =>
       _store[key];
 
@@ -43,7 +43,7 @@ class _FakeSecureStorage extends FlutterSecureStorage {
     LinuxOptions? lOptions,
     WebOptions? webOptions,
     MacOsOptions? mOptions,
-    WindowsOptions? woptions,
+    WindowsOptions? wOptions,
   }) async {
     if (value == null) {
       _store.remove(key);
@@ -60,7 +60,7 @@ class _FakeSecureStorage extends FlutterSecureStorage {
     LinuxOptions? lOptions,
     WebOptions? webOptions,
     MacOsOptions? mOptions,
-    WindowsOptions? woptions,
+    WindowsOptions? wOptions,
   }) async {
     _store.remove(key);
   }
