@@ -9,6 +9,20 @@ version: 0.1.0
 environment:
   sdk: '>=3.4.0 <4.0.0'
 
+# Enables SQLite3MultipleCiphers (encryption support for the sqlite3
+# package drift builds on) instead of vanilla SQLite. Added 2026-07-19 for
+# local-database encryption (GYM_TRACKER_ARCHITEKTUR.md §5.2.3) - see
+# drift_database.dart's header comment for why this replaced the
+# originally-planned sqlcipher_flutter_libs (now deprecated). Requires
+# drift >=2.32.0 (see dependencies below) and, per Drift's own docs, a
+# sufficiently recent Dart SDK/toolchain to resolve build hooks - NOT
+# independently verified in this sandbox (no real `flutter pub get`/build
+# available here; see drift_database.dart header for the full caveat).
+hooks:
+  user_defines:
+    sqlite3:
+      source: sqlite3mc
+
 dependencies:
   flutter:
     sdk: flutter
@@ -19,8 +33,15 @@ dependencies:
   flutter_blue_plus: ^2.3.10
 
   # DB - finale Wahl Drift statt Isar, siehe ADR-006.
-  drift: ^2.20.0
+  # 2.20.0 -> ^2.32.0 (2026-07-19): minimum version for SQLite3MultipleCiphers
+  # encryption support (see hooks: above and drift_database.dart).
+  drift: ^2.32.0
   sqlite3_flutter_libs: ^0.5.24
+  # Added 2026-07-19: drift_database.dart's migration path opens the
+  # pre-existing plaintext database directly (VACUUM INTO + PRAGMA rekey)
+  # before drift itself is involved - needs the sqlite3 API directly, not
+  # just transitively through drift.
+  sqlite3: ^2.4.0
   path_provider: ^2.1.4
   path: ^1.9.0
   # Ergaenzt: von calibration_store.dart benoetigt (ADR-020-Fix brachte
@@ -37,7 +58,7 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   test: ^1.25.0
-  drift_dev: ^2.20.0
+  drift_dev: ^2.32.0
   build_runner: ^2.4.11
   flutter_lints: ^4.0.0
 
