@@ -9,6 +9,28 @@
 // that normally produces `drift_database.g.dart` has not been run. Running
 // that command is the literal first step to take once a real Flutter
 // environment is available (see docs/GYM_TRACKER_ARCHITEKTUR.md Phase 1).
+//
+// ENCRYPTION (GYM_TRACKER_ARCHITEKTUR.md §5.2.3 "Lokale Verschlüsselung",
+// added 2026-07-19): the architecture doc and this file's own prior TODO
+// comment both named `sqlcipher_flutter_libs` as the intended package.
+// Checked current status before implementing rather than following that
+// stale reference blindly: `sqlcipher_flutter_libs`'s own changelog now
+// reads "Deprecate this package... This version removes all code from
+// this package" - it would resolve to an empty no-op if depended on today.
+// Drift's own current encryption docs (drift.simonbinder.eu/platforms/
+// encryption, confirmed via live fetch this session) now recommend
+// SQLite3MultipleCiphers instead, available from drift >=2.32.0 via a
+// `sqlite3` package build-hook config in pubspec.yaml (`hooks:
+// user_defines: sqlite3: source: sqlite3mc`) - no extra native-libs
+// package needed. That is what's implemented below. `drift`/`drift_dev`
+// bumped 2.20.0 -> ^2.32.0 in pubspec.yaml accordingly.
+//
+// NOT independently verifiable here: whether the pubspec `hooks:` build-hook
+// mechanism itself actually resolves and links SQLite3MultipleCiphers
+// correctly requires a real `flutter pub get` + build - unavailable in this
+// sandbox (same toolchain gap as above). This is the single least-verified
+// part of this change; see the migration/rekey logic below for the other
+// genuinely risky piece (existing unencrypted user data).
 
 import 'dart:io';
 
@@ -16,9 +38,11 @@ import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:sqlite3/sqlite3.dart' as sqlite3pkg;
 
 import '../../domain/models/workout_models.dart' as domain;
 import '../../domain/repositories/i_workout_repository.dart';
+import '../security/database_key_manager.dart';
 
 part 'drift_database.g.dart';
 
@@ -83,21 +107,105 @@ class CorrectionEvents extends Table {
 
 @DriftDatabase(tables: [WorkoutSessions, ExerciseSets, Reps, CorrectionEvents])
 class AppDatabase extends _$AppDatabase {
-  AppDatabase() : super(_openConnection());
+  AppDatabase({DatabaseKeyManager? keyManager})
+      : super(_openConnection(keyManager ?? DatabaseKeyManager()));
 
   @override
   int get schemaVersion => 1;
 
-  static LazyDatabase _openConnection() {
+  /// Opens the (now always encrypted) database, migrating an existing
+  /// plaintext `flowrep.sqlite` in place on first run after this change.
+  ///
+  /// Migration design (deliberately more conservative than Drift's own
+  /// documented example - see the header comment above for why this
+  /// couldn't be verified end-to-end):
+  ///  1. A marker file (`flowrep.sqlite.encrypted-v1`) means "already
+  ///     migrated / already a fresh encrypted install" - skip everything
+  ///     below and just open normally. Checking for a marker file is a
+  ///     simple boolean file-existence check, not an attempt to introspect
+  ///     SQLCipher/SQLite3MultipleCiphers file-format internals to guess
+  ///     whether a given .sqlite file is already encrypted.
+  ///  2. No marker, but `flowrep.sqlite` exists: treat it as the old
+  ///     plaintext database. `VACUUM INTO` a `.migrating.tmp` copy (leaves
+  ///     the original untouched so far), open that copy and `PRAGMA
+  ///     rekey` it to encrypt in place - this is Drift's own documented
+  ///     pattern (drift.simonbinder.eu/platforms/encryption
+  ///     #encrypting-existing-databases), followed closely rather than
+  ///     improvised.
+  ///  3. Deliberate deviation from that example: instead of deleting the
+  ///     original plaintext file once the encrypted copy exists (as
+  ///     Drift's example does), RENAME it to `flowrep.sqlite.pre-
+  ///     encryption-backup` and keep it. This step cannot be tested end to
+  ///     end in this sandbox (no Dart/Flutter toolchain - see header), so
+  ///     erring toward "keep a recoverable copy" over "delete on first
+  ///     success" until a real run has actually confirmed the migrated,
+  ///     encrypted database opens and reads correctly. Deleting that
+  ///     backup once confirmed is a manual follow-up, not automated here.
+  ///  4. No marker, no existing file: fresh install, nothing to migrate -
+  ///     the marker is still written so future launches skip this check.
+  static LazyDatabase _openConnection(DatabaseKeyManager keyManager) {
     return LazyDatabase(() async {
       final dir = await getApplicationDocumentsDirectory();
-      final file = File(p.join(dir.path, 'flowrep.sqlite'));
-      // TODO once real toolchain available: wrap with SQLCipher
-      // (sqlcipher_flutter_libs) per GYM_TRACKER_ARCHITEKTUR.md
-      // Abschnitt 5.2.3 "Lokale Verschlüsselung" - not yet wired up here.
-      return NativeDatabase.createInBackground(file);
+      final dbFile = File(p.join(dir.path, 'flowrep.sqlite'));
+      final markerFile = File('${dbFile.path}.encrypted-v1');
+      final keyHex = await keyManager.getOrCreateKeyHex();
+
+      if (!await markerFile.exists()) {
+        if (await dbFile.exists()) {
+          final tmp = File('${dbFile.path}.migrating.tmp');
+          if (await tmp.exists()) {
+            await tmp.delete();
+          }
+
+          final plaintextDb = sqlite3pkg.sqlite3.open(dbFile.path);
+          try {
+            plaintextDb.execute(
+              "VACUUM INTO '${_escapeSqlString(tmp.path)}';",
+            );
+          } finally {
+            plaintextDb.close();
+          }
+
+          final encryptingDb = sqlite3pkg.sqlite3.open(tmp.path);
+          try {
+            encryptingDb.execute(
+              "PRAGMA rekey = '${_escapeSqlString(keyHex)}';",
+            );
+            // Confirms the rekeyed file is actually readable with this key
+            // before we touch the original - if this throws, the original
+            // plaintext file is left completely untouched below.
+            encryptingDb.select('SELECT count(*) FROM sqlite_master;');
+          } finally {
+            encryptingDb.close();
+          }
+
+          final backup = File('${dbFile.path}.pre-encryption-backup');
+          if (await backup.exists()) {
+            await backup.delete();
+          }
+          await dbFile.rename(backup.path);
+          await tmp.rename(dbFile.path);
+        }
+        await markerFile.create();
+      }
+
+      return NativeDatabase.createInBackground(
+        dbFile,
+        setup: (rawDb) {
+          assert(
+            rawDb.select('PRAGMA cipher;').isNotEmpty,
+            'SQLite3MultipleCiphers not available - encryption support is '
+            'missing from this build. See drift_database.dart header '
+            'comment (pubspec hooks: user_defines: sqlite3: source: '
+            'sqlite3mc).',
+          );
+          rawDb.execute(DatabaseKeyManager.pragmaKeyStatement(keyHex));
+        },
+      );
     });
   }
+
+  static String _escapeSqlString(String value) => value.replaceAll("'", "''");
 }
 
 class DriftWorkoutRepository implements IWorkoutRepository {
