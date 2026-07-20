@@ -72,3 +72,13 @@
 6.3 Verschlüsselungs-Schlüssel nie im Code als Klartext, zur Laufzeit generiert, im Android Keystore abgelegt.
 6.4 Minimalnötige Android-Berechtigungen (BLE, Foreground Service), keine Standort-/Kontaktzugriffe ohne zwingenden Grund.
 6.5 **Neu:** Zugangs-Token (GitHub, APIs etc.) werden niemals im Klartext in Chat-Nachrichten, Commits, Issues oder Logs geteilt. Werden sie versehentlich geteilt, werden sie umgehend rotiert. Für lokale Entwicklung: Umgebungsvariablen oder ein Secrets-Manager, nicht Klartext im Code oder in Konversationen mit einer KI.
+
+6.6 **Neu (aus der 4-Agenten-Koordination, 2026-07-17/18):** Vor Arbeitsbeginn UND erneut mitten in der Session (nicht nur einmal am Anfang): `git fetch` + prüfen, ob der eigene Branch oder die eigene Datei bereits von einer parallelen Session existiert oder verändert wurde.
+
+6.7 **Neu:** Niemals direkt auf `main` pushen, auch nicht für "nur diese eine kleine Änderung". Immer eigener Branch, PR, warten auf Merge-Bestätigung von Adi (oder Claude auf seine explizite Anweisung). Ursache einer echten main-Regression in diesem Projekt (Commit `a5e8aee`).
+
+6.8 **Neu:** Bei mehreren gleichzeitig laufenden Agenten-Sessions: jede Session bekommt ihren eigenen lokalen Checkout, nicht denselben geteilten Ordner. `git checkout` in einem gemeinsam genutzten Ordner wechselt den Branch für ALLE Sessions dort - das ist Repo-weiter Zustand, nicht pro Fenster/Konversation.
+
+6.9 **Neu:** Nach jeder Code-Änderung `flutter analyze` + `flutter test` (bzw. die passende Prüfung für den geänderten Bereich) tatsächlich ausführen, nicht behaupten oder aus dem Code ableiten, dass es funktionieren sollte. Sessions ohne Flutter-SDK-Zugriff (z.B. reine Sandbox-Konversationen) markieren das explizit als offen statt es zu verschweigen.
+
+6.10 **Neu:** Baupläne/Vertragsdokumente sind ein Startpunkt, kein Gesetz. Weicht der reale Code-Stand ab, weil eine andere Session bereits echte Arbeit geleistet hat: abgleichen und dokumentieren statt kommentarlos überschreiben. Bei einer echten Architektur-Kollision (z.B. zwei inkompatible Implementierungen derselben Komponente) die Entscheidung eskalieren statt sie einseitig zu treffen.
