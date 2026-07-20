@@ -369,9 +369,18 @@ class _HomeScreenState extends State<HomeScreen> {
       // bewusste, dokumentierte Annahme, kein aus dem Profil abgeleiteter
       // Wert. Sollte Schritt B (g_p-Signalumstellung) eigene Anforderungen
       // an diesen Wert mitbringen, hier anpassen.
+      //
+      // rotationAxis/gyroBias (Punkt 1, STATUS_FORTSCHRITT.md 2026-07-19/
+      // 20): nur bei einem ECHTEN, per Wizard kalibrierten Profil
+      // mitgeben, nicht bei einem migrierten v1-Legacy-Profil - dessen
+      // rotationAxis ist nur ein Platzhalter ([1,0,0], siehe
+      // ExerciseProfile.legacy()), keine echte PCA-Achse, und waere hier
+      // schlechter als SignalProcessors eigene Laufzeit-Heuristik.
       _engine.applyCalibration(
         peakThreshold: profile.theta,
         minThresholdAboveBaseline: 0.10,
+        rotationAxis: profile.migratedFrom == 0 ? profile.rotationAxis : null,
+        gyroBias: profile.migratedFrom == 0 ? profile.gyroBias : null,
       );
     }
   }

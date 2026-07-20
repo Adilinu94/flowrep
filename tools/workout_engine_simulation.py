@@ -1685,6 +1685,64 @@ def pruefe_falschzaehlung_bei_alltagsbewegung(hz=50, n_validation_reps=10,
             "val_ok": val_ok, "gp_besser": gp_deutlich_besser}
 
 
+def pruefe_pca_achse_vs_laufzeit_heuristik(peak_deg_s=180.0, samples_per_rep=60, ruhe_s=0.5):
+    """Punkt 1 (STATUS_FORTSCHRITT.md 2026-07-19/20): SignalProcessor lernt
+    die g_p-Achse zur Laufzeit nur als EINE der drei Kardinalachsen
+    (groesste Einzelvarianz von gx/gy/gz - observeForAxisLearning), nicht
+    als echten 3D-Einheitsvektor. ExerciseProfile.rotationAxis (Wizard,
+    PCA/Jacobi-Eigenwertzerlegung, gegen numpy verifiziert: 8e-13 max.
+    Abweichung) IST ein echter Einheitsvektor.
+
+    Quantifiziert den Signalverlust der Kardinal-Naeherung - bewusst NICHT
+    an den PERSONA_PROFILES oben (deren Achsen sind alle schon fast
+    kardinal, cos~0.976, siehe pruefe_strukturellen_gp_fix), sondern an
+    einer realistischeren, staerker verkippten Montage-Achse. Geometrisches
+    Argument, nicht stochastisch - ein einzelner Lauf reicht.
+    """
+    achse_wahr = np.array([0.75, 0.60, 0.28])
+    achse_wahr /= np.linalg.norm(achse_wahr)
+
+    # 1:1 SignalProcessor.observeForAxisLearning-Logik: waehlt die Achse
+    # mit der groessten EINZELVARIANZ waehrend des Lernfensters. Fuer eine
+    # reine Rotation um achse_wahr ist die Einzelvarianz jeder Rohachse
+    # proportional zu ihrer quadrierten Komponente in achse_wahr - die
+    # Kardinal-Wahl entspricht also exakt argmax(|achse_wahr|).
+    kardinal_idx = int(np.argmax(np.abs(achse_wahr)))
+    achse_kardinal = np.eye(3)[kardinal_idx]
+    kos_similarity = float(np.dot(achse_wahr, achse_kardinal))
+
+    rng = np.random.default_rng(1)
+    acc_rows, gyro_rows = [], []
+    n_ruhe = int(ruhe_s * 50)
+    for _ in range(n_ruhe):
+        acc_rows.append([0, 0, 1.0])
+        gyro_rows.append(list(GYRO_BIAS_VEKTOR))
+    for i in range(samples_per_rep):
+        s = np.sin(np.pi * i / samples_per_rep)
+        gyro_rows.append(list(achse_wahr * (peak_deg_s * s) + GYRO_BIAS_VEKTOR))
+        acc_rows.append([0, 0.2 * s, 1.0 + 0.5 * s])
+    for _ in range(n_ruhe):
+        acc_rows.append([0, 0, 1.0])
+        gyro_rows.append(list(GYRO_BIAS_VEKTOR))
+    acc, gyro = np.array(acc_rows), np.array(gyro_rows)
+
+    gp_wahr = kandidaten_signale(acc, gyro, achse=achse_wahr, gyro_bias=GYRO_BIAS_VEKTOR)["g_p"]
+    gp_kardinal = kandidaten_signale(acc, gyro, achse=achse_kardinal, gyro_bias=GYRO_BIAS_VEKTOR)["g_p"]
+    peak_wahr = float(np.max(np.abs(gp_wahr)))
+    peak_kardinal = float(np.max(np.abs(gp_kardinal)))
+    anteil = peak_kardinal / peak_wahr if peak_wahr > 0 else float("nan")
+
+    print(f"\n--- PCA-Achse (ExerciseProfile) vs. Laufzeit-Kardinal-Heuristik (Punkt 1) ---")
+    print(f"  Wahre Achse: {achse_wahr.round(3)}, gewaehlte Kardinalachse: Index {kardinal_idx}, "
+          f"cos-Aehnlichkeit={kos_similarity:.3f}")
+    print(f"  g_p-Peak: echte Achse={peak_wahr:.1f} deg/s, Kardinal-Naeherung={peak_kardinal:.1f} deg/s "
+          f"({anteil * 100:.0f}% erhalten)")
+    verlust_relevant = anteil < 0.95
+    print(f"  -> {'Messbarer Signalverlust' if verlust_relevant else 'Kein relevanter Verlust'} "
+          f"durch die Kardinal-Naeherung bei dieser (realistischeren) Montage-Achse.")
+    return {"kos_similarity": kos_similarity, "anteil_erhalten": anteil, "verlust_relevant": verlust_relevant}
+
+
 def stufe0_ruheanalyse(acc, gyro):
     """Stufe 0 (Ruhe): Baseline, Rausch-Sigma, Gyro-Bias + Qualitaets-Gate
     (ENG-Check: es muessen Samples ankommen; Stillstand verifiziert:
@@ -2131,3 +2189,8 @@ if __name__ == "__main__":
     if not alltag_ergebnis["val_ok"]:
         raise SystemExit("Sanity-Check (echte Reps) bei der Alltagsbewegungs-Pruefung "
                           "fehlgeschlagen - siehe Ausgabe oben.")
+
+    pca_ergebnis = pruefe_pca_achse_vs_laufzeit_heuristik()
+    if not pca_ergebnis["verlust_relevant"]:
+        raise SystemExit("Erwarteter Signalverlust der Kardinal-Heuristik nicht "
+                          "reproduziert - Testaufbau pruefen.")
