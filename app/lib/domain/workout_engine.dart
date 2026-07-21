@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flowrep/data/logger.dart';
+import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
 
@@ -153,7 +154,8 @@ class WorkoutEngine {
   /// case with ZERO refractory needed at all, since it separates
   /// concentric/eccentric by sign rather than by timing. Schritt B is not
   /// yet ported to this engine (see commit history / STATUS_FORTSCHRITT.md).
-  final int minRepIntervalSamples;
+  // ignore: prefer_final_fields
+  int minRepIntervalSamples;
 
   /// S1, secondary fix: the falling threshold must be undershot for this
   /// many CONSECUTIVE samples before an excursion is allowed to close.
@@ -379,10 +381,12 @@ class WorkoutEngine {
 
     final combinedSignal = _signalProcessor.process(s);
 
-    // Schritt B shadow path: entirely opt-in, computed unconditionally
-    // alongside (never instead of) the combined-signal path above.
+    // Schritt B shadow path: opt-in via the constructor flag, OR mandatory
+    // because a real profile chose gP as the primary signal
+    // (applyCalibration) - either way, computed unconditionally alongside
+    // (never instead of) the combined-signal path above.
     double? gp;
-    if (useSignedProjectionCounting) {
+    if (useSignedProjectionCounting || _primarySignal == ChosenSignal.gP) {
       _signalProcessor.observeForAxisLearning(s);
       gp = _signalProcessor.signedGyroProjection(s);
     }
@@ -490,16 +494,19 @@ class WorkoutEngine {
 
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
-        if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
+        if (gp != null && _gpThreshold != null) {
           _detectPeakSigned(gp, s.timestamp);
         }
-        if (_repsInSet.length >= calibrationReps) {
+        if (_gyroMagThreshold != null) {
+          final gm = _signalProcessor.biasCorrectedGyroMagnitude(s);
+          if (gm != null) _detectPeakGyroMag(s, gm);
+        }
+        if (_confirmedPeaks.length >= calibrationReps) {
           // Median rather than mean: robust against a single outlier
           // calibration rep (e.g. the device getting bumped) skewing the
           // threshold - confirmed via the outlier-calibration robustness
           // test in tools/workout_engine_simulation.py.
-          final sortedPeaks = _repsInSet.map((r) => r.peakMagnitude).toList()
-            ..sort();
+          final sortedPeaks = List<double>.from(_confirmedPeaks)..sort();
           final mid = sortedPeaks.length ~/ 2;
           final medianPeak = sortedPeaks.length.isOdd
               ? sortedPeaks[mid]
@@ -519,8 +526,12 @@ class WorkoutEngine {
 
       case WorkoutState.active:
         _detectPeak(s, combinedSignal);
-        if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
+        if (gp != null && _gpThreshold != null) {
           _detectPeakSigned(gp, s.timestamp);
+        }
+        if (_gyroMagThreshold != null) {
+          final gm = _signalProcessor.biasCorrectedGyroMagnitude(s);
+          if (gm != null) _detectPeakGyroMag(s, gm);
         }
         if (_lastMovementAt != null &&
             s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
@@ -576,7 +587,7 @@ class WorkoutEngine {
     // once enough reps are confirmed (bootstrap: nothing to adapt from
     // before that - see _confirmedPeaks doc comment).
     var effectiveThreshold = _peakThreshold;
-    if (_confirmedPeaks.length >= adaptiveMinConfirmed) {
+    if (_adaptiveThresholdEnabled && _confirmedPeaks.length >= adaptiveMinConfirmed) {
       final window = _confirmedPeaks.sublist(
         max(0, _confirmedPeaks.length - adaptiveWindow),
       )..sort();
@@ -630,7 +641,8 @@ class WorkoutEngine {
       _aboveThreshold = false;
       _fallingDebounceCount = 0;
 
-      final prominence = prominenceRatio * (_peakThreshold - baselineLevel);
+      final prominence = _prominenceOverride ??
+          prominenceRatio * (_peakThreshold - baselineLevel);
       if (prominence > 0.0 && (_currentExcursionPeak - _preMin) < prominence) {
         // Too shallow relative to the preceding valley - likely noise, not
         // a rep. Deliberately NOT resetting _preMin to combinedSignal
@@ -654,7 +666,7 @@ class WorkoutEngine {
       // g_p is ready, and as the sole path when the feature is off) but
       // stops writing to _repsInSet once g_p has taken over, so the two
       // paths can never double-count the same physical rep.
-      if (!_gpIsAuthoritative) {
+      if (!_gpIsAuthoritative && !_gyroMagIsAuthoritative) {
         _repsInSet.add(
           Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
         );
@@ -670,7 +682,47 @@ class WorkoutEngine {
   /// feature is enabled - from that point on it, not the combined-signal
   /// path above, is the source of truth for _repsInSet/countedReps (see
   /// bugfix comment in [_detectPeak] and [_detectPeakSigned] for why).
-  bool get _gpIsAuthoritative => useSignedProjectionCounting && _gpThreshold != null;
+  // --- Threshold routing (2026-07-20 follow-up to Punkt 1's axis wiring
+  // above): Punkt 1 deliberately left _gpThreshold coming from live
+  // auto-calibration even when a profile's chosenSignal says gP - "a
+  // separate, larger decision" per its own commit message. This is that
+  // decision: chosenSignal/minRepIntervalSeconds/prominenceMin from
+  // ExerciseProfile, routed to the field whose UNITS actually match. ---
+
+  /// Which signal a real profile chose (`ExerciseProfile.chosenSignal` via
+  /// [applyCalibration]) - null (the default) means no profile has set
+  /// this, i.e. [_gpIsAuthoritative] alone (self-calibrated, live
+  /// auto-calibration threshold) still governs whether g_p or combined
+  /// counts, unchanged from before this addition.
+  ChosenSignal? _primarySignal;
+
+  /// Absolute prominence (not a ratio) from a real profile's
+  /// `prominenceMin`, used instead of [prominenceRatio]'s computation when
+  /// present - see [applyCalibration].
+  double? _prominenceOverride;
+
+  double? _gyroMagThreshold;
+  bool _gyroMagAboveThreshold = false;
+  int _gyroMagRepCount = 0;
+  bool get _gyroMagIsAuthoritative =>
+      _primarySignal == ChosenSignal.gyroMag && _gyroMagThreshold != null;
+  int? get gyroMagRepCount => _gyroMagThreshold != null ? _gyroMagRepCount : null;
+
+  /// S2's adaptive threshold ([adaptiveThresholdRatio]) is a stopgap for
+  /// the FRAGILE single-rep auto-calibration (`calibrationReps`, default
+  /// 1) - it exists to cope with a threshold that was never properly
+  /// tuned. A real profile from Guided Calibration 2.0's Known-Count
+  /// process is already properly tuned against verified repetitions;
+  /// letting the adaptive mechanism keep eroding THAT threshold based on
+  /// whatever movement happens to get confirmed next has no equivalent
+  /// upside. Defaults to true (unchanged behaviour for a profile-less
+  /// engine); [applyCalibration] sets this false whenever it's called
+  /// with a non-null `chosenSignal`.
+  bool _adaptiveThresholdEnabled = true;
+
+  bool get _gpIsAuthoritative =>
+      (useSignedProjectionCounting || _primarySignal == ChosenSignal.gP) &&
+      _gpThreshold != null;
 
   /// Schritt B (P2, S8) shadow counting: rising/falling edge on the SIGNED
   /// g_p signal instead of _peakThreshold-gated combined magnitude. No
@@ -699,6 +751,29 @@ class WorkoutEngine {
       _gpRepCount++;
       if (_gpIsAuthoritative) {
         _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: gp.abs()));
+        _lastCountedRepSample = diagEngineSampleCount;
+        _emitStateEvent();
+      }
+    }
+  }
+
+  /// `ChosenSignal.gyroMag` counterpart to [_detectPeakSigned]: same
+  /// simple rising/falling edge, on bias-corrected gyro MAGNITUDE
+  /// ([SignalProcessor.biasCorrectedGyroMagnitude]) instead of a signed
+  /// projection - always non-negative, so there is no sign/direction
+  /// concept here at all. Only ever reached when a real profile
+  /// explicitly chose this signal ([_gyroMagThreshold] is null otherwise -
+  /// no self-calibrating fallback exists for it, unlike g_p's
+  /// live-auto-calibration path).
+  void _detectPeakGyroMag(SensorSample s, double gyroMag) {
+    final threshold = _gyroMagThreshold!;
+    if (!_gyroMagAboveThreshold && gyroMag > threshold) {
+      _gyroMagAboveThreshold = true;
+    } else if (_gyroMagAboveThreshold && gyroMag < threshold * 0.3) {
+      _gyroMagAboveThreshold = false;
+      _gyroMagRepCount++;
+      if (_gyroMagIsAuthoritative) {
+        _repsInSet.add(Rep(timestamp: s.timestamp, peakMagnitude: gyroMag));
         _lastCountedRepSample = diagEngineSampleCount;
         _emitStateEvent();
       }
@@ -768,6 +843,12 @@ class WorkoutEngine {
     _gpPeakDuringCalibrationAbs = 0.0;
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _gyroMagThreshold = null;
+    _gyroMagAboveThreshold = false;
+    _gyroMagRepCount = 0;
+    _primarySignal = null;
+    _prominenceOverride = null;
+    _adaptiveThresholdEnabled = true;
     _excursionFallingThreshold = null;
     _lastCalibrationPeakCount = 0;
     _diagMaxAccel = 0;
@@ -943,11 +1024,20 @@ class WorkoutEngine {
     _confirmedPeaks.clear();
     _fallingDebounceCount = 0;
     _preMin = double.infinity;
-    _gpThreshold = null;
-    _gpDirection = 1;
-    _gpPeakDuringCalibrationAbs = 0.0;
+    if (_primarySignal == null) {
+      // Self-calibrated placeholder path only - a real profile's
+      // threshold survives a reconnect for the same reason its axis now
+      // does (SignalProcessor.reset() doc comment): it came from a real
+      // calibration, not from watching live samples in THIS session.
+      _gpThreshold = null;
+      _gpDirection = 1;
+      _gpPeakDuringCalibrationAbs = 0.0;
+      _gyroMagThreshold = null;
+    }
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _gyroMagAboveThreshold = false;
+    _gyroMagRepCount = 0;
     _excursionFallingThreshold = null;
     _repsInSet.clear();
     _state = WorkoutState.idle;
@@ -970,15 +1060,52 @@ class WorkoutEngine {
   /// By applying calibration in-place, the engine reference stays stable
   /// for the lifetime of the [_HomeScreenState], and all listeners
   /// (samples, events, dialog) always talk to the same instance.
+  /// [chosenSignal]/[minRepIntervalSeconds]/[prominenceMin] mirror
+  /// `ExerciseProfile`'s fields of the same name (2026-07-20, follow-up to
+  /// [rotationAxis]/[gyroBias] above - see the field doc comments on
+  /// [_primarySignal] for why this was left separate). Optional; omitting
+  /// them behaves exactly as before - [chosenSignal] null means combined,
+  /// same as every call site before this existed.
   void applyCalibration({
     required double peakThreshold,
     required double minThresholdAboveBaseline,
     bool markValid = true,
     List<double>? rotationAxis,
     List<double>? gyroBias,
+    ChosenSignal? chosenSignal,
+    double? minRepIntervalSeconds,
+    double? prominenceMin,
   }) {
-    _peakThreshold = peakThreshold;
+    // peakThreshold's UNIT depends on chosenSignal (ExerciseProfile.theta:
+    // unit follows the chosen signal) - route it to whichever field
+    // actually matches those units, not always _peakThreshold.
+    switch (chosenSignal) {
+      case ChosenSignal.gP:
+        _gpThreshold = peakThreshold;
+        _gpDirection = 1; // rotationAxis is already sign-conventioned by CalibrationController
+      case ChosenSignal.gyroMag:
+        _gyroMagThreshold = peakThreshold;
+      case ChosenSignal.combined:
+      case null:
+        _peakThreshold = peakThreshold;
+    }
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
+    _primarySignal = chosenSignal;
+    if (chosenSignal != null) {
+      // A real, Known-Count-tuned profile - see _adaptiveThresholdEnabled
+      // doc comment for why this turns S2's runtime adaptation off.
+      _adaptiveThresholdEnabled = false;
+    }
+    if (minRepIntervalSeconds != null) {
+      // Samples, not seconds - same S3 reason minRepIntervalSamples itself
+      // is in samples. 1000/20 because per-SAMPLE pacing is honestly 20ms
+      // since docs/01_protocol.yaml v2 (Agent 4), independent of the
+      // ~11.8Hz BATCH arrival rate that number could be confused with.
+      minRepIntervalSamples = (minRepIntervalSeconds * 1000 / 20).round();
+    }
+    if (prominenceMin != null) {
+      _prominenceOverride = prominenceMin;
+    }
     if (markValid) {
       hasValidCalibration = true;
     }
@@ -1011,6 +1138,8 @@ class WorkoutEngine {
     _preMin = double.infinity;
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _gyroMagAboveThreshold = false;
+    _gyroMagRepCount = 0;
     // NOT resetting _gpThreshold/_gpDirection here: guided calibration
     // (this method) doesn't produce a g_p calibration at all (see
     // startGuidedCalibration doc comment above) - if one exists, it came

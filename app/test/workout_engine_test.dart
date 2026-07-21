@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:test/test.dart';
+import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 
@@ -870,7 +871,110 @@ void main() {
     });
 
     test(
-        'regression: baseline must NOT drift upward during guidedCalibration '
+        'applyCalibration(chosenSignal: gP) routes peakThreshold to the '
+        'g_p threshold, not combined - and countedReps comes from g_p, '
+        'not the untouched combined path', () async {
+      // Follow-up (2026-07-20) to Punkt 1's rotationAxis/gyroBias wiring:
+      // that commit deliberately left _gpThreshold coming from live
+      // auto-calibration even with a real profile - this closes that gap.
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      // A recognisable axis/bias, not zero, so this doesn't accidentally
+      // pass due to some degenerate default.
+      engine.applyCalibration(
+        peakThreshold: 150.0, // deg/s - g_p's units, NOT combined's
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+      );
+      expect(engine.hasValidCalibration, isTrue);
+
+      // A signal that would never cross a combined-signal threshold of
+      // 150 (combined maxes out around accelMag+gyroMag*0.05, nowhere
+      // near 150) but comfortably crosses 150 deg/s on the signed
+      // gz-bias-corrected axis.
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      for (var rep = 0; rep < 5; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * 2 * pi;
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 0, az: 0,
+            gx: 0, gy: 0, gz: 5.0 + 220.0 * sin(phase), // bias 5.0, matches gyroBias above
+          ));
+        }
+        for (var i = 0; i < 15; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+        }
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(5, 1),
+          reason: 'This signal is invisible to the combined-signal path '
+              '(peakThreshold=150 is a g_p-units value) - if countedReps '
+              'is 0, peakThreshold silently went to the wrong field.');
+    });
+
+    test(
+        'a reconnect preserves a profile-set g_p calibration instead of '
+        'discarding it and forcing placeholder relearning', () async {
+      // Found and fixed alongside the routing test above: reset() used to
+      // unconditionally wipe the axis/bias/threshold, even when they came
+      // from setKnownAxis()/a real profile rather than live-session
+      // observation - no existing test called setKnownAxis() then
+      // handleReconnect() then asserted on the calibration surviving.
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.applyCalibration(
+        peakThreshold: 150.0,
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+      );
+
+      engine.handleReconnect();
+
+      expect(engine.hasValidCalibration, isTrue,
+          reason: 'handleReconnect() must not un-set a real calibration.');
+      // Feed one clean rep and confirm it counts via g_p immediately -
+      // no ~100-sample relearning window, because the axis/threshold
+      // should have survived the reconnect intact.
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      for (var i = 0; i < 60; i++) {
+        final phase = (i / 60) * 2 * pi;
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 0, az: 0,
+          gx: 0, gy: 0, gz: 5.0 + 220.0 * sin(phase),
+        ));
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(1, 0),
+          reason: 'Counts immediately via the preserved g_p calibration - '
+              'if the axis/threshold had been wiped by reset(), this '
+              'single rep would need ~100 samples of relearning first and '
+              'likely would not be counted within this short window.');
+    });
         '(found during E2E hardware test 2026-07-16: baseline drifted from '
         '1.05 to 5.7 because _aboveThreshold is never set true in this '
         'state, so the EMA tracked every sample including movement spikes)', () {
