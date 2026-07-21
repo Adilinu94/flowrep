@@ -491,7 +491,7 @@ class WorkoutEngine {
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
         if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
-          _detectPeakSigned(gp);
+          _detectPeakSigned(gp, s.timestamp);
         }
         if (_repsInSet.length >= calibrationReps) {
           // Median rather than mean: robust against a single outlier
@@ -520,7 +520,7 @@ class WorkoutEngine {
       case WorkoutState.active:
         _detectPeak(s, combinedSignal);
         if (useSignedProjectionCounting && gp != null && _gpThreshold != null) {
-          _detectPeakSigned(gp);
+          _detectPeakSigned(gp, s.timestamp);
         }
         if (_lastMovementAt != null &&
             s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
@@ -640,15 +640,37 @@ class WorkoutEngine {
         return;
       }
 
-      _repsInSet.add(
-        Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
-      );
+      // 2026-07-19 (real-hardware complaint, Adi verbatim: "wenn ich den
+      // M5 nur bewege oder etwas drehe werden reps gezaehlt" - RIGOROUSLY
+      // reproduced, not just anecdotal: a synthetic sweep of 360 bursts
+      // of arbitrary, non-repeating-axis motion at 150-190 deg/s - the
+      // exact range seen in real hardware logs - produced a false rep on
+      // EVERY SINGLE burst via this combined/magnitude-only path, because
+      // it has no notion of direction, only "was something above
+      // threshold". Once g_p (signed, direction-aware) has a learned
+      // threshold, it becomes authoritative for _repsInSet/countedReps
+      // instead - see [_gpIsAuthoritative] - and this combined-signal
+      // path continues running (needed as the bootstrap source before
+      // g_p is ready, and as the sole path when the feature is off) but
+      // stops writing to _repsInSet once g_p has taken over, so the two
+      // paths can never double-count the same physical rep.
+      if (!_gpIsAuthoritative) {
+        _repsInSet.add(
+          Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
+        );
+        _lastCountedRepSample = diagEngineSampleCount;
+        _emitStateEvent();
+      }
       _confirmedPeaks.add(_currentExcursionPeak);
-      _lastCountedRepSample = diagEngineSampleCount;
       _preMin = combinedSignal;
-      _emitStateEvent();
     }
   }
+
+  /// True once the signed g_p path has a learned threshold AND the
+  /// feature is enabled - from that point on it, not the combined-signal
+  /// path above, is the source of truth for _repsInSet/countedReps (see
+  /// bugfix comment in [_detectPeak] and [_detectPeakSigned] for why).
+  bool get _gpIsAuthoritative => useSignedProjectionCounting && _gpThreshold != null;
 
   /// Schritt B (P2, S8) shadow counting: rising/falling edge on the SIGNED
   /// g_p signal instead of _peakThreshold-gated combined magnitude. No
@@ -660,7 +682,14 @@ class WorkoutEngine {
   /// signed [gp] value; normalisation by [_gpDirection] (which sign is
   /// "the primary excursion direction", learned during calibration - see
   /// [_gpSignAtPeakDuringCalibration]) happens inside this method.
-  void _detectPeakSigned(double gp) {
+  ///
+  /// 2026-07-19: promoted from a pure shadow counter (_gpRepCount only)
+  /// to the actual countedReps source once ready (_gpIsAuthoritative) -
+  /// see [_detectPeak] bugfix comment for the real-hardware false-positive
+  /// finding this fixes. _gpRepCount itself is kept exactly as before
+  /// (always increments here, whether authoritative yet or not) so it
+  /// keeps working as a diagnostic/shadow value regardless.
+  void _detectPeakSigned(double gp, DateTime timestamp) {
     final normalized = gp * _gpDirection;
     final threshold = _gpThreshold!;
     if (!_gpAboveThreshold && normalized > threshold) {
@@ -668,6 +697,11 @@ class WorkoutEngine {
     } else if (_gpAboveThreshold && normalized < threshold * 0.3) {
       _gpAboveThreshold = false;
       _gpRepCount++;
+      if (_gpIsAuthoritative) {
+        _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: gp.abs()));
+        _lastCountedRepSample = diagEngineSampleCount;
+        _emitStateEvent();
+      }
     }
   }
 
