@@ -168,4 +168,127 @@ void main() {
       expect(profile.theta, greaterThan(0));
     });
   });
+
+  group('CalibrationController - Tap-to-Tag (Konzept §2.6/§3, V2)', () {
+    CalibrationController freshAtKnownSet() {
+      final c = CalibrationController(exerciseId: 'bicep_curl');
+      c.start();
+      for (final s in _rest(100, t0)) {
+        c.onSample(s);
+      }
+      c.finishStage(); // -> singleRep
+      for (final s in _rep(40, t0, offsetMs: 2000, peakDeg: 150)) {
+        c.onSample(s);
+      }
+      c.finishStage(); // -> knownSet
+      return c;
+    }
+
+    test('addTap() ist ausserhalb knownSet/slowSet ein No-Op', () {
+      final c = CalibrationController();
+      c.start(); // Stufe rest
+      c.addTap();
+      expect(c.tapCountB, 0);
+      expect(c.tapCountC, 0);
+      for (final s in _rest(100, t0)) {
+        c.onSample(s);
+      }
+      c.finishStage(); // -> singleRep
+      c.addTap();
+      expect(c.tapCountB, 0, reason: 'singleRep ist keine Tap-Stufe');
+    });
+
+    test('addTap() zaehlt in knownSet nach _tapsB, in slowSet nach _tapsC',
+        () {
+      final c = freshAtKnownSet();
+      c.onSample(_rest(1, t0).single);
+      c.addTap();
+      c.addTap();
+      expect(c.tapCountB, 2);
+      expect(c.tapCountC, 0);
+    });
+
+    test(
+        'gut getimte Taps (mit realistischem Tap-Lag) aendern das Ergebnis '
+        'einer sauberen Kalibrierung nicht', () {
+      final c = freshAtKnownSet();
+      var offset = 0;
+      const repLen = 30;
+      const pause = 15;
+      for (var r = 0; r < 5; r++) {
+        for (final s
+            in _rep(repLen, t0, offsetMs: offset, peakDeg: 150)) {
+          c.onSample(s);
+        }
+        offset += repLen * 20;
+        // Realistischer Tap-Lag: der Nutzer tippt einige Samples NACH dem
+        // eigentlichen Rep-Ende (Konzept §2.6: 150-400ms) - hier ~160ms
+        // (8 Samples @ 50Hz), deutlich innerhalb des 500ms-Suchfensters
+        // der Lag-Korrektur.
+        for (final s in _rest(8, t0, offsetMs: offset)) {
+          c.onSample(s);
+        }
+        c.addTap();
+        for (final s in _rest(pause - 8, t0, offsetMs: offset + 8 * 20)) {
+          c.onSample(s);
+        }
+        offset += pause * 20;
+      }
+      expect(c.tapCountB, 5);
+      c.finishStage(); // -> slowSet
+      _feedReps(c, 3, t0,
+          peakDeg: 150, repLenSamples: 60, pauseSamples: 25);
+      c.finishStage(); // -> review
+
+      final review = c.reviewData;
+      expect(review.ready, isTrue,
+          reason: 'Gut getimte Taps sollten eine ohnehin funktionierende '
+              'Kalibrierung nicht kaputt machen');
+      expect(review.countedKnown, 5);
+    });
+
+    test(
+        'grob falsch platzierte Taps (alle am Ende gebuendelt) lassen '
+        'denselben Sweep, der ohne Taps erfolgreich waere, scheitern', () {
+      // Kontrollgruppe: identisches Signal OHNE Taps muss erfolgreich sein
+      // (reproduziert exakt den "voller Durchlauf"-Test oben).
+      final ohneTaps = freshAtKnownSet();
+      _feedReps(ohneTaps, 5, t0, peakDeg: 150, repLenSamples: 30);
+      ohneTaps.finishStage();
+
+      final mitTaps = freshAtKnownSet();
+      _feedReps(mitTaps, 5, t0, peakDeg: 150, repLenSamples: 30);
+      // 5 Taps, aber alle direkt hintereinander GANZ AM ENDE der
+      // Aufzeichnung statt einer je Rep - genau das Gegenteil von
+      // "Tap bei jeder fertigen Wiederholung".
+      for (var i = 0; i < 5; i++) {
+        mitTaps.addTap();
+      }
+      mitTaps.finishStage();
+      for (final s in _rest(3, t0, offsetMs: 5 * (30 + 15) * 20)) {
+        mitTaps.onSample(s);
+      }
+      mitTaps.finishStage(); // -> slowSet (B-Sweep ist zu diesem Zeitpunkt
+      // schon gelaufen, siehe _finishKnownSet -> _runBSweep)
+
+      // Direkter Vergleich: beide Controller haben dasselbe Signal
+      // gesehen. tapCountB=0 (Kontrolle) muss eine Konfiguration finden -
+      // andernfalls waere dieser Test selbst nicht aussagekraeftig.
+      _feedReps(ohneTaps, 3, t0,
+          peakDeg: 150, repLenSamples: 60, pauseSamples: 25);
+      ohneTaps.finishStage();
+      expect(ohneTaps.reviewData.ready, isTrue,
+          reason: 'Testaufbau-Sanity: ohne Taps muss dasselbe Signal eine '
+              'Konfiguration finden, sonst ist der folgende Vergleich '
+              'bedeutungslos');
+
+      _feedReps(mitTaps, 3, t0,
+          peakDeg: 150, repLenSamples: 60, pauseSamples: 25);
+      mitTaps.finishStage();
+      expect(mitTaps.reviewData.ready, isFalse,
+          reason: 'Mit grob falsch platzierten Taps darf KEINE '
+              'Konfiguration die Tap-Alignment-Pruefung bestehen, obwohl '
+              'dasselbe Signal ohne Taps erfolgreich war');
+    });
+  });
 }
