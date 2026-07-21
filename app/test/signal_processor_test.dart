@@ -92,4 +92,58 @@ void main() {
       expect(atBias!.abs(), lessThan(0.5));
     });
   });
+
+  group('SignalProcessor.setKnownAxis (Punkt 1, arbitrary-direction axis)', () {
+    test('is ready immediately, without any observeForAxisLearning calls', () {
+      final sp = SignalProcessor();
+      expect(sp.isSignedProjectionReady, isFalse);
+      sp.setKnownAxis([1.0, 0.0, 0.0], [0.0, 0.0, 0.0]);
+      expect(sp.isSignedProjectionReady, isTrue);
+    });
+
+    test('projects onto a true arbitrary (non-cardinal) unit vector, not '
+        'just one raw axis component', () {
+      final sp = SignalProcessor();
+      // 3-4-... a simple non-cardinal unit vector: (0.6, 0.8, 0.0).
+      sp.setKnownAxis([0.6, 0.8, 0.0], [0.0, 0.0, 0.0]);
+      // Pure gx=10 alone should NOT give the full 10 - only its 0.6
+      // component. A single-cardinal-axis implementation (picking
+      // whichever raw component is largest) would instead return exactly
+      // 10 or 0 here, not 6.
+      final projected = sp.signedGyroProjection(_sample(gx: 10.0, gy: 0.0));
+      expect(projected, isNotNull);
+      expect(projected!, closeTo(6.0, 1e-9));
+    });
+
+    test('subtracts the provided gyro bias per-axis, matching the '
+        'learned-axis behaviour', () {
+      final sp = SignalProcessor();
+      sp.setKnownAxis([1.0, 0.0, 0.0], [5.0, 0.0, 0.0]);
+      final atBias = sp.signedGyroProjection(_sample(gx: 5.0));
+      expect(atBias, isNotNull);
+      expect(atBias!.abs(), lessThan(1e-9));
+    });
+
+    test('overrides an in-progress runtime learning window rather than '
+        'being overridden by it', () {
+      final sp = SignalProcessor(axisLearningWindowSamples: 100);
+      for (var i = 0; i < 50; i++) {
+        sp.observeForAxisLearning(_sample(gx: 5, gy: 1, gz: 1));
+      }
+      expect(sp.isSignedProjectionReady, isFalse);
+      sp.setKnownAxis([0.0, 1.0, 0.0], [0.0, 0.0, 0.0]);
+      expect(sp.isSignedProjectionReady, isTrue);
+      // Further observeForAxisLearning calls must now be no-ops (the
+      // known axis must not get silently overwritten once the runtime
+      // window happens to fill up afterwards).
+      for (var i = 0; i < 100; i++) {
+        sp.observeForAxisLearning(_sample(gx: 5, gy: 1, gz: 1));
+      }
+      final projected = sp.signedGyroProjection(_sample(gx: 999.0, gy: 7.0));
+      expect(projected, isNotNull);
+      expect(projected!, closeTo(7.0, 1e-9),
+          reason: 'Expected the known y-axis to still be in effect, not '
+              'overwritten by the runtime heuristic.');
+    });
+  });
 }

@@ -974,11 +974,29 @@ class WorkoutEngine {
     required double peakThreshold,
     required double minThresholdAboveBaseline,
     bool markValid = true,
+    List<double>? rotationAxis,
+    List<double>? gyroBias,
   }) {
     _peakThreshold = peakThreshold;
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
     if (markValid) {
       hasValidCalibration = true;
+    }
+    // Punkt 1 (STATUS_FORTSCHRITT.md 2026-07-19/20): adopt a wizard-
+    // calibrated rotation axis (ExerciseProfile.rotationAxis, PCA/Jacobi
+    // eigenvalue decomposition over real known-count reps) instead of
+    // leaving g_p to SignalProcessor's own cruder runtime variance
+    // heuristic (a single cardinal x/y/z axis - see
+    // tools/workout_engine_simulation.py
+    // pruefe_pca_achse_vs_laufzeit_heuristik for how much signal that can
+    // lose on a realistically tilted mounting axis). Optional and
+    // additive - omitting these two parameters leaves every existing
+    // caller's behaviour, and every existing test, completely unchanged.
+    // Deliberately not gated on _gpThreshold here: SignalProcessor.
+    // setKnownAxis only changes what the axis IS, not whether g_p is
+    // authoritative yet (still calibrationReps/_gpIsAuthoritative's job).
+    if (rotationAxis != null && gyroBias != null) {
+      _signalProcessor.setKnownAxis(rotationAxis, gyroBias);
     }
     // Reset transient state so the engine starts fresh with the new
     // threshold, mirroring what a freshly-constructed engine would have.

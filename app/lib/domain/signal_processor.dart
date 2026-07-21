@@ -48,33 +48,40 @@ class SignalProcessor {
   // eccentric by sign rather than by timing (unlike combined, which is
   // a pure magnitude and sees two same-signed humps per rep either way).
   //
-  // Axis choice: the dominant-VARIANCE gyro axis over the first
-  // [axisLearningWindowSamples], not a PCA/calibration-derived axis -
-  // that is Agent 2's CalibrationController territory
-  // (AGENT_2_CALIBRATION_CONTROLLER.md), not reimplemented here. This is
-  // deliberately the same placeholder heuristic used in the Python proof
-  // (cos=0.976 to the true axis there), not a claim of being the final,
-  // best axis-selection method.
+  // Axis choice: by default the dominant-VARIANCE gyro axis over the first
+  // [axisLearningWindowSamples] - a single cardinal axis (x, y, or z), not
+  // a true 3D direction. This is deliberately the same placeholder
+  // heuristic used in the Python proof (cos=0.976 to the true axis
+  // there). [setKnownAxis] below lets a caller override this with a real
+  // arbitrary-direction axis (e.g. ExerciseProfile.rotationAxis, learned
+  // via PCA/Jacobi eigenvalue decomposition over real known-count reps in
+  // the guided calibration wizard - Agent 2's CalibrationController
+  // territory, not reimplemented here) - see
+  // tools/workout_engine_simulation.py pruefe_pca_achse_vs_laufzeit_heuristik
+  // for how much signal the cardinal-only approximation can lose on a
+  // realistically tilted mounting axis (~25% in that example).
 
   /// Number of samples to learn the dominant axis + gyro bias from before
   /// [isSignedProjectionReady] becomes true. 100 @ 50Hz ~= 2s, matching
-  /// the window used in the Python proof.
+  /// the window used in the Python proof. Irrelevant once [setKnownAxis]
+  /// has been called - there is nothing left to learn.
   final int axisLearningWindowSamples;
 
   final List<List<double>> _gyroLearningWindow = [];
   List<double>? _gyroBias;
-  int? _dominantAxisIndex; // 0=x, 1=y, 2=z
+  List<double>? _dominantAxis; // unit vector [x, y, z]
 
-  /// True once enough samples have been observed via
-  /// [observeForAxisLearning] to compute [signedGyroProjection].
-  bool get isSignedProjectionReady => _dominantAxisIndex != null;
+  /// True once a dominant axis is known, either learned via
+  /// [observeForAxisLearning] or provided directly via [setKnownAxis].
+  bool get isSignedProjectionReady => _dominantAxis != null;
 
   /// Feed a raw sample toward learning the dominant gyro axis + bias.
   /// Safe to call on every sample regardless of state; becomes a no-op
-  /// once learning has completed. Deliberately does NOT touch [process]/
-  /// [_filteredSignal] - this is entirely separate bookkeeping.
+  /// once learning has completed OR [setKnownAxis] has already been
+  /// called. Deliberately does NOT touch [process]/[_filteredSignal] -
+  /// this is entirely separate bookkeeping.
   void observeForAxisLearning(SensorSample s) {
-    if (_dominantAxisIndex != null) return;
+    if (_dominantAxis != null) return;
     _gyroLearningWindow.add([s.gx, s.gy, s.gz]);
     if (_gyroLearningWindow.length < axisLearningWindowSamples) return;
 
@@ -100,8 +107,21 @@ class SignalProcessor {
     }
 
     _gyroBias = means;
-    _dominantAxisIndex = bestAxis;
+    _dominantAxis = List.generate(3, (i) => i == bestAxis ? 1.0 : 0.0);
     _gyroLearningWindow.clear(); // no longer needed once learned
+  }
+
+  /// Adopt an already-known rotation axis + gyro bias instead of learning
+  /// one at runtime via [observeForAxisLearning] - e.g. from a wizard-
+  /// calibrated ExerciseProfile. Unlike the runtime heuristic (always one
+  /// of the 3 cardinal axes), [axis] can be any direction; it is expected
+  /// to already be a unit vector (as ExerciseProfile.rotationAxis is) -
+  /// not renormalized here. Makes [isSignedProjectionReady] true
+  /// immediately, skipping the ~2s runtime learning window entirely.
+  void setKnownAxis(List<double> axis, List<double> gyroBias) {
+    _dominantAxis = List.of(axis);
+    _gyroBias = List.of(gyroBias);
+    _gyroLearningWindow.clear();
   }
 
   /// Signed projection of the (bias-corrected) gyro vector onto the
@@ -111,15 +131,12 @@ class SignalProcessor {
   /// where this was proven against the double-hump case. Returns null
   /// until [isSignedProjectionReady].
   double? signedGyroProjection(SensorSample s) {
-    final axis = _dominantAxisIndex;
+    final axis = _dominantAxis;
     final bias = _gyroBias;
     if (axis == null || bias == null) return null;
-    final raw = axis == 0
-        ? s.gx
-        : axis == 1
-            ? s.gy
-            : s.gz;
-    return raw - bias[axis];
+    return (s.gx - bias[0]) * axis[0] +
+        (s.gy - bias[1]) * axis[1] +
+        (s.gz - bias[2]) * axis[2];
   }
 
   /// Reset internal filter state. Call on engine reconnect or new session.
@@ -127,6 +144,6 @@ class SignalProcessor {
     _filteredSignal = null;
     _gyroLearningWindow.clear();
     _gyroBias = null;
-    _dominantAxisIndex = null;
+    _dominantAxis = null;
   }
 }
