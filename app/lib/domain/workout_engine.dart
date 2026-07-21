@@ -337,6 +337,23 @@ class WorkoutEngine {
   double _peakThreshold = 1.2; // g, lowered for real-hardware sensitivity
   double get peakThreshold => _peakThreshold;
 
+  // 2026-07-20 bugfix: the idle-wake gate below used to derive its
+  // margin straight from _peakThreshold - fine as long as _peakThreshold
+  // stayed in combinedSignal's own units, which stopped being true the
+  // moment applyCalibration started accepting a gP-scale threshold
+  // (rotationAxis/gyroBias, Punkt 1). combinedSignal realistically sits
+  // in the 1-10 range; a gP-scale theta can be 100+ (degrees/second) -
+  // (combinedSignal > baseline + (peakThreshold-baseline)*0.5) then
+  // becomes nearly impossible to satisfy, and the engine never leaves
+  // idle at all. Verified: a wizard run that happens to choose gP as
+  // chosenSignal would have made live counting appear completely dead,
+  // not just inaccurate - countedReps stuck at 0 regardless of what the
+  // user does. Kept separate from _peakThreshold on purpose rather than
+  // trying to rescale it: this gate only ever needs to answer "is
+  // anything significant happening at all", never precise per-signal
+  // accuracy - that's _detectPeak/_detectPeakSigned's job downstream.
+  double _wakeThreshold = 1.2;
+
   double _runningEnvelope = 0.0;
   bool _aboveThreshold = false;
   double _currentExcursionPeak = 0.0;
@@ -460,9 +477,11 @@ class WorkoutEngine {
         }
         // Baseline-relative: gravity (~1.0g) alone must not trigger
         // calibrating. The signal must rise meaningfully above the
-        // resting baseline before we treat it as movement.
+        // resting baseline before we treat it as movement. Uses
+        // _wakeThreshold, NOT _peakThreshold - see that field's doc
+        // comment for why using _peakThreshold directly here was a bug.
         if (combinedSignal >
-            baselineLevel + (_peakThreshold - baselineLevel) * 0.5) {
+            baselineLevel + (_wakeThreshold - baselineLevel) * 0.5) {
           if (hasValidCalibration) {
             // ADR-020 fix: a valid calibration (guided, or loaded from
             // persistence) already exists - go straight to active
@@ -508,6 +527,10 @@ class WorkoutEngine {
               baselineLevel + (medianPeak - baselineLevel) * 0.5;
           _peakThreshold =
               max(calibrated, baselineLevel + minThresholdAboveBaseline);
+          // Same _wakeThreshold bugfix as applyCalibration/
+          // _finishGuidedCalibration - this auto-calibration path is
+          // combined-signal-scale only, same as those.
+          _wakeThreshold = _peakThreshold;
           // Schritt B's own g_p threshold is calibrated independently, see
           // the self-contained tracking near the top of this method - not
           // tied to this specific state-completion moment (it used to be;
@@ -530,9 +553,10 @@ class WorkoutEngine {
 
       case WorkoutState.paused:
         // Baseline-relative: same reasoning as idle — gravity alone
-        // must not re-trigger the active state during a pause.
+        // must not re-trigger the active state during a pause. Uses
+        // _wakeThreshold, same bugfix as the idle case above.
         if (combinedSignal >
-            baselineLevel + (_peakThreshold - baselineLevel) * 0.5) {
+            baselineLevel + (_wakeThreshold - baselineLevel) * 0.5) {
           _state = WorkoutState.active;
           _lastMovementAt = s.timestamp;
           _emitStateEvent();
@@ -752,6 +776,7 @@ class WorkoutEngine {
     _calibrationGyroSignals.clear();
     _baselineLevel = _signalProcessor.lastFiltered;
     _peakThreshold = 1.2;  // matches default, lowered for real hardware
+    _wakeThreshold = 1.2;  // same bugfix as applyCalibration - see doc comment
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _repsInSet.clear();
@@ -795,6 +820,13 @@ class WorkoutEngine {
     }
 
     _peakThreshold = newThreshold;
+    // Bugfix, same as applyCalibration: guided calibration is entirely
+    // combined-signal-scale (no rotationAxis/gyroBias concept exists on
+    // this path at all), so _wakeThreshold must track the freshly
+    // learned threshold here exactly like _peakThreshold does - or the
+    // idle/paused wake gate keeps using startGuidedCalibration()'s stale
+    // 1.2 default instead of what was just calibrated.
+    _wakeThreshold = newThreshold;
     final excursion = _peakThreshold - baselineLevel;
     minThresholdAboveBaseline = (excursion * 0.5).clamp(0.10, 2.0);
     hasValidCalibration = true; // ADR-020: guided calibration just completed
@@ -978,6 +1010,15 @@ class WorkoutEngine {
     List<double>? gyroBias,
   }) {
     _peakThreshold = peakThreshold;
+    // Bugfix (see _wakeThreshold doc comment): only follow peakThreshold
+    // when it's actually in combinedSignal's own units, i.e. no gP-scale
+    // rotationAxis/gyroBias came with this call. Otherwise leave
+    // _wakeThreshold at whatever combined-scale value it already had
+    // (constructor default, or an earlier pure-combined calibration in
+    // this same session).
+    if (rotationAxis == null || gyroBias == null) {
+      _wakeThreshold = peakThreshold;
+    }
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
     if (markValid) {
       hasValidCalibration = true;
