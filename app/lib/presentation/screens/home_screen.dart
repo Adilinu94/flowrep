@@ -96,7 +96,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _isMock = widget.sensorProvider is MockSensorProvider;
-    _engine = WorkoutEngine(exerciseId: 'bicep_curl');
+    // useSignedProjectionCounting: true (2026-07-20) - the mechanism itself
+    // (_gpIsAuthoritative in workout_engine.dart: g_p takes over from the
+    // unsigned `combined` signal once its own axis/threshold bootstrap is
+    // ready, staying identical to prior behaviour until then) was built and
+    // real-verified (flutter analyze 0 issues, flutter test 50/50 then
+    // 61/61 after the follow-up PCA-axis wiring) across several sessions -
+    // see STATUS_FORTSCHRITT.md "g_p wird für countedReps verbindlich" and
+    // "Punkt 1" entries. Repeatedly, deliberately left OFF pending an
+    // explicit go-ahead ("keine stillschweigende Aktivierung") rather than
+    // an oversight - flipped now because this is exactly the fix for the
+    // reported "any M5 movement counts as a rep" symptom.
+    _engine = WorkoutEngine(
+      exerciseId: 'bicep_curl',
+      useSignedProjectionCounting: true,
+    );
     _bindEngine();
 
     // Load saved calibration if available (P0-3: persistence).
