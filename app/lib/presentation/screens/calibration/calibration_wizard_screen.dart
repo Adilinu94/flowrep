@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show SystemSound, SystemSoundType;
 
 import '../../../data/security/calibration_store.dart';
 import '../../../domain/calibration_controller.dart';
@@ -44,6 +45,18 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   final _correctKnownCtrl = TextEditingController();
   final _correctSlowCtrl = TextEditingController();
 
+  // Metronom-Fallback (Konzept §3 Stufe B, V2): "nach 2 Fehlversuchen in
+  // Stufe B, Metronom anbieten". CalibrationController.start() setzt
+  // JEDE Stufe zurueck - der Zaehler muss also hier im Screen-State
+  // leben, nicht im Controller, um ueber mehrere Neustarts hinweg zu
+  // zaehlen. Reiner Ton per SystemSound (kein Sprach-Fallback - laut
+  // Konzept ist diese Entscheidung "erst in V2 noetig", Ton allein
+  // braucht sie noch nicht), keine neue Dependency.
+  int _knownSetFailureCount = 0;
+  Timer? _metronomTimer;
+  bool _metronomActive = false;
+  static const _metronomIntervall = Duration(milliseconds: 1000); // 60 bpm
+
   @override
   void initState() {
     super.initState();
@@ -51,11 +64,20 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
       exerciseId: widget.exerciseId,
       onStageAdvanced: (stage) {
         if (!mounted) return;
-        setState(() => _gateFailMessage = null);
+        _metronomTimer?.cancel();
+        setState(() {
+          _gateFailMessage = null;
+          _metronomActive = false;
+        });
       },
       onQualityGateFail: (stage, reason) {
         if (!mounted) return;
-        setState(() => _gateFailMessage = reason);
+        setState(() {
+          _gateFailMessage = reason;
+          if (stage == CalibrationStage.knownSet) {
+            _knownSetFailureCount++;
+          }
+        });
       },
       onReviewDataReady: (data) {
         if (!mounted) return;
@@ -75,9 +97,23 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   void dispose() {
     _samplesSub?.cancel();
     _uiTimer?.cancel();
+    _metronomTimer?.cancel();
     _correctKnownCtrl.dispose();
     _correctSlowCtrl.dispose();
     super.dispose();
+  }
+
+  void _toggleMetronom() {
+    if (_metronomActive) {
+      _metronomTimer?.cancel();
+      setState(() => _metronomActive = false);
+      return;
+    }
+    setState(() => _metronomActive = true);
+    SystemSound.play(SystemSoundType.click);
+    _metronomTimer = Timer.periodic(_metronomIntervall, (_) {
+      SystemSound.play(SystemSoundType.click);
+    });
   }
 
   void _cancel() => Navigator.of(context).pop(false);
@@ -197,6 +233,17 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         CalibrationStage.slowSet,
       }.contains(_controller.stage);
 
+  /// Tap-to-Tag (Konzept §2.6/§3, V2) ist nur waehrend der beiden
+  /// Reps-mit-bekannter-Anzahl-Stufen sinnvoll - in rest/singleRep gibt
+  /// es keine "fertige Wiederholung" zum Markieren.
+  bool get _tapButtonVisible =>
+      _controller.stage == CalibrationStage.knownSet ||
+      _controller.stage == CalibrationStage.slowSet;
+
+  int get _tapCountForCurrentStage => _controller.stage == CalibrationStage.knownSet
+      ? _controller.tapCountB
+      : _controller.tapCountC;
+
   @override
   Widget build(BuildContext context) {
     final seconds =
@@ -230,6 +277,50 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
                     ),
                     child: Text(_gateFailMessage!,
                         style: const TextStyle(color: Colors.white)),
+                  ),
+                ],
+                if (_tapButtonVisible) ...[
+                  const SizedBox(height: 20),
+                  FilledButton.tonalIcon(
+                    onPressed: () {
+                      setState(_controller.addTap);
+                    },
+                    icon: const Icon(Icons.touch_app),
+                    label: const Text('Tippe bei jeder fertigen Wiederholung'),
+                  ),
+                  const SizedBox(height: 4),
+                  Text('$_tapCountForCurrentStage Tap(s) erfasst - optional, '
+                      'hilft der Kalibrierung',
+                      style: Theme.of(context).textTheme.bodySmall),
+                ],
+                if (_controller.stage == CalibrationStage.knownSet &&
+                    _knownSetFailureCount >= 2) ...[
+                  const SizedBox(height: 20),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey.shade800,
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Column(
+                      children: [
+                        const Text(
+                          'Fällt es schwer, ein gleichmäßiges Tempo zu '
+                          'halten? Ein Metronom kann helfen.',
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        OutlinedButton.icon(
+                          onPressed: _toggleMetronom,
+                          icon: Icon(_metronomActive
+                              ? Icons.stop
+                              : Icons.music_note),
+                          label: Text(_metronomActive
+                              ? 'Metronom stoppen'
+                              : 'Führe mich im Takt (60/min)'),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ],
