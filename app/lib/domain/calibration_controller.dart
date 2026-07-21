@@ -173,6 +173,12 @@ class CalibrationController {
   bool _cOk = false;
   double _quality = 0.0;
 
+  // Tap-to-Tag (Konzept §2.6/§3, V2): rohe Tap-Sample-Indizes je Stufe,
+  // VOR Lag-Korrektur. Optional - Known-Count funktioniert unveraendert
+  // ohne jeden Tap; siehe addTap() unten fuer die volle Begruendung.
+  final List<int> _tapsB = [];
+  final List<int> _tapsC = [];
+
   /// Aktuelle Stufe.
   CalibrationStage get stage => _stage;
 
@@ -200,6 +206,12 @@ class CalibrationController {
   /// Diagnose: ob Stufe C (Tempo-Robustheit) erfolgreich war.
   bool get cOk => _cOk;
 
+  /// Diagnose: Anzahl bisher registrierter Taps in Stufe B (Tap-to-Tag).
+  int get tapCountB => _tapsB.length;
+
+  /// Diagnose: Anzahl bisher registrierter Taps in Stufe C (Tap-to-Tag).
+  int get tapCountC => _tapsC.length;
+
   /// Startet eine neue Kalibrierung in Stufe 0 (verwirft alle Puffer).
   void start() {
     _stage = CalibrationStage.rest;
@@ -208,6 +220,8 @@ class CalibrationController {
     _bufA.clear();
     _bufB.clear();
     _bufC.clear();
+    _tapsB.clear();
+    _tapsC.clear();
     _rest = null;
     _axis = null;
     _signaleB = null;
@@ -233,6 +247,35 @@ class CalibrationController {
         _bufB.add(sample);
       case CalibrationStage.slowSet:
         _bufC.add(sample);
+      case CalibrationStage.review:
+      case CalibrationStage.done:
+      case CalibrationStage.failed:
+        break;
+    }
+  }
+
+  /// Tap-to-Tag (Konzept §2.6/§3, "jederzeit in B-D: Tap-Button pro
+  /// fertiger Rep", V2). Registriert EINEN Tap zum aktuell letzten
+  /// Sample der laufenden Stufe B/C - ein rein additives, optionales
+  /// Signal: ruft niemand [addTap] auf, verhaelt sich Known-Count exakt
+  /// wie zuvor (siehe [_tapsAligned]: leere Tap-Liste => keine
+  /// zusaetzliche Pruefung). Kein Effekt in rest/singleRep/review/done/
+  /// failed - der Tap-Button ist in der UI nur waehrend B/C sichtbar.
+  ///
+  /// Bewusst NICHT in dieser Aenderung: Feedback-Tap waehrend des
+  /// LIVE-Trainings (nach der Kalibrierung) - das Konzept ordnet die
+  /// Adaption daraus explizit V3 zu ("erst loggen, Adaption (V3) nach
+  /// Auswertung der Logs"), hier geht es nur um die Kalibrierungs-Stufen
+  /// selbst.
+  void addTap() {
+    if (!_running) return;
+    switch (_stage) {
+      case CalibrationStage.knownSet:
+        if (_bufB.isNotEmpty) _tapsB.add(_bufB.length - 1);
+      case CalibrationStage.slowSet:
+        if (_bufC.isNotEmpty) _tapsC.add(_bufC.length - 1);
+      case CalibrationStage.rest:
+      case CalibrationStage.singleRep:
       case CalibrationStage.review:
       case CalibrationStage.done:
       case CalibrationStage.failed:
@@ -410,7 +453,16 @@ class CalibrationController {
   void _runBSweep() {
     _signaleB = _kandidatenSignale(_bufB, _axis!.achse, _rest!.gyroBias);
     _metaB = _signalMeta(_signaleB!);
-    _cfg = _knownCountSweep(_signaleB!, _metaB!, _axis!.t0, knownSetCount);
+    // Tap-to-Tag (Konzept §2.6, V2): rohe Taps auf ihr naechstes
+    // Signal-Landmark (lokales gyroMag-Minimum) ausgerichtet, dann EIN
+    // gemeinsamer Median-Lag ueber alle Taps abgezogen - nicht pro Tap
+    // einzeln, siehe _lagKorrigierteTaps. gyroMag statt eines
+    // Kandidaten-Signals, weil hier noch nicht feststeht, welches Signal
+    // der Sweep gleich waehlt.
+    final tapsKorrigiert =
+        _lagKorrigierteTaps(_tapsB, _signaleB![ChosenSignal.gyroMag]!);
+    _cfg = _knownCountSweep(
+        _signaleB!, _metaB!, _axis!.t0, knownSetCount, tapsKorrigiert);
     if (_cfg != null) {
       // Finale Schwelle = median − k·MAD der validierten Peak-Höhen
       // (reproduziert die Sweep-Höhe; Referenz median_minus_k_mad).
@@ -630,11 +682,79 @@ class CalibrationController {
     return result;
   }
 
+  // ---------------------------------------------------------------------
+  // Tap-to-Tag (Referenz: Konzept §2.6 "Tap-to-Tag im Detail", V2)
+  // ---------------------------------------------------------------------
+
+  /// Sucht rueckwaerts vom rohen Tap-Sample-Index [rohIndex] das naechste
+  /// Signal-Landmark: das lokale Minimum von [gyroMag] in einem
+  /// [fensterSamples] grossen Fenster davor (Konzept §2.6: "lokales
+  /// Minimum des Winkels bzw. Gyro-Nulldurchgang Richtung Ruhe" - ein
+  /// Tap markiert "Rep fertig", die Rotationsgeschwindigkeit sollte dort
+  /// gerade Richtung Ruhe zurueckgehen).
+  int _naechstesLandmark(
+      List<double> gyroMag, int rohIndex, int fensterSamples) {
+    if (gyroMag.isEmpty) return rohIndex;
+    final ende = min(rohIndex, gyroMag.length - 1);
+    final start = max(0, ende - fensterSamples);
+    var minIdx = ende;
+    var minVal = gyroMag[ende];
+    for (var i = start; i <= ende; i++) {
+      if (gyroMag[i] < minVal) {
+        minVal = gyroMag[i];
+        minIdx = i;
+      }
+    }
+    return minIdx;
+  }
+
+  /// Lag-korrigierte Tap-Indizes (Konzept §2.6): jeder rohe Tap wird auf
+  /// sein naechstes Landmark ausgerichtet, DANACH wird ein EINZIGER,
+  /// gemeinsamer Median-Lag ueber alle Taps abgezogen - nicht pro Tap
+  /// individuell verrechnet, sondern ein personentypischer
+  /// Korrekturwert (Reaktionszeit ist relativ konstant pro Person).
+  /// Leere Eingabe -> leere Ausgabe (kein Tap gedrueckt).
+  List<int> _lagKorrigierteTaps(List<int> rohTaps, List<double> gyroMag) {
+    if (rohTaps.isEmpty) return const [];
+    // 500ms @ 50Hz - deckt den im Konzept genannten Lag-Bereich
+    // (150-400ms) mit Marge ab.
+    final fensterSamples = (0.5 * sampleRateHz).round();
+    final landmarks = [
+      for (final t in rohTaps) _naechstesLandmark(gyroMag, t, fensterSamples)
+    ];
+    final lags = [
+      for (var i = 0; i < rohTaps.length; i++)
+        (rohTaps[i] - landmarks[i]).toDouble()
+    ];
+    final medianLag = _median(lags).round();
+    return [for (final t in rohTaps) t - medianLag];
+  }
+
+  /// true, wenn jedes durch [taps] definierte Intervall (0..taps[0],
+  /// taps[0]..taps[1], ...) genau eine Detektion aus [marks] enthaelt
+  /// (Konzept §3 Stufe B: "jedes Tap-Intervall muss genau 1 Detektion
+  /// enthalten"). Leere [taps] -> immer true (keine Taps = keine
+  /// zusaetzliche Pruefung, Known-Count-Sweep verhaelt sich unveraendert).
+  bool _tapsAligned(List<int> taps, List<RepMark> marks) {
+    if (taps.isEmpty) return true;
+    var grenzeVorher = -1;
+    for (final grenze in taps) {
+      final anzahlImFenster = marks
+          .where(
+              (m) => m.sampleIndex > grenzeVorher && m.sampleIndex <= grenze)
+          .length;
+      if (anzahlImFenster != 1) return false;
+      grenzeVorher = grenze;
+    }
+    return true;
+  }
+
   _SweepCfg? _knownCountSweep(
     Map<ChosenSignal, List<double>> signale,
     Map<ChosenSignal, (double, double)> meta,
     double t0,
     int nSoll,
+    List<int> tapsKorrigiert,
   ) {
     _SweepCfg? beste;
     for (final e in signale.entries) {
@@ -676,6 +796,14 @@ class CalibrationController {
                 sig, sampleRateHz, theta, refr, baseline,
                 prominenz: prominenz);
             if (reps.length != nSoll) continue;
+            // Tap-Alignment (Konzept §3 Stufe B, V2): mit Taps vorhanden
+            // muss JEDES Tap-Intervall genau 1 Detektion enthalten - eine
+            // Konfiguration, die zufaellig die richtige ANZAHL trifft,
+            // aber an der falschen Stelle zaehlt (z. B. zwei Detektionen
+            // in einer Rep, keine in der naechsten), faellt hier durch,
+            // obwohl reps.length == nSoll. Leere Tap-Liste (kein addTap()
+            // aufgerufen) -> immer true, siehe _tapsAligned.
+            if (!_tapsAligned(tapsKorrigiert, reps)) continue;
             // Höhen-Gate: Detektionen müssen die obere Signalrange
             // erreichen (echte Rep-Peaks), nicht Flanken-Rauschen.
             final hoehen = [for (final mark in reps) mark.height];
