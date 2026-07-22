@@ -1,6 +1,42 @@
 
 # KONZEPT: Guided Calibration 2.0 — Recherche & detaillierter Plan (2026-07-16)
 
+> **Update-Block (2026-07-22, Chat-Session):** Umsetzungsstand gegen den
+> tatsächlichen Code geprüft (`main`, Commit `24247c6`). Kurzfassung:
+> **V0/V1/V2 sind im Kern gebaut**, V3 bewusst weiter zurückgestellt — wie
+> geplant. Alles unten im Dokument bleibt als historischer Plan stehen,
+> hier nur der Abgleich mit der Realität.
+>
+> | # | Root Cause (§1) | Status |
+> |---|---|---|
+> | K1 | Henne-Ei-Problem | ✅ Gelöst **auf dem Wizard-Pfad** (Known-Count-Sweep in `CalibrationController`). ⚠️ Die alten hartkodierten Konstanten (`_minPeakHeight=1.2`, `_minPeakDistanceSamples=12`, `workout_engine.dart:361-362`) existieren unverändert weiter und laufen als `startGuidedCalibration()`-Fallback für jeden Nutzer, der ohne Wizard direkt loslegt (`WorkoutState.calibrating`-Zweig im idle-Handler). K1 ist also nicht abgelöst, nur umgangen für Wizard-Nutzer. |
+> | K2 | Zählung ohne Wahrheit, kein Review | ✅ Gelöst: `CalibrationStage.review` + `userCorrectCount()` (`calibration_controller.dart:269`), UI in `calibration_wizard_screen.dart` (`_buildReview`). |
+> | K3 | Einzelne fragile Statistik | ✅ Gelöst: Known-Count-Sweep + Median/MAD in `CalibrationController` (Python-Portierung zum Vergleich: `median_minus_k_mad` in `tools/workout_engine_simulation.py`). |
+> | K4 | Kein Tempo-Lernen | ✅ Gelöst: `CalibrationStage.slowSet` (Stufe C) mit tempo-robuster Nachjustierung. |
+> | K5 | Baseline-Kontamination | ✅ Weiterhin behoben (Commit `3907706`) **und** das damals "verbleibend offene" Ruhe-Qualitäts-Gate existiert jetzt (`CalibrationStage.rest`, Gate `gyroMagMean < 15,0 °/s && sigmaAccel < 0,05`, `calibration_controller.dart:550`). |
+> | K6 | Sample-Konstanten ohne ehrliche Zeitbasis | ✅ Firmware-Protokoll v2 ist auf `main` (Gyro-Skala ×0,02 statt ×0,01, behebt auch das separate Clipping-Problem bei ~344 °/s). Am echten Gerät noch nicht validiert. |
+> | K7 | Kein Feedback-Kanal | ✅ Gelöst: Tap-to-Tag (`addTap()`, `calibration_controller.dart:270`) + Metronom-Fallback (`calibration_wizard_screen.dart`, 60 bpm) — beide gerade erst gemergt. |
+>
+> **Weitere Abweichungen/offene Punkte gegenüber diesem Plan:**
+> - **Review-UI ist Text, kein Chart.** §3 Stufe D / §9.6 sahen eine
+>   Signal-Visualisierung mit Rep-Markern (CustomPainter) vor; gebaut wurde
+>   eine reine Text-Zusammenfassung ("Stufe B: X/Y gezählt" + Korrektur).
+>   Deckt K2/SAAT funktional ab, ist aber eine bewusste Vereinfachung —
+>   falls die Chart-Variante noch gewünscht ist, weiterhin offen.
+> - **`ExerciseProfile`-Schema** entspricht praktisch 1:1 dem in §6
+>   geplanten (inkl. `exerciseId`-Keying und Migration v1→v2 über
+>   `ExerciseProfile.legacy(...)` in `calibration_store.dart`).
+> - **Der letzte Schritt aus der "Was ändert sich"-Tabelle in §3 — die
+>   Engine konsumiert `chosenSignal`/`minRepIntervalSeconds`/`prominenceMin`
+>   aus dem Profil — ist NICHT auf `main`**, sondern nur im noch
+>   ungemergten, ungeprüften Branch `agent1-threshold-routing`. Das ist
+>   aktuell die eigentliche Lücke: nicht mehr die Kalibrierung selbst,
+>   sondern die Verbindung Wizard-Profil ↔ Live-Engine.
+> - V0 (`tools/dsp_lab_phase2_real_data.py`) existiert als Datei, Inhalt in
+>   dieser Session nicht im Detail geprüft.
+> - V3 (Template/DTW, Online-Adaption, Multi-Exercise-UI) weiterhin nicht
+>   gebaut — wie geplant zurückgestellt, bis echte CSV-Daten vorliegen.
+
 > **Rev 2 (2026-07-16, Review eingearbeitet):** (1) K5 aktualisiert — Baseline-Freeze ist seit Commit `3907706` implementiert; (2) neue Sektionen **§4 Architektur (Controller/Engine-Grenze mit Sequenzdiagramm)** und **§5 Neue Dependencies**; (3) Implementierungsplan mit **MVP-Priorisierung (V0/V1/V2/V3)** statt flacher Paketliste; (4) **Migrationsstrategie** für gespeicherte Legacy-Kalibrierungen; (5) **Multi-Exercise**-Keying im `ExerciseProfile` von Anfang an; (6) **Offline-Kalibrierung aus CSV** als risikoarme Vorstufe V0; (7) Performance- und Sample-Raten-Anmerkungen (Sweep, Tap-Lag); (8) Quellen-Authority differenziert (§10).
 
 **Auftrag von Adi:** Die Guided Calibration funktioniert nicht zufriedenstellend — entweder werden viel zu viele oder zu wenige Reps erkannt; die optimalen Einstellungen sind schwer zu finden. Adis eigene Ideen: (a) per Button-Tippen jede gemachte Rep markieren, (b) die App führt stufig ("mach 1 Rep, dann 5, dann 10") und lernt daraus. Auftrag: gründlich recherchieren und einen detaillierten Plan erstellen.
