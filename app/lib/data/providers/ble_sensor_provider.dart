@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import '../../domain/filters/jitter_buffer.dart';
 import '../../domain/workout_engine.dart';
 import '../logger.dart';
 import '../protocol/ble_protocol_parser.dart';
@@ -45,6 +46,16 @@ class BleSensorProvider implements ISensorProvider {
   final _connectionController = StreamController<SensorConnectionState>.broadcast();
   final _sampleController = StreamController<SensorSample>.broadcast();
   final _parser = BleProtocolParser();
+
+  /// Wandelt unregelmäßige BLE-Bursts in einen gleichmäßigen 50-Hz-Strom um.
+  /// Latenz: bufferSize * tickInterval = 6 * 20ms = 120ms (akzeptabel für Rep-Counting).
+  late final JitterBuffer<SensorSample> _jitterBuffer = JitterBuffer<SensorSample>(
+    onFrame: (sample) {
+      if (!_sampleController.isClosed) {
+        _sampleController.add(sample);
+      }
+    },
+  );
 
   BluetoothDevice? _device;
   BluetoothCharacteristic? _sensorDataChar;
@@ -95,6 +106,12 @@ class BleSensorProvider implements ISensorProvider {
   /// batch (expected and harmless - the firmware's characteristic value
   /// just hadn't changed yet between two polls).
   int get duplicateReads => _dedupTracker.duplicateSkips;
+
+  /// Anzahl verworfener Frames im JitterBuffer (Puffer-Überlauf).
+  int get jitterDroppedFrames => _jitterBuffer.droppedFrames;
+
+  /// Anzahl gleichmäßig ausgegebener Frames vom JitterBuffer.
+  int get jitterOutputFrames => _jitterBuffer.outputFrames;
 
   /// Estimated number of batches that were likely produced by the
   /// firmware but never seen by any `read()` call (a real gap between
@@ -252,6 +269,8 @@ class BleSensorProvider implements ISensorProvider {
     _pollBatchCount = 0;
     _dedupTracker.reset();  // reset on reconnect to avoid stale dedup/gap state
     _diagSampleCount = 0;        // reset diagnostics for new session
+    _jitterBuffer.reset();       // flush stale samples from previous session
+    _jitterBuffer.start();       // begin 50 Hz output cadence
 
     Future<void> poll() async {
       while (_device?.isConnected == true) {
@@ -290,9 +309,8 @@ class BleSensorProvider implements ISensorProvider {
             _pollingRateHz = _pollBatchCount / elapsedSec;
           }
 
-          for (final s in samples) {
-            _sampleController.add(s);
-          }
+          // JitterBuffer: glättet BLE-Bursts zu gleichmäßigem 50-Hz-Strom.
+          _jitterBuffer.addBatch(samples);
 
           // DIAGNOSTIC: log raw IMU values every ~50 batches so we can
           // see what the sensor is actually measuring during movement.
@@ -332,6 +350,7 @@ class BleSensorProvider implements ISensorProvider {
 
   @override
   Future<void> disconnect() async {
+    _jitterBuffer.stop();
     await _sendControlCommand(0x02); // STOP_STREAM
     await _notifySubscription?.cancel();
     await _mtuSubscription?.cancel();
@@ -364,6 +383,7 @@ class BleSensorProvider implements ISensorProvider {
   }
 
   void dispose() {
+    _jitterBuffer.dispose();
     _notifySubscription?.cancel();
     _mtuSubscription?.cancel();
     _connectionController.close();

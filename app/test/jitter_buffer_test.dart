@@ -2,36 +2,54 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/domain/filters/jitter_buffer.dart';
 
+/// Test-Sample (einfacher Record).
+class _TestSample {
+  final int timestampMs;
+  final double value;
+  const _TestSample(this.timestampMs, this.value);
+}
+
 void main() {
   group('JitterBuffer', () {
     test('add() füllt den Puffer', () {
-      final buffer = JitterBuffer(onFrame: (_, __, ___, ____) {});
-      buffer.add(0, 1.0, 2.0, 3.0);
-      buffer.add(20, 4.0, 5.0, 6.0);
+      final buffer = JitterBuffer<_TestSample>(onFrame: (_) {});
+      buffer.add(const _TestSample(0, 1.0));
+      buffer.add(const _TestSample(20, 2.0));
       expect(buffer.queueLength, equals(2));
       buffer.dispose();
     });
 
     test('Drop-Oldest bei vollem Puffer', () {
-      final buffer = JitterBuffer(
-        onFrame: (_, __, ___, ____) {},
+      final buffer = JitterBuffer<_TestSample>(
+        onFrame: (_) {},
         bufferSize: 3,
       );
-      buffer.add(0, 1.0, 0.0, 0.0);
-      buffer.add(20, 2.0, 0.0, 0.0);
-      buffer.add(40, 3.0, 0.0, 0.0);
+      buffer.add(const _TestSample(0, 1.0));
+      buffer.add(const _TestSample(20, 2.0));
+      buffer.add(const _TestSample(40, 3.0));
       expect(buffer.queueLength, equals(3));
       expect(buffer.droppedFrames, equals(0));
 
       // 4. Sample → ältestes wird verworfen
-      buffer.add(60, 4.0, 0.0, 0.0);
+      buffer.add(const _TestSample(60, 4.0));
       expect(buffer.queueLength, equals(3));
       expect(buffer.droppedFrames, equals(1));
       buffer.dispose();
     });
 
+    test('addBatch() fügt mehrere Elemente hinzu', () {
+      final buffer = JitterBuffer<_TestSample>(onFrame: (_) {});
+      buffer.addBatch([
+        const _TestSample(0, 1.0),
+        const _TestSample(20, 2.0),
+        const _TestSample(40, 3.0),
+      ]);
+      expect(buffer.queueLength, equals(3));
+      buffer.dispose();
+    });
+
     test('start() ist idempotent', () {
-      final buffer = JitterBuffer(onFrame: (_, __, ___, ____) {});
+      final buffer = JitterBuffer<_TestSample>(onFrame: (_) {});
       buffer.start();
       expect(buffer.isRunning, isTrue);
       buffer.start(); // nochmal → kein Fehler
@@ -40,8 +58,8 @@ void main() {
     });
 
     test('stop() leert Puffer und stoppt Timer', () {
-      final buffer = JitterBuffer(onFrame: (_, __, ___, ____) {});
-      buffer.add(0, 1.0, 2.0, 3.0);
+      final buffer = JitterBuffer<_TestSample>(onFrame: (_) {});
+      buffer.add(const _TestSample(0, 1.0));
       buffer.start();
       buffer.stop();
       expect(buffer.isRunning, isFalse);
@@ -51,14 +69,14 @@ void main() {
 
     test('Timer gibt Samples in Reihenfolge aus', () async {
       final received = <int>[];
-      final buffer = JitterBuffer(
-        onFrame: (ts, _, __, ___) => received.add(ts),
+      final buffer = JitterBuffer<_TestSample>(
+        onFrame: (s) => received.add(s.timestampMs),
         tickIntervalMs: 10,
       );
 
-      buffer.add(100, 1.0, 0.0, 0.0);
-      buffer.add(120, 2.0, 0.0, 0.0);
-      buffer.add(140, 3.0, 0.0, 0.0);
+      buffer.add(const _TestSample(100, 1.0));
+      buffer.add(const _TestSample(120, 2.0));
+      buffer.add(const _TestSample(140, 3.0));
       buffer.start();
 
       // Warten bis alle 3 Samples ausgegeben wurden
@@ -72,8 +90,8 @@ void main() {
 
     test('Leerer Puffer gibt nichts aus', () async {
       final received = <int>[];
-      final buffer = JitterBuffer(
-        onFrame: (ts, _, __, ___) => received.add(ts),
+      final buffer = JitterBuffer<_TestSample>(
+        onFrame: (s) => received.add(s.timestampMs),
         tickIntervalMs: 10,
       );
 
@@ -87,13 +105,13 @@ void main() {
     });
 
     test('reset() leert Puffer und setzt Zähler zurück', () {
-      final buffer = JitterBuffer(
-        onFrame: (_, __, ___, ____) {},
+      final buffer = JitterBuffer<_TestSample>(
+        onFrame: (_) {},
         bufferSize: 2,
       );
-      buffer.add(0, 1.0, 0.0, 0.0);
-      buffer.add(20, 2.0, 0.0, 0.0);
-      buffer.add(40, 3.0, 0.0, 0.0); // drop
+      buffer.add(const _TestSample(0, 1.0));
+      buffer.add(const _TestSample(20, 2.0));
+      buffer.add(const _TestSample(40, 3.0)); // drop
       expect(buffer.droppedFrames, equals(1));
 
       buffer.reset();
@@ -104,7 +122,7 @@ void main() {
     });
 
     test('dispose() stoppt den Timer', () {
-      final buffer = JitterBuffer(onFrame: (_, __, ___, ____) {});
+      final buffer = JitterBuffer<_TestSample>(onFrame: (_) {});
       buffer.start();
       expect(buffer.isRunning, isTrue);
       buffer.dispose();
