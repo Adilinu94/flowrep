@@ -1120,7 +1120,21 @@ class WorkoutEngine {
     // bug _wakeThreshold was split out to fix, just via a more precise
     // trigger (chosenSignal) than the original rotationAxis/gyroBias
     // proxy.
-    switch (chosenSignal) {
+    //
+    // 2026-07-22 real-flutter-test finding: chosenSignal alone as the
+    // trigger silently reintroduced that exact bug for any caller still
+    // using the older rotationAxis/gyroBias-only convention (no
+    // chosenSignal) - it fell through to the combined/null case below and
+    // wrote a gP-scale value straight into _peakThreshold/_wakeThreshold
+    // again. Caught by the pre-existing 2026-07-20 regression test below
+    // (bugfix 2026-07-20 test), which calls applyCalibration exactly that
+    // way and failed under real `flutter test` until this fallback was
+    // added. chosenSignal still wins when given (the precise, current
+    // signal); rotationAxis is only consulted as a backstop for callers
+    // that don't pass it.
+    final effectiveSignal =
+        chosenSignal ?? (rotationAxis != null ? ChosenSignal.gP : null);
+    switch (effectiveSignal) {
       case ChosenSignal.gP:
         _gpThreshold = peakThreshold;
         _gpDirection = 1; // rotationAxis is already sign-conventioned by CalibrationController
@@ -1132,8 +1146,14 @@ class WorkoutEngine {
         _wakeThreshold = peakThreshold;
     }
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
-    _primarySignal = chosenSignal;
-    if (chosenSignal != null) {
+    // effectiveSignal, not the raw chosenSignal parameter: keeps this
+    // consistent with the routing switch above for the same legacy
+    // rotationAxis-only callers - a rotationAxis-only call is just as much
+    // "a real profile" as one that also passes chosenSignal explicitly
+    // (see the applyCalibration doc comment's rotationAxis/gyroBias
+    // paragraph), so it should disable S2 adaptation the same way.
+    _primarySignal = effectiveSignal;
+    if (effectiveSignal != null) {
       // A real, Known-Count-tuned profile - see _adaptiveThresholdEnabled
       // doc comment for why this turns S2's runtime adaptation off.
       _adaptiveThresholdEnabled = false;

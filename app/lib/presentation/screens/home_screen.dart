@@ -395,6 +395,20 @@ class _HomeScreenState extends State<HomeScreen> {
         minThresholdAboveBaseline: 0.10,
         rotationAxis: profile.migratedFrom == 0 ? profile.rotationAxis : null,
         gyroBias: profile.migratedFrom == 0 ? profile.gyroBias : null,
+        // chosenSignal/minRepIntervalSeconds/prominenceMin (2026-07-22):
+        // same migratedFrom==0 gate as rotationAxis/gyroBias just above,
+        // for the same reason - a migrated v1-legacy profile's
+        // ExerciseProfile.legacy() only fills these with safe combined-
+        // signal placeholders, not a real Known-Count-tuned result, so
+        // passing them there would be new, untested behaviour for
+        // exactly the callers this was never meant to change. Without
+        // this call actually reaching applyCalibration, the engine-side
+        // chosenSignal routing added the same day has no effect at all -
+        // this is the only call site (see class doc comment above).
+        chosenSignal: profile.migratedFrom == 0 ? profile.chosenSignal : null,
+        minRepIntervalSeconds:
+            profile.migratedFrom == 0 ? profile.minRepIntervalSeconds : null,
+        prominenceMin: profile.migratedFrom == 0 ? profile.prominenceMin : null,
       );
     }
   }
