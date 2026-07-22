@@ -1042,19 +1042,51 @@ void main() {
     });
 
     test(
-        'bugfix 2026-07-20: a gP-scale peakThreshold (from a profile whose '
-        'chosenSignal is gP, applied via rotationAxis/gyroBias) must not '
-        'make the engine stuck in idle forever - the coarse wake gate '
-        'needs its own combined-scale threshold, separate from the '
-        'precise counting threshold', () {
+        'bugfix 2026-07-20/21: a gP-scale peakThreshold (from rotationAxis/'
+        'gyroBias without an explicit chosenSignal - the exact call shape '
+        'this fix predates chosenSignal-routing existing as a parameter '
+        'at all) must not corrupt _wakeThreshold and get the engine stuck '
+        'forever. 2026-07-22: idle itself no longer auto-wakes at all '
+        '(see startSet()), so this can only still happen resuming a set '
+        'from a pause - retargeted there.', () {
       final engine = WorkoutEngine(
         exerciseId: 'bicep_curl',
         useSignedProjectionCounting: true, // matches home_screen.dart today
       );
-      // A realistic gP-scale theta (100+ deg/s) - before this fix, this
-      // fed straight into the SAME threshold the idle-wake gate compares
-      // against combinedSignal (typically 1-10), making the gate nearly
-      // impossible to satisfy.
+
+      // Ordinary combined-scale calibration first, so a real rep can get
+      // counted below - _endSet() only lands in `paused` (not `idle`)
+      // when at least one rep was counted, see its doc comment.
+      engine.applyCalibration(peakThreshold: 1.7, minThresholdAboveBaseline: 0.3);
+      engine.startSet();
+      expect(engine.state, WorkoutState.active);
+
+      var t = DateTime(2026, 1, 1);
+      WorkoutEngineEvent? lastEvent;
+      final sub = engine.events.listen((e) => lastEvent = e);
+
+      void feedOneRep() {
+        const steps = 18;
+        for (var i = 0; i < steps; i++) {
+          final phase = (i / steps) * pi;
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 1.0 + 0.9 * sin(phase), az: 0,
+            gx: 0, gy: 0, gz: 0,
+          ));
+          t = t.add(const Duration(milliseconds: 67));
+        }
+      }
+      feedOneRep();
+      expect(lastEvent?.repsInCurrentSet, 1,
+          reason: 'setup check, not the actual regression: this rep '
+              'shape/threshold must produce exactly one counted rep so '
+              'the pause below lands in `paused`, not `idle`.');
+
+      // A realistic gP-scale theta (100+ deg/s), applied via
+      // rotationAxis/gyroBias WITHOUT chosenSignal - before this fix,
+      // this fed straight into the SAME field the paused-resume wake
+      // gate compares combinedSignal (typically 1-10) against, making
+      // the gate nearly impossible to satisfy ever again.
       engine.applyCalibration(
         peakThreshold: 100.0,
         minThresholdAboveBaseline: 0.10,
@@ -1062,23 +1094,36 @@ void main() {
         gyroBias: [0.0, 0.0, 0.0],
       );
 
-      var t = DateTime(2026, 1, 1);
-      const step = Duration(milliseconds: 20);
+      // Rest well past pauseAfter (4s default) with no movement, so the
+      // engine ends the set into `paused`.
+      for (var i = 0; i < 80; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(const Duration(milliseconds: 100));
+      }
+      expect(engine.state, WorkoutState.paused,
+          reason: 'the set above had a counted rep, so a long rest ends '
+              'it into `paused`, not `idle` - see _endSet().');
+
+      // A real curl-shaped signal must wake the engine back up from
+      // `paused`, regardless of the gP-scale peakThreshold now sitting
+      // in _peakThreshold.
       for (var i = 0; i < 60; i++) {
         final phase = (i / 60) * pi;
         engine.processSample(SensorSample(
           timestamp: t, ax: 0, ay: 1.0 + 0.5 * sin(phase), az: 0,
           gx: 150.0 * sin(phase), gy: 0, gz: 0,
         ));
-        t = t.add(step);
+        t = t.add(const Duration(milliseconds: 20));
       }
 
-      expect(engine.state, isNot(equals(WorkoutState.idle)),
+      expect(engine.state, isNot(equals(WorkoutState.paused)),
           reason: 'A real curl-shaped signal (combinedSignal ~1.0-2.5, '
-              'well above resting baseline) must wake the engine up, '
-              'regardless of what scale peakThreshold happens to be in - '
-              'before this fix the engine stayed stuck in idle forever '
-              'whenever peakThreshold held a gP-scale (100+) value.');
+              'well above resting baseline) must wake the engine back up '
+              'from a pause, regardless of what scale peakThreshold '
+              'happens to be in - before this fix the paused-resume gate '
+              'got stuck the same way idle used to.');
       // NOT asserted here on purpose: whether signedProjectionRepCount
       // is non-null/1 after just this one rep. That depends on how fast
       // _gpThreshold itself gets bootstrapped (still its own live
@@ -1086,6 +1131,7 @@ void main() {
       // profile.theta by this method, a separate, still-open design
       // question flagged in STATUS_FORTSCHRITT.md, "Punkt 3 Nachtrag").
       // This test is deliberately scoped to ONLY the wake-gate bug.
+      sub.cancel();
       engine.dispose();
     });
   });

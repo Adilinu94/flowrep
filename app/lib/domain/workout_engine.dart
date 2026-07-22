@@ -477,39 +477,21 @@ class WorkoutEngine {
           if (combinedSignal <= settleLine) {
             _awaitingSettleAfterCalibration = false;
           }
-          break;
         }
-        // Baseline-relative: gravity (~1.0g) alone must not trigger
-        // calibrating. The signal must rise meaningfully above the
-        // resting baseline before we treat it as movement. Uses
-        // _wakeThreshold, NOT _peakThreshold - see that field's doc
-        // comment for why using _peakThreshold directly here was a bug.
-        if (combinedSignal >
-            baselineLevel + (_wakeThreshold - baselineLevel) * 0.5) {
-          if (hasValidCalibration) {
-            // ADR-020 fix: a valid calibration (guided, or loaded from
-            // persistence) already exists - go straight to active
-            // tracking, same as the paused state below. Without this
-            // branch, the one-rep auto-calibration path in the `else`
-            // fires unconditionally and overwrites this threshold after
-            // just one rep - see ADR-020 for the full diagnosis.
-            _state = WorkoutState.active;
-            _repsInSet.clear();
-          } else {
-            // First real movement IS the first set - no separate, empty
-            // calibration step. See ADR-003 / "Magic Moment" principle.
-            // Reserved exclusively for users who have never calibrated.
-            _state = WorkoutState.calibrating;
-          }
-          _lastMovementAt = s.timestamp;
-          _emitStateEvent();
-          // BUGFIX: the triggering sample MUST also be processed by
-          // _detectPeak. Without this, the first high signal that
-          // transitions out of idle is lost, and if the signal drops
-          // before the next sample, no rep is ever counted.
-          _detectPeak(s, combinedSignal);
-        }
+        // 2026-07-22 (Adi): idle no longer transitions on its own at all,
+        // calibrated or not - see [startSet] doc comment for the full
+        // reasoning. This replaces two things that used to live here:
+        // the ADR-020 hasValidCalibration -> active jump, and the
+        // ADR-003 "Magic Moment" uncalibrated -> calibrating fallback
+        // (startGuidedCalibration/_minPeakHeight/_minPeakDistanceSamples
+        // - already unreachable from the UI per the 2026-07-21 Handoff
+        // 3.1 finding, now unreachable from the engine's own state
+        // machine too, for every caller). A set starts only via an
+        // explicit [startSet] call from the UI, after its own Start
+        // button + countdown, and only once [hasValidCalibration] is
+        // true - never implicitly from ambient movement.
         break;
+
 
       case WorkoutState.calibrating:
         _detectPeak(s, combinedSignal);
@@ -838,6 +820,26 @@ class WorkoutEngine {
   /// than waiting for the pauseAfter timeout.
   void endSetManually() => _endSet();
 
+  /// Starts a new set immediately: transitions from [WorkoutState.idle]
+  /// straight to [WorkoutState.active] - no movement-detection wait, no
+  /// auto-calibration fallback. Call this from the UI after its own
+  /// Start-button + countdown, once a real calibration exists (2026-07-22,
+  /// Adi: "wenn man den Assistenten nicht durchlaeuft, braucht auch gar
+  /// nicht gezaehlt werden" / "nach Kalibrierung soll es einen Startknopf
+  /// mit Countdown geben"). Requires [hasValidCalibration] - apply a
+  /// guided-wizard profile via [applyCalibration] first, or load a
+  /// persisted one (`CalibrationStore.loadProfile`). No-op if not
+  /// currently idle or not yet calibrated - callers should gate their
+  /// Start button on [hasValidCalibration] anyway; this check is a
+  /// defensive backstop, not the primary gate.
+  void startSet() {
+    if (_state != WorkoutState.idle || !hasValidCalibration) return;
+    _repsInSet.clear();
+    _lastMovementAt = null;
+    _state = WorkoutState.active;
+    _emitStateEvent();
+  }
+
   // ---- Guided calibration mode ----
 
   /// Starts a guided calibration recording. The engine records all
@@ -846,6 +848,12 @@ class WorkoutEngine {
   /// finishes. Live feedback is emitted via [WorkoutEngineEvent].
   ///
   /// See docs/CALIBRATION_MODE_CONCEPT.md for the design rationale.
+  /// Unreachable in the live app since 2026-07-22 (idle no longer
+  /// auto-transitions into [WorkoutState.calibrating] at all, see the
+  /// idle-state comment in [processSample]) - already unreachable from
+  /// the UI before that too (see [_showCalibrationDialog]). Left in place
+  /// deliberately, same reasoning as that method: not deleted, just no
+  /// longer called by anything.
   void startGuidedCalibration() {
     _calibrationSignals.clear();
     _calibrationGyroSignals.clear();
@@ -1113,13 +1121,16 @@ class WorkoutEngine {
     // actually matches those units, not always _peakThreshold (merge of
     // two independent 2026-07-21 bugfixes: chosenSignal-based routing
     // here, _wakeThreshold separation below). _wakeThreshold (idle/paused
-    // wake-gate, always combined-signal scale - see its doc comment) is
-    // only updated when peakThreshold itself is on that same scale, i.e.
-    // chosenSignal is combined or unset; a gP-/gyroMag-scale threshold
-    // there would reproduce exactly the "engine stuck in idle forever"
-    // bug _wakeThreshold was split out to fix, just via a more precise
-    // trigger (chosenSignal) than the original rotationAxis/gyroBias
-    // proxy.
+    // wake-gate, always combined-signal scale - see its doc comment)
+    // needs BOTH checks to be safe, not just chosenSignal: a caller can
+    // pass rotationAxis/gyroBias (implying a real wizard profile, whose
+    // theta may not be combined-scale) without passing chosenSignal at
+    // all - exactly the call shape Adi's original fix guarded against,
+    // from before chosenSignal existed as a parameter here at all, and
+    // exactly what the "stuck in idle forever" regression test still
+    // constructs. Keeping both conditions ANDed together (chosenSignal
+    // says combined/unset, AND no axis info came with this call either)
+    // is strictly safer than either check alone.
     switch (chosenSignal) {
       case ChosenSignal.gP:
         _gpThreshold = peakThreshold;
@@ -1129,7 +1140,9 @@ class WorkoutEngine {
       case ChosenSignal.combined:
       case null:
         _peakThreshold = peakThreshold;
-        _wakeThreshold = peakThreshold;
+        if (rotationAxis == null || gyroBias == null) {
+          _wakeThreshold = peakThreshold;
+        }
     }
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
     _primarySignal = chosenSignal;
@@ -1182,11 +1195,16 @@ class WorkoutEngine {
     _gpRepCount = 0;
     _gyroMagAboveThreshold = false;
     _gyroMagRepCount = 0;
-    // NOT resetting _gpThreshold/_gpDirection here: guided calibration
-    // (this method) doesn't produce a g_p calibration at all (see
-    // startGuidedCalibration doc comment above) - if one exists, it came
-    // from an earlier auto-calibration in this same session and stays
-    // valid; if none exists, this is a no-op either way.
+    // _gpThreshold/_gpDirection: NOT touched here (this reset block only
+    // clears transient counting state, see above/below). When
+    // chosenSignal is gP, they were already set to fresh, real values by
+    // the routing switch earlier in this method (2026-07-21/22
+    // Threshold-Routing-Merge) - nothing left to do here. When
+    // chosenSignal is combined/null/gyroMag, this method never produces a
+    // g_p calibration at all (see startGuidedCalibration doc comment
+    // above): if a value already exists, it came from an earlier
+    // auto-calibration in this same session and stays valid untouched; if
+    // none exists, this remains a no-op either way.
     _excursionFallingThreshold = null;
     // Don't reset _baselineLevel — let the EMA adapt naturally from
     // whatever the current signal level is. A null baseline (fresh

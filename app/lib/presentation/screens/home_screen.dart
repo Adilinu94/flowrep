@@ -14,10 +14,19 @@ import 'calibration/calibration_wizard_screen.dart';
 
 /// Phase 0/1 screen: connect button, status text, live rep counter.
 /// Works with both MockSensorProvider and BleSensorProvider.
+/// One instance per exercise (2026-07-22: exercise selection) - see
+/// ExerciseSelectionScreen, which is now the app's actual entry point.
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, required this.sensorProvider});
+  const HomeScreen({
+    super.key,
+    required this.sensorProvider,
+    required this.exerciseId,
+    required this.exerciseDisplayName,
+  });
 
   final ISensorProvider sensorProvider;
+  final String exerciseId;
+  final String exerciseDisplayName;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -33,6 +42,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Timer? _refreshTimer;
   double? _calibratedThreshold;
   int _calibrationPeaksFound = 0;
+  int? _countdownValue;
+  Timer? _countdownTimer;
   late final WorkoutEngine _engine;  // stable for the lifetime of this State — applyCalibration() updates it in place (race-condition fix, 2026-07-16)
   late final bool _isMock;
   final _calibrationStore = CalibrationStore();
@@ -92,6 +103,33 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  // 2026-07-22 (Adi): "nach Kalibrierung soll es einen Startknopf mit
+  // Countdown geben und dann soll gezaehlt werden" - counting no longer
+  // starts implicitly from movement (see WorkoutEngine.startSet doc
+  // comment). Only shown once _calibratedThreshold != null, i.e. a
+  // profile (wizard-fresh or loaded from CalibrationStore) exists - see
+  // _loadCalibration.
+  static const _countdownStartSeconds = 3;
+
+  void _startWorkoutCountdown() {
+    if (_calibratedThreshold == null || _countdownValue != null) return;
+    setState(() => _countdownValue = _countdownStartSeconds);
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      final next = (_countdownValue ?? 1) - 1;
+      if (next <= 0) {
+        timer.cancel();
+        setState(() => _countdownValue = null);
+        _engine.startSet();
+      } else {
+        setState(() => _countdownValue = next);
+      }
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -108,7 +146,7 @@ class _HomeScreenState extends State<HomeScreen> {
     // an oversight - flipped now because this is exactly the fix for the
     // reported "any M5 movement counts as a rep" symptom.
     _engine = WorkoutEngine(
-      exerciseId: 'bicep_curl',
+      exerciseId: widget.exerciseId,
       useSignedProjectionCounting: true,
     );
     _bindEngine();
@@ -191,7 +229,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('FlowRep')),
+      appBar: AppBar(title: Text(widget.exerciseDisplayName)),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -305,6 +343,22 @@ class _HomeScreenState extends State<HomeScreen> {
                   '($_calibrationPeaksFound Peaks)',
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                const SizedBox(height: 16),
+                if (_countdownValue != null)
+                  Text(
+                    '$_countdownValue',
+                    style: const TextStyle(fontSize: 64, fontWeight: FontWeight.bold),
+                  )
+                else if (_workoutState == WorkoutState.idle)
+                  ElevatedButton.icon(
+                    onPressed: _startWorkoutCountdown,
+                    icon: const Icon(Icons.play_arrow),
+                    label: const Text('Start'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
               ],
               if (!kReleaseMode && !_isMock) ...[
                 const SizedBox(height: 12),
@@ -390,11 +444,24 @@ class _HomeScreenState extends State<HomeScreen> {
       // rotationAxis ist nur ein Platzhalter ([1,0,0], siehe
       // ExerciseProfile.legacy()), keine echte PCA-Achse, und waere hier
       // schlechter als SignalProcessors eigene Laufzeit-Heuristik.
+      // chosenSignal/minRepIntervalSeconds/prominenceMin (2026-07-22,
+      // Threshold-Routing-Merge): gleiche migratedFrom-Absicherung wie
+      // rotationAxis/gyroBias oben - ein migriertes v1-Profil liefert nur
+      // ExerciseProfile.legacy()'s Platzhalter (chosenSignal: combined,
+      // qualityScore: 0.2), kein echtes Known-Count-Sweep-Ergebnis; die
+      // wuerden sonst faelschlich die adaptive Laufzeitschwelle (S2)
+      // abschalten (siehe applyCalibration: chosenSignal != null ->
+      // _adaptiveThresholdEnabled = false), obwohl das Profil dafuer nicht
+      // vertrauenswuerdig genug ist.
       _engine.applyCalibration(
         peakThreshold: profile.theta,
         minThresholdAboveBaseline: 0.10,
         rotationAxis: profile.migratedFrom == 0 ? profile.rotationAxis : null,
         gyroBias: profile.migratedFrom == 0 ? profile.gyroBias : null,
+        chosenSignal: profile.migratedFrom == 0 ? profile.chosenSignal : null,
+        minRepIntervalSeconds:
+            profile.migratedFrom == 0 ? profile.minRepIntervalSeconds : null,
+        prominenceMin: profile.migratedFrom == 0 ? profile.prominenceMin : null,
       );
     }
   }
@@ -468,6 +535,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void dispose() {
     _refreshTimer?.cancel();
+    _countdownTimer?.cancel();
     _samplesSub?.cancel();
     _eventsSub?.cancel();
     _recorderSamplesSub?.cancel();
