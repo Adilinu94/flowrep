@@ -933,5 +933,53 @@ void main() {
               'frozen for the duration of guided calibration.');
       engine.dispose();
     });
+
+    test(
+        'bugfix 2026-07-20: a gP-scale peakThreshold (from a profile whose '
+        'chosenSignal is gP, applied via rotationAxis/gyroBias) must not '
+        'make the engine stuck in idle forever - the coarse wake gate '
+        'needs its own combined-scale threshold, separate from the '
+        'precise counting threshold', () {
+      final engine = WorkoutEngine(
+        exerciseId: 'bicep_curl',
+        useSignedProjectionCounting: true, // matches home_screen.dart today
+      );
+      // A realistic gP-scale theta (100+ deg/s) - before this fix, this
+      // fed straight into the SAME threshold the idle-wake gate compares
+      // against combinedSignal (typically 1-10), making the gate nearly
+      // impossible to satisfy.
+      engine.applyCalibration(
+        peakThreshold: 100.0,
+        minThresholdAboveBaseline: 0.10,
+        rotationAxis: [1.0, 0.0, 0.0],
+        gyroBias: [0.0, 0.0, 0.0],
+      );
+
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 20);
+      for (var i = 0; i < 60; i++) {
+        final phase = (i / 60) * pi;
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0 + 0.5 * sin(phase), az: 0,
+          gx: 150.0 * sin(phase), gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+
+      expect(engine.state, isNot(equals(WorkoutState.idle)),
+          reason: 'A real curl-shaped signal (combinedSignal ~1.0-2.5, '
+              'well above resting baseline) must wake the engine up, '
+              'regardless of what scale peakThreshold happens to be in - '
+              'before this fix the engine stayed stuck in idle forever '
+              'whenever peakThreshold held a gP-scale (100+) value.');
+      // NOT asserted here on purpose: whether signedProjectionRepCount
+      // is non-null/1 after just this one rep. That depends on how fast
+      // _gpThreshold itself gets bootstrapped (still its own live
+      // tracking - see _maybeFinalizeGpThreshold - NOT set directly from
+      // profile.theta by this method, a separate, still-open design
+      // question flagged in STATUS_FORTSCHRITT.md, "Punkt 3 Nachtrag").
+      // This test is deliberately scoped to ONLY the wake-gate bug.
+      engine.dispose();
+    });
   });
 }

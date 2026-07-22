@@ -403,3 +403,18 @@ Real verifiziert: `flutter analyze` 0 echte Fehler (4 vorbestehende, unabhaengig
   **Bewusst weiterhin nicht angefasst** (wie von den vorherigen Sessions selbst so gerahmt): `chosenSignal`/`minRepIntervalSeconds`/`prominenceMin` aus `ExerciseProfile` fließen weiterhin nicht ein, `_gpThreshold` kommt weiterhin aus der Live-Bootstrap-Kalibrierung während der Session, nicht aus dem sorgfältig per Known-Count-Sweep im Wizard bestimmten `profile.theta`. Das ist die nächste, echte offene Frage - keine mechanische Aktivierung mehr, sondern eine Design-Entscheidung (welche Schwelle gewinnt, wenn beide existieren).
 
   Nicht selbst mit echtem `flutter test` verifizierbar (kein Toolchain in dieser Sandbox) - die Änderung selbst ist aber minimal-riskant: eine bereits mit 61/61 Tests abgesicherte, additive Konstruktor-Option wird jetzt einfach übergeben, keine neue Logik. Branch `enable-gp-authoritative-counting`, nicht gemergt, wartet auf echte Verifikation wie üblich.
+
+---
+
+## 2026-07-20 (Fortsetzung, Claude via Desktop Commander): Wake-Gate-Bug gefunden und gefixt - Engine blieb bei gP-Schwelle komplett in idle stecken
+
+**Kontext:** main hatte sich seit dem letzten Eintrag mehrfach weiterbewegt (`db-encryption`, `agent-alltagsbewegung-simulation`, "Punkt 1"/`agent-pca-achse-live-anbindung`, `enable-gp-authoritative-counting` - alle bereits gemergt, main jetzt bei `3c97139`). Eigene, parallel begonnene Achsen-Anbindung war redundant zu "Punkt 1" - verworfen, nie gepusht, dritte Kollision dieser Art in dieser Session, jedes Mal folgenlos dank `git fetch` vor dem Push.
+
+**Der eigentliche Fund beim Prüfen von "Punkt 1":** `applyCalibration()` setzt `_peakThreshold` unconditional auf den übergebenen Wert - auch wenn `rotationAxis`/`gyroBias` (gP-Skala, z.B. 100+ Grad/s) mitgegeben werden. Der grobe idle/paused-Aufwach-Check (`combinedSignal > baseline + (_peakThreshold-baseline)*0.5`) nutzt denselben `_peakThreshold`, vergleicht aber gegen `combinedSignal`, das typischerweise nur 1-10 erreicht. Ergebnis: sobald ein Profil mit `chosenSignal: gP` geladen wird, bleibt die Engine **für immer in `idle` stecken**, `countedReps` bleibt bei 0, egal was der Nutzer tut - kein Ungenauigkeits-, sondern ein Totalausfall. Passt zu Adis eigener Beobachtung ("bisher funktioniert sie ja noch gar nicht").
+
+**Fix:** neues, von `_peakThreshold` getrenntes Feld `_wakeThreshold` (Default 1.2, combined-Skala), das der grobe Aufwach-Check jetzt nutzt (idle- UND paused-State). `applyCalibration()` aktualisiert `_wakeThreshold` nur, wenn KEIN `rotationAxis`/`gyroBias` mitgegeben wird (reine combined-Kalibrierung, unverändertes Verhalten). `_finishGuidedCalibration()` und die alte Ein-Rep-Auto-Kalibrierung (beide rein combined-skaliert) aktualisieren `_wakeThreshold` jetzt ebenfalls mit.
+
+**Real verifiziert:** `flutter analyze` 0 Probleme (eigener Code; 4 vorbestehende, nicht meine `info`-Hinweise in `database_key_manager_test.dart`), `flutter test` 62/62 grün (61 vorher + 1 neuer, gezielter Regressionstest für genau diesen Bug).
+
+**Bewusst nicht (mit)gelöst, weil es dieselbe schon dokumentierte offene Design-Frage von oben ist:** `applyCalibration()` setzt `_gpThreshold` nicht direkt aus `profile.theta` (explizite Design-Entscheidung von "Punkt 1": "Deliberately not gated on _gpThreshold here"). g_p lernt seine Schwelle weiterhin selbst, live, aus den ersten beobachteten Peaks - der per Known-Count-Sweep im Wizard ermittelte `theta`-Wert wird für g_p aktuell gar nicht verwendet. Der neue Regressionstest prüft deshalb bewusst NUR den Wake-Gate-Teil (`engine.state != idle`), nicht ob nach einer Rep schon gezählt wird - das hängt von dieser ungelösten Frage ab, nicht vom Wake-Gate-Fix.
+
