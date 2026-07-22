@@ -1127,9 +1127,17 @@ class WorkoutEngine {
       case ChosenSignal.gyroMag:
         _gyroMagThreshold = peakThreshold;
       case ChosenSignal.combined:
-      case null:
         _peakThreshold = peakThreshold;
         _wakeThreshold = peakThreshold;
+      case null:
+        _peakThreshold = peakThreshold;
+        // Only update _wakeThreshold when the threshold is on combined-
+        // signal scale. If rotationAxis/gyroBias are provided without an
+        // explicit chosenSignal, the threshold is gP-scale (deg/s) and
+        // must NOT feed into the combined-scale wake gate.
+        if (rotationAxis == null || gyroBias == null) {
+          _wakeThreshold = peakThreshold;
+        }
     }
     this.minThresholdAboveBaseline = minThresholdAboveBaseline;
     _primarySignal = chosenSignal;
