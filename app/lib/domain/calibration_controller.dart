@@ -16,6 +16,7 @@ library;
 
 import 'dart:math';
 
+import 'package:flowrep/domain/calibration/template_extractor.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart';
 import 'package:flowrep/domain/workout_engine.dart' show SensorSample;
 
@@ -389,6 +390,25 @@ class CalibrationController {
     final madT = intervalle.isNotEmpty
         ? _median([for (final v in intervalle) (v - medT).abs()])
         : 0.0;
+
+    // === NEU: Template-Extraktion (SPEC TEIL 4.3) ===
+    // Extrahiere Windows um jeden Peak (±32 Samples = 64 total).
+    final windows = <List<double>>[];
+    for (final mark in marks) {
+      const halfWindow = TemplateExtractor.templateLength ~/ 2; // 32
+      final start = max(0, mark.sampleIndex - halfWindow);
+      final end = min(sigB.length, mark.sampleIndex + halfWindow);
+      if (end - start >= TemplateExtractor.templateLength ~/ 2) {
+        windows.add(sigB.sublist(start, end));
+      }
+    }
+    final repTemplate = TemplateExtractor.extract(windows);
+
+    // Erwartete Prominenz = Median der Peak-Höhen.
+    final expectedProminence = marks.length >= 2
+        ? _median([for (final m in marks) m.height])
+        : null;
+
     final neu = ExerciseProfile(
       exerciseId: exerciseId,
       rotationAxis: _axis!.achse,
@@ -399,6 +419,8 @@ class CalibrationController {
       medianTSeconds: medT,
       madTSeconds: madT,
       gyroBias: _rest!.gyroBias,
+      repTemplate: repTemplate,
+      expectedProminence: expectedProminence,
       qualityScore: _quality,
       calibratedAt: DateTime.now(),
     );

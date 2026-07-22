@@ -56,6 +56,30 @@ class ExerciseProfile {
   final double? spkInit;
   final double? npkInit;
 
+  // === NEU (Calibration 2.0, SPEC TEIL 4.1) ===
+
+  /// Rep-Template (64 normalisierte Werte) für Template-Matching.
+  /// Null wenn kein Template extrahiert wurde (z.B. zu wenige Reps).
+  final List<double>? repTemplate;
+
+  /// NCC-Schwelle für Template-Akzeptanz (Standard: 0.65).
+  final double templateCorrThreshold;
+
+  /// Erwartete Prominenz in °/s (aus Kalibrierung, für ROM-Validierung).
+  final double? expectedProminence;
+
+  /// Toleranz für Prominenz-Abweichung (Standard: 0.3 = ±30%).
+  final double prominenceTolerance;
+
+  /// Erwartetes Verhältnis konzentrische/exzentrische Phase (Standard: null = frei).
+  final double? concentricRatioExpected;
+
+  /// Minimales Dauer-Verhältnis (positive/negative Phase, Standard: 0.5).
+  final double durationRatioMin;
+
+  /// Maximales Dauer-Verhältnis (Standard: 3.0).
+  final double durationRatioMax;
+
   /// Qualitätsmaß 0..1 (aus Regularität CV und Konsistenz der Stufen).
   final double qualityScore;
 
@@ -76,6 +100,13 @@ class ExerciseProfile {
     required this.gyroBias,
     this.spkInit,
     this.npkInit,
+    this.repTemplate,
+    this.templateCorrThreshold = 0.65,
+    this.expectedProminence,
+    this.prominenceTolerance = 0.3,
+    this.concentricRatioExpected,
+    this.durationRatioMin = 0.5,
+    this.durationRatioMax = 3.0,
     required this.qualityScore,
     required this.calibratedAt,
     this.migratedFrom = 0,
@@ -133,6 +164,16 @@ class ExerciseProfile {
       gyroBias: mix3(gyroBias, neu.gyroBias),
       spkInit: neu.spkInit ?? spkInit,
       npkInit: neu.npkInit ?? npkInit,
+      // Template: neues Template übernimmt (diskret, kein Blending).
+      repTemplate: neu.repTemplate ?? repTemplate,
+      templateCorrThreshold: mix(templateCorrThreshold, neu.templateCorrThreshold),
+      expectedProminence: neu.expectedProminence != null
+          ? mix(expectedProminence ?? neu.expectedProminence!, neu.expectedProminence!)
+          : expectedProminence,
+      prominenceTolerance: mix(prominenceTolerance, neu.prominenceTolerance),
+      concentricRatioExpected: neu.concentricRatioExpected ?? concentricRatioExpected,
+      durationRatioMin: mix(durationRatioMin, neu.durationRatioMin),
+      durationRatioMax: mix(durationRatioMax, neu.durationRatioMax),
       qualityScore: neu.qualityScore,
       calibratedAt: neu.calibratedAt,
       migratedFrom: 0,
@@ -151,6 +192,13 @@ class ExerciseProfile {
         'gyroBias': gyroBias,
         'spkInit': spkInit,
         'npkInit': npkInit,
+        'repTemplate': repTemplate,
+        'templateCorrThreshold': templateCorrThreshold,
+        'expectedProminence': expectedProminence,
+        'prominenceTolerance': prominenceTolerance,
+        'concentricRatioExpected': concentricRatioExpected,
+        'durationRatioMin': durationRatioMin,
+        'durationRatioMax': durationRatioMax,
         'qualityScore': qualityScore,
         'calibratedAt': calibratedAt.toIso8601String(),
         'migratedFrom': migratedFrom,
@@ -172,6 +220,20 @@ class ExerciseProfile {
       gyroBias: vec(json['gyroBias'] ?? const [0.0, 0.0, 0.0]),
       spkInit: (json['spkInit'] as num?)?.toDouble(),
       npkInit: (json['npkInit'] as num?)?.toDouble(),
+      repTemplate: json['repTemplate'] != null
+          ? (json['repTemplate'] as List).map((e) => (e as num).toDouble()).toList()
+          : null,
+      templateCorrThreshold:
+          (json['templateCorrThreshold'] as num?)?.toDouble() ?? 0.65,
+      expectedProminence: (json['expectedProminence'] as num?)?.toDouble(),
+      prominenceTolerance:
+          (json['prominenceTolerance'] as num?)?.toDouble() ?? 0.3,
+      concentricRatioExpected:
+          (json['concentricRatioExpected'] as num?)?.toDouble(),
+      durationRatioMin:
+          (json['durationRatioMin'] as num?)?.toDouble() ?? 0.5,
+      durationRatioMax:
+          (json['durationRatioMax'] as num?)?.toDouble() ?? 3.0,
       qualityScore: (json['qualityScore'] as num?)?.toDouble() ?? 0.2,
       calibratedAt: DateTime.tryParse(json['calibratedAt'] as String? ?? '') ??
           DateTime.fromMillisecondsSinceEpoch(0),
