@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flowrep/domain/workout_engine.dart';
 
 /// Pure signal processing: takes raw [SensorSample] objects, applies
@@ -118,10 +120,16 @@ class SignalProcessor {
   /// to already be a unit vector (as ExerciseProfile.rotationAxis is) -
   /// not renormalized here. Makes [isSignedProjectionReady] true
   /// immediately, skipping the ~2s runtime learning window entirely.
+  bool _axisIsKnown = false;
+
+  /// Unlike a self-learned axis, a known one (from a real calibration
+  /// profile, not live-session observation) SURVIVES [reset] - see its
+  /// doc comment for why a reconnect has no reason to discard it.
   void setKnownAxis(List<double> axis, List<double> gyroBias) {
     _dominantAxis = List.of(axis);
     _gyroBias = List.of(gyroBias);
     _gyroLearningWindow.clear();
+    _axisIsKnown = true;
   }
 
   /// Signed projection of the (bias-corrected) gyro vector onto the
@@ -139,11 +147,40 @@ class SignalProcessor {
         (s.gz - bias[2]) * axis[2];
   }
 
+  /// Bias-corrected gyro magnitude - `ChosenSignal.gyroMag` in
+  /// `ExerciseProfile`, distinct from [SensorSample.gyroMagnitude] (which
+  /// is NOT bias-corrected) and from [signedGyroProjection] (which is
+  /// signed and axis-projected, not a magnitude). Returns null until
+  /// [isSignedProjectionReady] (same bias source as the projection above).
+  double? biasCorrectedGyroMagnitude(SensorSample s) {
+    final bias = _gyroBias;
+    if (bias == null) return null;
+    final dx = s.gx - bias[0];
+    final dy = s.gy - bias[1];
+    final dz = s.gz - bias[2];
+    return sqrt(dx * dx + dy * dy + dz * dz);
+  }
+
   /// Reset internal filter state. Call on engine reconnect or new session.
+  ///
+  /// Deliberately does NOT clear a known axis/bias ([setKnownAxis],
+  /// `_axisIsKnown`) - that came from a real calibration profile, not from
+  /// watching live samples in THIS session, so a reconnect (still the
+  /// same calibration, same exercise) has no reason to throw it away and
+  /// force ~100 samples of placeholder relearning before g_p works again.
+  /// Only the placeholder, self-learned case ([observeForAxisLearning])
+  /// resets - which is exactly what a reconnect SHOULD invalidate, since
+  /// it was learned from THIS session's movement. Found and fixed
+  /// 2026-07-20: before this, a reconnect silently discarded a
+  /// wizard-calibrated axis too, with no test catching it because no
+  /// existing test called setKnownAxis() then reset() then asserted on
+  /// the axis surviving.
   void reset() {
     _filteredSignal = null;
     _gyroLearningWindow.clear();
-    _gyroBias = null;
-    _dominantAxis = null;
+    if (!_axisIsKnown) {
+      _gyroBias = null;
+      _dominantAxis = null;
+    }
   }
 }

@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'package:test/test.dart';
+import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 
@@ -870,6 +871,112 @@ void main() {
     });
 
     test(
+        'applyCalibration(chosenSignal: gP) routes peakThreshold to the '
+        'g_p threshold, not combined - and countedReps comes from g_p, '
+        'not the untouched combined path', () async {
+      // Follow-up (2026-07-20) to Punkt 1's rotationAxis/gyroBias wiring:
+      // that commit deliberately left _gpThreshold coming from live
+      // auto-calibration even with a real profile - this closes that gap.
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      // A recognisable axis/bias, not zero, so this doesn't accidentally
+      // pass due to some degenerate default.
+      engine.applyCalibration(
+        peakThreshold: 150.0, // deg/s - g_p's units, NOT combined's
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+      );
+      expect(engine.hasValidCalibration, isTrue);
+
+      // A signal that would never cross a combined-signal threshold of
+      // 150 (combined maxes out around accelMag+gyroMag*0.05, nowhere
+      // near 150) but comfortably crosses 150 deg/s on the signed
+      // gz-bias-corrected axis.
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      for (var rep = 0; rep < 5; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * 2 * pi;
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 0, az: 0,
+            gx: 0, gy: 0, gz: 5.0 + 220.0 * sin(phase), // bias 5.0, matches gyroBias above
+          ));
+        }
+        for (var i = 0; i < 15; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+        }
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(5, 1),
+          reason: 'This signal is invisible to the combined-signal path '
+              '(peakThreshold=150 is a g_p-units value) - if countedReps '
+              'is 0, peakThreshold silently went to the wrong field.');
+    });
+
+    test(
+        'a reconnect preserves a profile-set g_p calibration instead of '
+        'discarding it and forcing placeholder relearning', () async {
+      // Found and fixed alongside the routing test above: reset() used to
+      // unconditionally wipe the axis/bias/threshold, even when they came
+      // from setKnownAxis()/a real profile rather than live-session
+      // observation - no existing test called setKnownAxis() then
+      // handleReconnect() then asserted on the calibration surviving.
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.applyCalibration(
+        peakThreshold: 150.0,
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+      );
+
+      engine.handleReconnect();
+
+      expect(engine.hasValidCalibration, isTrue,
+          reason: 'handleReconnect() must not un-set a real calibration.');
+      // Feed one clean rep and confirm it counts via g_p immediately -
+      // no ~100-sample relearning window, because the axis/threshold
+      // should have survived the reconnect intact.
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      for (var i = 0; i < 60; i++) {
+        final phase = (i / 60) * 2 * pi;
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 0, az: 0,
+          gx: 0, gy: 0, gz: 5.0 + 220.0 * sin(phase),
+        ));
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(1, 0),
+          reason: 'Counts immediately via the preserved g_p calibration - '
+              'if the axis/threshold had been wiped by reset(), this '
+              'single rep would need ~100 samples of relearning first and '
+              'likely would not be counted within this short window.');
+    });
+
+    test(
         'regression: baseline must NOT drift upward during guidedCalibration '
         '(found during E2E hardware test 2026-07-16: baseline drifted from '
         '1.05 to 5.7 because _aboveThreshold is never set true in this '
@@ -931,6 +1038,54 @@ void main() {
               'Before the fix it rose from ~1.0 to ~5.7 because the EMA '
               'tracked movement spikes. After the fix, the baseline is '
               'frozen for the duration of guided calibration.');
+      engine.dispose();
+    });
+
+    test(
+        'bugfix 2026-07-20: a gP-scale peakThreshold (from a profile whose '
+        'chosenSignal is gP, applied via rotationAxis/gyroBias) must not '
+        'make the engine stuck in idle forever - the coarse wake gate '
+        'needs its own combined-scale threshold, separate from the '
+        'precise counting threshold', () {
+      final engine = WorkoutEngine(
+        exerciseId: 'bicep_curl',
+        useSignedProjectionCounting: true, // matches home_screen.dart today
+      );
+      // A realistic gP-scale theta (100+ deg/s) - before this fix, this
+      // fed straight into the SAME threshold the idle-wake gate compares
+      // against combinedSignal (typically 1-10), making the gate nearly
+      // impossible to satisfy.
+      engine.applyCalibration(
+        peakThreshold: 100.0,
+        minThresholdAboveBaseline: 0.10,
+        rotationAxis: [1.0, 0.0, 0.0],
+        gyroBias: [0.0, 0.0, 0.0],
+      );
+
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 20);
+      for (var i = 0; i < 60; i++) {
+        final phase = (i / 60) * pi;
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0 + 0.5 * sin(phase), az: 0,
+          gx: 150.0 * sin(phase), gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+
+      expect(engine.state, isNot(equals(WorkoutState.idle)),
+          reason: 'A real curl-shaped signal (combinedSignal ~1.0-2.5, '
+              'well above resting baseline) must wake the engine up, '
+              'regardless of what scale peakThreshold happens to be in - '
+              'before this fix the engine stayed stuck in idle forever '
+              'whenever peakThreshold held a gP-scale (100+) value.');
+      // NOT asserted here on purpose: whether signedProjectionRepCount
+      // is non-null/1 after just this one rep. That depends on how fast
+      // _gpThreshold itself gets bootstrapped (still its own live
+      // tracking - see _maybeFinalizeGpThreshold - NOT set directly from
+      // profile.theta by this method, a separate, still-open design
+      // question flagged in STATUS_FORTSCHRITT.md, "Punkt 3 Nachtrag").
+      // This test is deliberately scoped to ONLY the wake-gate bug.
       engine.dispose();
     });
   });
