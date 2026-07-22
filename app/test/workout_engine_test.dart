@@ -975,6 +975,9 @@ void main() {
               'single rep would need ~100 samples of relearning first and '
               'likely would not be counted within this short window.');
     });
+
+    test(
+        'regression: baseline must NOT drift upward during guidedCalibration '
         '(found during E2E hardware test 2026-07-16: baseline drifted from '
         '1.05 to 5.7 because _aboveThreshold is never set true in this '
         'state, so the EMA tracked every sample including movement spikes)', () {
