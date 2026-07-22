@@ -150,44 +150,11 @@ class AppDatabase extends _$AppDatabase {
       final markerFile = File('${dbFile.path}.encrypted-v1');
       final keyHex = await keyManager.getOrCreateKeyHex();
 
-      if (!await markerFile.exists()) {
-        if (await dbFile.exists()) {
-          final tmp = File('${dbFile.path}.migrating.tmp');
-          if (await tmp.exists()) {
-            await tmp.delete();
-          }
-
-          final plaintextDb = sqlite3pkg.sqlite3.open(dbFile.path);
-          try {
-            plaintextDb.execute(
-              "VACUUM INTO '${_escapeSqlString(tmp.path)}';",
-            );
-          } finally {
-            plaintextDb.close();
-          }
-
-          final encryptingDb = sqlite3pkg.sqlite3.open(tmp.path);
-          try {
-            encryptingDb.execute(
-              "PRAGMA rekey = '${_escapeSqlString(keyHex)}';",
-            );
-            // Confirms the rekeyed file is actually readable with this key
-            // before we touch the original - if this throws, the original
-            // plaintext file is left completely untouched below.
-            encryptingDb.select('SELECT count(*) FROM sqlite_master;');
-          } finally {
-            encryptingDb.close();
-          }
-
-          final backup = File('${dbFile.path}.pre-encryption-backup');
-          if (await backup.exists()) {
-            await backup.delete();
-          }
-          await dbFile.rename(backup.path);
-          await tmp.rename(dbFile.path);
-        }
-        await markerFile.create();
-      }
+      await migrateToEncryptedIfNeeded(
+        dbFile: dbFile,
+        markerFile: markerFile,
+        keyHex: keyHex,
+      );
 
       return NativeDatabase.createInBackground(
         dbFile,
@@ -203,6 +170,60 @@ class AppDatabase extends _$AppDatabase {
         },
       );
     });
+  }
+
+  /// The migration steps 1-4 from the doc comment above, extracted into a
+  /// pure, standalone, `await`-able function of plain [File]s and a key -
+  /// no [LazyDatabase] closure, no `getApplicationDocumentsDirectory()`.
+  /// Behaviourally identical to what was previously inlined directly in
+  /// [_openConnection] (2026-07-20: extracted specifically so this - the
+  /// single riskiest, previously untested piece of this whole feature -
+  /// could get a real test with real temp files and real sqlite3, without
+  /// needing to mock Flutter's path_provider platform channel for
+  /// something that never actually needed it. See
+  /// test/drift_encryption_migration_test.dart.
+  static Future<void> migrateToEncryptedIfNeeded({
+    required File dbFile,
+    required File markerFile,
+    required String keyHex,
+  }) async {
+    if (await markerFile.exists()) return;
+    if (await dbFile.exists()) {
+      final tmp = File('${dbFile.path}.migrating.tmp');
+      if (await tmp.exists()) {
+        await tmp.delete();
+      }
+
+      final plaintextDb = sqlite3pkg.sqlite3.open(dbFile.path);
+      try {
+        plaintextDb.execute(
+          "VACUUM INTO '${_escapeSqlString(tmp.path)}';",
+        );
+      } finally {
+        plaintextDb.close();
+      }
+
+      final encryptingDb = sqlite3pkg.sqlite3.open(tmp.path);
+      try {
+        encryptingDb.execute(
+          "PRAGMA rekey = '${_escapeSqlString(keyHex)}';",
+        );
+        // Confirms the rekeyed file is actually readable with this key
+        // before we touch the original - if this throws, the original
+        // plaintext file is left completely untouched below.
+        encryptingDb.select('SELECT count(*) FROM sqlite_master;');
+      } finally {
+        encryptingDb.close();
+      }
+
+      final backup = File('${dbFile.path}.pre-encryption-backup');
+      if (await backup.exists()) {
+        await backup.delete();
+      }
+      await dbFile.rename(backup.path);
+      await tmp.rename(dbFile.path);
+    }
+    await markerFile.create();
   }
 
   static String _escapeSqlString(String value) => value.replaceAll("'", "''");
