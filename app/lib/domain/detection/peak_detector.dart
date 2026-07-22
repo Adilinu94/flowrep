@@ -46,6 +46,8 @@ class PeakDetector {
   final List<double> _window = [];
   int _sampleIndex = 0;
   int _lastPeakSampleIndex = -10000; // Weit in der Vergangenheit
+  int _lastPeakDurationSamples = 0;
+  double _lastPeakProminence = 0.0;
 
   /// Erstellt den Peak-Detektor.
   ///
@@ -155,6 +157,8 @@ class PeakDetector {
       // Peak bestätigt → SPK aktualisieren (EMA α=0.125)
       _spk = 0.125 * _currentMax + 0.875 * _spk;
       _lastPeakSampleIndex = _sampleIndex;
+      _lastPeakDurationSamples = _window.length;
+      _lastPeakProminence = prominence;
 
       return PeakEvent(
         sampleIndex: _sampleIndex,
@@ -198,4 +202,10 @@ class PeakDetector {
 
   /// Anzahl verarbeiteter Samples seit letztem Reset.
   int get sampleCount => _sampleIndex;
+
+  /// Dauer des letzten bestätigten Peaks in Samples.
+  int get lastPeakDurationSamples => _lastPeakDurationSamples;
+
+  /// Prominenz des letzten bestätigten Peaks.
+  double get lastPeakProminence => _lastPeakProminence;
 }
