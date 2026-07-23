@@ -6,15 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/domain/workout_engine.dart' show SensorSample;
 import 'package:flowrep/presentation/screens/calibration/calibration_wizard_screen.dart';
 
-/// Bewusst schmal geschnittener Widget-Test: prueft die Verdrahtung
-/// zwischen CalibrationWizardScreen und dem ECHTEN CalibrationController
-/// (kein Fake) fuer den am klarsten spezifizierten Uebergang (Ruhe-Gate:
-/// |gyro|-Mittel < 15 °/s, Accel-Sigma < 0,12g, min 2s - siehe
-/// calibration_controller.dart _finishRest). Tiefergehende Mehrstufen-
-/// Flows (knownSet/slowSet-Sweep) haengen von Algorithmus-internen
-/// Schwellen ab, die praeziser in einem dedizierten
-/// calibration_controller_test.dart (Agent 2) abgedeckt werden sollten -
-/// siehe Statusbericht.
+/// Widget-Tests: Verdrahtung Wizard ↔ CalibrationController.
 void main() {
   testWidgets('Ruhephase mit stillen Samples schaltet zu "Eine Wiederholung"',
       (tester) async {
@@ -26,17 +18,16 @@ void main() {
         samples: samplesController.stream,
         exerciseId: 'bicep_curl',
         deviceId: 'test-device',
-        // Skip 5s prepare countdown in tests.
+        // Skip briefing + countdown in tests.
         prepareCountdownSeconds: 0,
       ),
     ));
     await tester.pump();
-    // Allow async _beginRecording (haptic) to complete.
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('Ruhephase'), findsOneWidget);
+    expect(find.textContaining('Ruhe'), findsWidgets);
+    expect(find.textContaining('Arm still halten'), findsOneWidget);
 
-    // ~2s stillstehende Samples bei 50 Hz (Standard sampleRateHz).
     final now = DateTime.now();
     for (var i = 0; i < 110; i++) {
       samplesController.add(SensorSample(
@@ -53,13 +44,13 @@ void main() {
 
     await tester.tap(find.text('Weiter'));
     await tester.pump();
-    // Next stage starts prepare with seconds=0 → recording immediately.
     await tester.pump(const Duration(milliseconds: 50));
 
-    expect(find.text('Eine Wiederholung'), findsOneWidget);
+    expect(find.textContaining('Eine Wiederholung'), findsWidgets);
+    expect(find.textContaining('Genau 1 Bizeps-Curl'), findsOneWidget);
   });
 
-  testWidgets('Vorbereitungs-Countdown blockiert Samples und Weiter',
+  testWidgets('Briefing zeigt Aufgabe vor Countdown; Samples ignoriert',
       (tester) async {
     final samplesController = StreamController<SensorSample>();
     addTearDown(samplesController.close);
@@ -74,14 +65,12 @@ void main() {
     ));
     await tester.pump();
 
-    expect(find.textContaining('Aufzeichnung startet in'), findsOneWidget);
-    // Weiter disabled during prepare.
-    final weiter = tester.widget<FilledButton>(
-      find.widgetWithText(FilledButton, 'Warte… (5)'),
-    );
-    expect(weiter.onPressed, isNull);
+    // Task visible before any countdown.
+    expect(find.textContaining('Arm still halten'), findsOneWidget);
+    expect(find.textContaining('Danach: 1 einzelne Curl'), findsOneWidget);
+    expect(find.text('Bereit — 5s'), findsOneWidget);
 
-    // Samples during prepare must be ignored.
+    // Samples during briefing ignored.
     final now = DateTime.now();
     for (var i = 0; i < 50; i++) {
       samplesController.add(SensorSample(
@@ -95,9 +84,13 @@ void main() {
       ));
     }
     await tester.pump();
-    expect(find.textContaining('0.0 s aufgezeichnet'), findsNothing);
+    expect(find.textContaining('s aufgezeichnet'), findsNothing);
 
-    // Advance 5 seconds of prepare timers.
+    // Start countdown.
+    await tester.tap(find.text('Bereit — 5s'));
+    await tester.pump();
+    expect(find.textContaining('Start in'), findsOneWidget);
+
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(seconds: 1));
     }

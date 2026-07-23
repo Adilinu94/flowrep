@@ -13,19 +13,19 @@ import '../../../domain/workout_engine.dart' show SensorSample;
 /// durch die 5 Stufen von [CalibrationController] (rest/singleRep/knownSet/
 /// slowSet/review) und speichert das Ergebnis als ExerciseProfile.
 ///
-/// Interaktionsmodell (siehe calibration_controller.dart-Dokumentation):
-/// Jede Sammel-Stufe startet mit einem Vorbereitungs-Countdown (Standard
-/// 5 s, Samples werden verworfen). Danach Vibration + Aufzeichnung.
-/// Abschluss per "Weiter" (controller.finishStage()). Bei nicht
-/// bestandenem Qualitaets-Gate (rest/singleRep) wird die Stufe wiederholt.
+/// Ablauf je Sammel-Stufe:
+/// 1. **Briefing** — kurze Aufgabe lesen, dann „Bereit“ tippen
+/// 2. **Countdown** (Standard 5 s) — Samples werden verworfen
+/// 3. **Aufzeichnung** — Vibration = Start; Abschluss per „Weiter“
+///
+/// Bei nicht bestandenem Qualitaets-Gate (rest/singleRep) erneut Briefing.
 class CalibrationWizardScreen extends StatefulWidget {
   const CalibrationWizardScreen({
     super.key,
     required this.samples,
     required this.exerciseId,
     required this.deviceId,
-    /// Prepare countdown before samples are accepted. 0 = start immediately
-    /// (widget tests). Production default is 5 seconds.
+    /// Prepare countdown after „Bereit“. 0 = skip briefing+countdown (tests).
     this.prepareCountdownSeconds = 5,
   });
 
@@ -51,22 +51,21 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   final _correctKnownCtrl = TextEditingController();
   final _correctSlowCtrl = TextEditingController();
 
-  /// false until the prepare countdown finishes for the current stage.
-  bool _isRecording = false;
+  /// Read instructions; countdown has not started yet.
+  bool _isBriefing = false;
+
+  /// Countdown running; samples ignored.
   bool _isPreparing = false;
+
+  /// Samples are accepted.
+  bool _isRecording = false;
+
   int _prepareSecondsLeft = 0;
 
-  // Metronom-Fallback (Konzept §3 Stufe B, V2): "nach 2 Fehlversuchen in
-  // Stufe B, Metronom anbieten". CalibrationController.start() setzt
-  // JEDE Stufe zurueck - der Zaehler muss also hier im Screen-State
-  // leben, nicht im Controller, um ueber mehrere Neustarts hinweg zu
-  // zaehlen. Reiner Ton per SystemSound (kein Sprach-Fallback - laut
-  // Konzept ist diese Entscheidung "erst in V2 noetig", Ton allein
-  // braucht sie noch nicht), keine neue Dependency.
   int _knownSetFailureCount = 0;
   Timer? _metronomTimer;
   bool _metronomActive = false;
-  static const _metronomIntervall = Duration(milliseconds: 1000); // 60 bpm
+  static const _metronomIntervall = Duration(milliseconds: 1000);
 
   @override
   void initState() {
@@ -81,12 +80,13 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
           _metronomActive = false;
         });
         if (_isCollectingStageFor(stage)) {
-          _startPrepareCountdown();
+          _enterBriefing();
         } else {
           _stopPrepare();
           setState(() {
-            _isRecording = false;
+            _isBriefing = false;
             _isPreparing = false;
+            _isRecording = false;
           });
         }
       },
@@ -98,10 +98,10 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
             _knownSetFailureCount++;
           }
         });
-        // Buffer was cleared → give another prepare window to settle.
+        // Buffer cleared → back to briefing so user can re-read + re-arm.
         if (_controller.bufferedSampleCount == 0 &&
             _isCollectingStageFor(stage)) {
-          _startPrepareCountdown();
+          _enterBriefing();
         }
       },
       onReviewDataReady: (data) {
@@ -110,19 +110,15 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
       },
     );
     _controller.start();
-    // Gate samples: only feed the controller while actively recording.
     _samplesSub = widget.samples.listen(_onSample);
-    // bufferedSampleCount aendert sich zwischen Stage-Callbacks - ein
-    // leichter periodischer Refresh haelt die Live-Anzeige aktuell.
     _uiTimer = Timer.periodic(const Duration(milliseconds: 200), (_) {
       if (mounted) setState(() {});
     });
-    // First stage (rest): onStageAdvanced from start() already started
-    // the prepare countdown.
+    // First stage: onStageAdvanced from start() already entered briefing.
   }
 
   void _onSample(SensorSample sample) {
-    if (!_isRecording || _isPreparing) return;
+    if (!_isRecording || _isPreparing || _isBriefing) return;
     _controller.onSample(sample);
   }
 
@@ -131,15 +127,36 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
     _prepareTimer = null;
   }
 
-  void _startPrepareCountdown() {
+  /// Show short task text; user taps „Bereit“ when ready.
+  void _enterBriefing() {
     _stopPrepare();
-    final total = widget.prepareCountdownSeconds;
-    if (total <= 0) {
-      // Tests / skip: begin recording immediately.
+    if (widget.prepareCountdownSeconds <= 0) {
+      // Widget tests: skip briefing + countdown.
       unawaited(_beginRecording());
       return;
     }
     setState(() {
+      _isBriefing = true;
+      _isPreparing = false;
+      _isRecording = false;
+      _prepareSecondsLeft = 0;
+    });
+  }
+
+  void _onReadyPressed() {
+    if (!_isBriefing) return;
+    _startPrepareCountdown();
+  }
+
+  void _startPrepareCountdown() {
+    _stopPrepare();
+    final total = widget.prepareCountdownSeconds;
+    if (total <= 0) {
+      unawaited(_beginRecording());
+      return;
+    }
+    setState(() {
+      _isBriefing = false;
       _isPreparing = true;
       _isRecording = false;
       _prepareSecondsLeft = total;
@@ -162,6 +179,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   Future<void> _beginRecording() async {
     if (!mounted) return;
     setState(() {
+      _isBriefing = false;
       _isPreparing = false;
       _isRecording = true;
       _prepareSecondsLeft = 0;
@@ -169,7 +187,6 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
     await _pulseStartRecording();
   }
 
-  /// Short phone vibration when recording actually starts.
   Future<void> _pulseStartRecording() async {
     try {
       final has = await Vibration.hasVibrator();
@@ -177,9 +194,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         await Vibration.vibrate(duration: 80);
         return;
       }
-    } catch (_) {
-      // Plugin unavailable (tests / desktop) — fall through.
-    }
+    } catch (_) {}
     try {
       await HapticFeedback.mediumImpact();
     } catch (_) {}
@@ -218,11 +233,10 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
       _saveError = null;
     });
     _controller.start();
-    // onStageAdvanced → prepare countdown for rest.
   }
 
   void _next() {
-    if (!_isRecording || _isPreparing) return;
+    if (!_isRecording || _isPreparing || _isBriefing) return;
     _controller.finishStage();
   }
 
@@ -255,7 +269,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         exerciseId: widget.exerciseId,
         deviceId: widget.deviceId,
       );
-      _controller.finishStage(); // review -> done
+      _controller.finishStage();
       final profile = _controller.finalize(previous: previous);
       if (profile == null) {
         if (!mounted) return;
@@ -280,15 +294,15 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   String get _title {
     switch (_controller.stage) {
       case CalibrationStage.rest:
-        return 'Ruhephase';
+        return 'Schritt 1 · Ruhe';
       case CalibrationStage.singleRep:
-        return 'Eine Wiederholung';
+        return 'Schritt 2 · Eine Wiederholung';
       case CalibrationStage.knownSet:
-        return 'Bekannte Wiederholungen';
+        return 'Schritt 3 · ${_controller.knownSetCount} Curls';
       case CalibrationStage.slowSet:
-        return 'Langsame Wiederholungen';
+        return 'Schritt 4 · ${_controller.slowSetCount} langsam';
       case CalibrationStage.review:
-        return 'Ergebnis';
+        return 'Schritt 5 · Ergebnis';
       case CalibrationStage.done:
         return 'Fertig';
       case CalibrationStage.failed:
@@ -296,37 +310,58 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
     }
   }
 
-  String get _instruction {
-    if (_isPreparing) {
-      return 'Bereit machen: Position einnehmen und still halten. '
-          'Aufzeichnung startet automatisch nach dem Countdown '
-          '(Vibration = Start).';
-    }
+  /// Short, stage-specific task (always visible in collecting stages).
+  String get _actionNow {
     switch (_controller.stage) {
       case CalibrationStage.rest:
-        return 'Aufzeichnung läuft — Arm RUHIG halten (mind. 2 s). '
-            'Warte bis die Anzeige grün ist, dann tippe auf Weiter. '
-            'Tipp: M5 auf dem Oberschenkel ablegen.';
+        return 'Arm still halten (Startposition), mind. 2 s';
       case CalibrationStage.singleRep:
-        return 'Mach EINE einzelne, gleichmaessige Bizeps-Curl-Wiederholung, '
-            'dann tippe auf Weiter. Daraus bestimmt die App die Bewegungsachse.';
+        return 'Genau 1 Bizeps-Curl, dann Weiter';
       case CalibrationStage.knownSet:
-        final n = _controller.knownSetCount;
-        return 'Mach genau $n Bizeps-Curls in deinem normalen Tempo, dann '
-            'tippe auf Weiter. Die Anzahl muss stimmen - das ist der Kern '
-            'der Kalibrierung.';
+        return 'Genau ${_controller.knownSetCount} Curls im normalen Tempo';
       case CalibrationStage.slowSet:
-        final n = _controller.slowSetCount;
-        return 'Mach $n bewusst LANGSAME Wiederholungen, dann tippe auf '
-            'Weiter, damit die Kalibrierung auch bei anderem Tempo '
-            'verlaesslich bleibt.';
+        return 'Genau ${_controller.slowSetCount} LANGSAME Curls';
       case CalibrationStage.review:
-        return 'Pruefe das Ergebnis unten.';
+        return 'Ergebnis prüfen';
       case CalibrationStage.done:
-        return 'Kalibrierung abgeschlossen.';
+        return 'Fertig';
       case CalibrationStage.failed:
-        return 'Die Kalibrierung wurde abgebrochen.';
+        return 'Abgebrochen';
     }
+  }
+
+  /// One-line peek at the following step (null on last collecting / review).
+  String? get _actionNext {
+    switch (_controller.stage) {
+      case CalibrationStage.rest:
+        return 'Danach: 1 einzelne Curl';
+      case CalibrationStage.singleRep:
+        return 'Danach: ${_controller.knownSetCount} normale Curls';
+      case CalibrationStage.knownSet:
+        return 'Danach: ${_controller.slowSetCount} langsame Curls';
+      case CalibrationStage.slowSet:
+        return 'Danach: Ergebnis prüfen';
+      default:
+        return null;
+    }
+  }
+
+  String get _phaseHint {
+    if (_isBriefing) {
+      return 'Lies die Aufgabe, nimm Position ein, tippe dann Bereit.';
+    }
+    if (_isPreparing) {
+      return 'Countdown — noch nicht bewegen. Vibration = Start.';
+    }
+    if (_isRecording) {
+      switch (_controller.stage) {
+        case CalibrationStage.rest:
+          return 'Aufzeichnung läuft. Warte auf Grün, dann Weiter.';
+        default:
+          return 'Aufzeichnung läuft. Danach Weiter tippen.';
+      }
+    }
+    return '';
   }
 
   bool _isCollectingStageFor(CalibrationStage stage) => const {
@@ -338,9 +373,6 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
 
   bool get _isCollectingStage => _isCollectingStageFor(_controller.stage);
 
-  /// Tap-to-Tag (Konzept §2.6/§3, V2) ist nur waehrend der beiden
-  /// Reps-mit-bekannter-Anzahl-Stufen sinnvoll - in rest/singleRep gibt
-  /// es keine "fertige Wiederholung" zum Markieren.
   bool get _tapButtonVisible =>
       _isRecording &&
       (_controller.stage == CalibrationStage.knownSet ||
@@ -361,20 +393,30 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                _instruction,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyLarge,
-              ),
-              const SizedBox(height: 24),
+              if (_isCollectingStage) ...[
+                _buildTaskCard(context),
+                const SizedBox(height: 16),
+                Text(
+                  _phaseHint,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                ),
+                const SizedBox(height: 20),
+              ],
+              if (_isCollectingStage && _isBriefing) ...[
+                _buildBriefing(context),
+              ],
               if (_isCollectingStage && _isPreparing) ...[
                 _buildPrepareCountdown(context),
               ],
               if (_isCollectingStage && _isRecording) ...[
                 Text(
                   '${seconds.toStringAsFixed(1)} s aufgezeichnet',
+                  textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleMedium,
                 ),
                 const SizedBox(height: 8),
@@ -382,20 +424,6 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
                 if (_controller.stage == CalibrationStage.rest) ...[
                   const SizedBox(height: 16),
                   _buildRestGateLive(context),
-                ],
-                if (_gateFailMessage != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade900,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(
-                      _gateFailMessage!,
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  ),
                 ],
                 if (_tapButtonVisible) ...[
                   const SizedBox(height: 20),
@@ -408,60 +436,26 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '$_tapCountForCurrentStage Tap(s) erfasst - optional, '
-                    'hilft der Kalibrierung',
+                    '$_tapCountForCurrentStage Tap(s) erfasst — optional',
+                    textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
                 ],
                 if (_controller.stage == CalibrationStage.knownSet &&
                     _knownSetFailureCount >= 2) ...[
                   const SizedBox(height: 20),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blueGrey.shade800,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Column(
-                      children: [
-                        const Text(
-                          'Fällt es schwer, ein gleichmäßiges Tempo zu '
-                          'halten? Ein Metronom kann helfen.',
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 8),
-                        OutlinedButton.icon(
-                          onPressed: _toggleMetronom,
-                          icon: Icon(
-                            _metronomActive ? Icons.stop : Icons.music_note,
-                          ),
-                          label: Text(
-                            _metronomActive
-                                ? 'Metronom stoppen'
-                                : 'Führe mich im Takt (60/min)',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  _buildMetronomBox(context),
                 ],
               ],
-              // Gate-fail message during prepare (after failed attempt)
-              if (_isCollectingStage &&
-                  _isPreparing &&
-                  _gateFailMessage != null) ...[
+              if (_gateFailMessage != null &&
+                  _isCollectingStage &&
+                  !_isRecording) ...[
                 const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade900,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    _gateFailMessage!,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
+                _buildGateFailBox(),
+              ],
+              if (_gateFailMessage != null && _isRecording) ...[
+                const SizedBox(height: 16),
+                _buildGateFailBox(),
               ],
               if (_controller.stage == CalibrationStage.review)
                 _buildReview(context),
@@ -470,6 +464,68 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         ),
       ),
       bottomNavigationBar: _buildBottomBar(context),
+    );
+  }
+
+  Widget _buildTaskCard(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final next = _actionNext;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: scheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: scheme.primary.withValues(alpha: 0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'JETZT',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.bold,
+                  letterSpacing: 1.2,
+                ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            _actionNow,
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
+          ),
+          if (next != null) ...[
+            const SizedBox(height: 12),
+            Text(
+              next,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: scheme.onSurfaceVariant,
+                  ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBriefing(BuildContext context) {
+    return Column(
+      children: [
+        Icon(
+          Icons.front_hand_outlined,
+          size: 48,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Kein Sensor-Stream bis du bereit bist.\n'
+          'Position einnehmen → Bereit tippen → 5 s Countdown → Vibration.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
+      ],
     );
   }
 
@@ -488,7 +544,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          'Aufzeichnung startet in $_prepareSecondsLeft s…',
+          'Start in $_prepareSecondsLeft s…',
           style: Theme.of(context).textTheme.titleMedium,
         ),
         const SizedBox(height: 16),
@@ -499,15 +555,49 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
             minHeight: 8,
           ),
         ),
-        const SizedBox(height: 12),
-        Text(
-          'Position einnehmen — noch nicht bewegen',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-          textAlign: TextAlign.center,
-        ),
       ],
+    );
+  }
+
+  Widget _buildGateFailBox() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade900,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        _gateFailMessage!,
+        style: const TextStyle(color: Colors.white),
+      ),
+    );
+  }
+
+  Widget _buildMetronomBox(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.blueGrey.shade800,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          const Text(
+            'Tempo ungleichmäßig? Metronom kann helfen.',
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _toggleMetronom,
+            icon: Icon(_metronomActive ? Icons.stop : Icons.music_note),
+            label: Text(
+              _metronomActive
+                  ? 'Metronom stoppen'
+                  : 'Führe mich im Takt (60/min)',
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -618,6 +708,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
     if (live == null) {
       return Text(
         'Warte auf Sensor-Daten…',
+        textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Theme.of(context).colorScheme.error,
             ),
@@ -659,7 +750,6 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
 
   Widget _buildBottomBar(BuildContext context) {
     final stage = _controller.stage;
-    final canFinish = _isRecording && !_isPreparing;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
@@ -667,14 +757,25 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
         children: [
           if (_isCollectingStage) ...[
             TextButton(onPressed: _cancel, child: const Text('Abbrechen')),
-            FilledButton(
-              onPressed: canFinish ? _next : null,
-              child: Text(
-                _isPreparing
-                    ? 'Warte… ($_prepareSecondsLeft)'
-                    : 'Weiter',
+            if (_isBriefing)
+              FilledButton(
+                onPressed: _onReadyPressed,
+                child: Text(
+                  widget.prepareCountdownSeconds > 0
+                      ? 'Bereit — ${widget.prepareCountdownSeconds}s'
+                      : 'Bereit',
+                ),
+              )
+            else if (_isPreparing)
+              FilledButton(
+                onPressed: null,
+                child: Text('Warte… ($_prepareSecondsLeft)'),
+              )
+            else
+              FilledButton(
+                onPressed: _isRecording ? _next : null,
+                child: const Text('Weiter'),
               ),
-            ),
           ],
           if (stage == CalibrationStage.review) ...[
             TextButton(
