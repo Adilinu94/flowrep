@@ -32,6 +32,10 @@ class WorkoutUiState {
   // Zähl-Gating (Start-Button)
   final bool isCountingActive;
 
+  // Exercise Selection
+  final String selectedExerciseId;
+  final bool hasCalibration;
+
   const WorkoutUiState({
     this.workoutState = WorkoutState.idle,
     this.repsInCurrentSet = 0,
@@ -54,6 +58,8 @@ class WorkoutUiState {
     this.recordedSampleCount = 0,
     this.lastRecordingFileName,
     this.isCountingActive = false,
+    this.selectedExerciseId = 'bicep_curl',
+    this.hasCalibration = false,
   });
 
   WorkoutUiState copyWith({
@@ -78,6 +84,8 @@ class WorkoutUiState {
     int? recordedSampleCount,
     String? lastRecordingFileName,
     bool? isCountingActive,
+    String? selectedExerciseId,
+    bool? hasCalibration,
   }) {
     return WorkoutUiState(
       workoutState: workoutState ?? this.workoutState,
@@ -101,6 +109,8 @@ class WorkoutUiState {
       recordedSampleCount: recordedSampleCount ?? this.recordedSampleCount,
       lastRecordingFileName: lastRecordingFileName ?? this.lastRecordingFileName,
       isCountingActive: isCountingActive ?? this.isCountingActive,
+      selectedExerciseId: selectedExerciseId ?? this.selectedExerciseId,
+      hasCalibration: hasCalibration ?? this.hasCalibration,
     );
   }
 }

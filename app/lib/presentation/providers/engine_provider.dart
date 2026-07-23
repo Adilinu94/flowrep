@@ -115,6 +115,21 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     );
   }
 
+  /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
+  /// Lädt die Kalibrierung für die neue Übung neu.
+  void selectExercise(String exerciseId) {
+    if (exerciseId == state.selectedExerciseId) return;
+    // Zählen stoppen falls aktiv
+    if (state.isCountingActive) stopCounting();
+    state = state.copyWith(
+      selectedExerciseId: exerciseId,
+      hasCalibration: false,
+      calibratedThreshold: null,
+    );
+    // Kalibrierung für neue Übung laden
+    _loadCalibration();
+  }
+
   void _onConnectionState(SensorConnectionState connState) {
     switch (connState) {
       case SensorConnectionState.connected:
@@ -281,7 +296,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       deviceId: deviceId,
     );
     if (profile != null) {
-      state = state.copyWith(calibratedThreshold: profile.theta);
+      state = state.copyWith(
+        calibratedThreshold: profile.theta,
+        hasCalibration: true,
+      );
       _engine.applyCalibration(
         peakThreshold: profile.theta,
         minThresholdAboveBaseline: 0.10,

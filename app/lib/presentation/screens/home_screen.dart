@@ -6,6 +6,8 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../providers/engine_provider.dart';
 import '../providers/workout_ui_state.dart';
 import '../widgets/connection_status_card.dart';
+import '../widgets/exercise_selector_card.dart';
+import '../widgets/onboarding_banner.dart';
 import '../widgets/rep_counter_display.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
@@ -62,7 +64,27 @@ class HomeScreen extends ConsumerWidget {
                 ),
 
               if (uiState.isConnected) ...[
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
+
+                // Übungsauswahl
+                ExerciseSelectorCard(
+                  selectedExerciseId: uiState.selectedExerciseId,
+                  hasCalibration: uiState.hasCalibration,
+                  onExerciseSelected: notifier.selectExercise,
+                ),
+                const SizedBox(height: 16),
+
+                // Onboarding (nur wenn nicht kalibriert)
+                if (!uiState.hasCalibration && !notifier.isMock)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: OnboardingBanner(
+                      isConnected: uiState.isConnected,
+                      hasCalibration: uiState.hasCalibration,
+                      onCalibratePressed: () =>
+                          _openCalibrationWizard(context, notifier),
+                    ),
+                  ),
 
                 // Start/Stop Zähl-Gating
                 SizedBox(
