@@ -236,9 +236,9 @@ flutter test --coverage         # Mit Coverage-Report
 
 - [x] Alle P0-Features implementiert und getestet (P0-1..5 ✅)
 - [ ] Alle P1-Features implementiert
-- [ ] Mindestens 10 Widget-Tests
-- [ ] `flutter analyze` → 0 Errors, 0 Warnings
-- [ ] `flutter test` → alle grün
+- [ ] Mindestens 10 Widget-Tests (P0 liefert Korrektur/Rest/Session/FGS-Widget-Tests; Ziel 15+ in P1)
+- [ ] `flutter analyze` → 0 Errors, 0 Warnings (P0-Pfade: keine neuen Errors; pre-existing infos bleiben)
+- [x] `flutter test` → alle grün (275+ inkl. P0)
 - [ ] `flutter build apk --release` → kompiliert
 - [ ] Manueller Test auf echtem M5StickC Plus2:
   - [ ] Verbinden → Kalibrieren → Zählen → Korrigieren → Beenden
