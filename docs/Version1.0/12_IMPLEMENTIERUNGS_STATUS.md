@@ -1,8 +1,10 @@
-# Implementierungs-Status — FlowRep 1.0
+# FlowRep 1.0 — Implementierungsstatus (Living Tracker)
 
-> **Stand**: 22. Juli 2026
-> **Letzter Commit**: `9755dc9` (nur Dokumentation)
-> **Status**: ❌ KEINE Implementierung gestartet
+> **Stand**: 2026-07-23  
+> **Commit-Basis**: siehe `git log` / `origin/main`  
+> **Zweck**: ehrlicher Ledger — erledigt vs. offen. Kein „alles grün“ ohne Evidence.
+
+Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [HW_VALIDATION](HW_VALIDATION_2026-07-23.md)
 
 ---
 
@@ -10,136 +12,107 @@
 
 | Symbol | Bedeutung |
 |--------|-----------|
-| ⬜ | Nicht begonnen |
-| 🔄 | In Arbeit |
-| ✅ | Fertig + getestet |
-| ❌ | Blockiert / Problem |
+| `[x]` | im Code + Tests (ggf. HW-Evidence) |
+| `[~]` | Code da, volle Geräte-Bewegung noch offen |
+| `[ ]` | offen / nicht freigegeben |
 
 ---
 
-## Phase 1: P0 — Release-Blocker
+## P0 — Release-Blocker
 
-> **Doc**: `01_P0_KRITISCHE_FEATURES.md`
-> **Ziel**: App ist ohne diese Features NICHT release-fähig.
-
-| # | Feature | Status | Commit | Tests |
-|---|---------|--------|--------|-------|
-| P0-1 | Korrektur-UI (+/− Buttons) | ⬜ | — | — |
-| P0-2 | Pausen-Timer (90s Countdown) | ⬜ | — | — |
-| P0-3 | Session-Beenden-Flow | ⬜ | — | — |
-| P0-4 | Reconnection-Strategie | ⬜ | — | — |
-| P0-5 | Foreground Service | ⬜ | — | — |
-
-**Verifikation nach jedem Feature**:
-```bash
-cd flowrep/app
-flutter test          # Alle Tests grün?
-flutter analyze       # Keine neuen Warnings?
-```
+| ID | Feature | Code | Unit/Widget | HW E2E | Notes |
+|----|---------|------|-------------|--------|-------|
+| P0-1 | Korrektur-UI (+/−, Speichern & lernen) | [x] | [x] | [~] | `CorrectionDialog`; `confirmCorrection` → `CorrectionEvent` + θ-nudge |
+| P0-2 | Pausen-Timer 90s | [x] | [x] | [~] | nach Korrektur |
+| P0-3 | Session-Beenden + Summary | [x] | [x] | [~] | „Training beenden“ |
+| P0-4 | BLE Reconnection | [x] | [x] | [x] | BT off/on 2026-07-23 |
+| P0-5 | Foreground Service | [x] | — | [x] | Screen-Lock 20s, Batches weiter |
 
 ---
 
-## Phase 2: P1 — Wichtige Features
+## P1 — Qualität
 
-> **Doc**: `02_P1_WICHTIGE_FEATURES.md`
-> **Voraussetzung**: Alle P0-Features fertig.
-
-| # | Feature | Status | Commit | Tests |
-|---|---------|--------|--------|-------|
-| P1-1 | Globaler Error Handler | ⬜ | — | — |
-| P1-2 | App-Lifecycle-Handling | ⬜ | — | — |
-| P1-3 | Settings-Screen | ⬜ | — | — |
-| P1-4 | iOS-Konfiguration | ⬜ | — | — |
-| P1-5 | Sound-Asset + pubspec | ⬜ | — | — |
-| P1-6 | App-Icon + Splash-Screen | ⬜ | — | — |
-| P1-7 | Widget-Tests | ⬜ | — | — |
-| P1-8 | CI/CD Pipeline | ⬜ | — | — |
+| ID | Feature | Status |
+|----|---------|--------|
+| P1-1 | Global Error Handler | [x] |
+| P1-2 | App-Lifecycle | [x] |
+| P1-3 | Settings-Screen | [x] |
+| P1-4 | iOS-Konfiguration | [x] (plist; Geräte-iOS separat) |
+| P1-5 | Sound-Asset | [x] |
+| P1-6 | App-Icon + Splash | [x] |
+| P1-7 | Widget-Tests | [x] (≥10) |
+| P1-8 | CI/CD | [x] |
 
 ---
 
-## Phase 3: P2 — Verbesserungen
+## P2 — Polish
 
-> **Doc**: `03_P2_VERBESSERUNGEN.md`
-> **Voraussetzung**: P0 und P1 fertig.
-
-| # | Feature | Status | Commit | Tests |
-|---|---------|--------|--------|-------|
-| P2-1 | Dark Mode | ⬜ | — | — |
-| P2-2 | Accessibility | ⬜ | — | — |
-| P2-3 | Glanceability (120sp) | ⬜ | — | — |
-| P2-4 | Benutzerfreundliche Fehlermeldungen | ⬜ | — | — |
-| P2-5 | BLE-Paketverlustrate-Warnung | ⬜ | — | — |
-| P2-6 | Konstanten zentralisieren | ⬜ | — | — |
-| P2-7 | Logging-Struktur | ⬜ | — | — |
+| ID | Feature | Status |
+|----|---------|--------|
+| P2-1 … P2-7 | Dark Mode … Logging | [x] (siehe 00_UEBERSICHT) |
 
 ---
 
-## Phase 4: CV — Computer Vision (optional)
+## Produkt: manuelles Satzende + Lernen (User-Feedback 2026-07-23)
 
-> **Docs**: `04_CV_ARCHITEKTUR.md` bis `09_CV_ANDROID_SIMULATOR.md`
-> **Voraussetzung**: P0-1 (Korrektur-UI) fertig. Parallel zu P1/P2 möglich.
-> **WICHTIG**: CV ist OPTIONAL. Die App funktioniert vollständig ohne Kamera.
-
-| # | Feature | Status | Commit | Tests |
-|---|---------|--------|--------|-------|
-| CV-01 | Architektur verstehen (nur lesen) | ⬜ | — | — |
-| CV-02 | Kamera-Setup (flutter_pose_detection) | ⬜ | — | — |
-| CV-03 | Rep-Counter Winkel (Bicep Curl) | ⬜ | — | — |
-| CV-04 | Sensor Fusion (IMU+Kamera) | ⬜ | — | — |
-| CV-05 | Webcam-Testing (Python-Tool) | ⬜ | — | — |
-| CV-06 | Android Simulator Setup | ⬜ | — | — |
+| Check | Status | Evidence |
+|-------|--------|----------|
+| `autoEndSetEnabled: false` in Product (`main.dart`) | [x] | Engine endet Satz **nicht** nach Stille |
+| UI „Satz beenden“ | [x] | `home_screen.dart` → `endSetManually` |
+| Nach Satzende Korrektur-Dialog (echte Reps) | [x] | `showCorrectionForLastSet` on `completedSet` |
+| `countedReps` unverändert; nur `correctedReps` | [x] | Spec + `correction_test.dart` |
+| CorrectionEvent persistiert | [x] | Drift `saveCorrection` |
+| Rule-based Lernen (θ-nudge + Profile save) | [x] | `_learnFromCorrection` / `nudgeDirectionAwareThreshold` |
+| Keine Copy „Die KI lernt dazu“ | [x] | „Speichern & lernen“ / Dankestext |
+| Auto-„Satz abgeschlossen“ | [x] abgeschaltet | Timeout-Pfad nur wenn `autoEndSetEnabled` |
 
 ---
 
-## Phase 5: Release
+## Engine / Zählqualität (gP)
 
-> **Doc**: `10_RELEASE_VORBEREITUNG.md`
-> **Voraussetzung**: Alle P0 + P1 fertig, P2 empfohlen.
-
-| # | Aufgabe | Status |
-|---|---------|--------|
-| R-1 | Version auf 1.0.0+1 setzen | ⬜ |
-| R-2 | APK-Signing konfigurieren | ⬜ |
-| R-3 | Release-Build erstellen | ⬜ |
-| R-4 | Hardware-QA (Doc 11) | ⬜ |
-| R-5 | Git-Tag v1.0.0 erstellen | ⬜ |
-
----
-
-## Test-Übersicht
-
-| Kategorie | Aktuell | Ziel (1.0) | Status |
-|-----------|---------|------------|--------|
-| Unit-Tests (Engine/Pipeline) | 242 | 260+ | ⬜ |
-| Widget-Tests | 0 | 15+ | ⬜ |
-| Integration-Tests | 0 | 3-5 | ⬜ |
-| Hardware-Tests | 0 | Doc 11 | ⬜ |
+| Check | Status | Notes |
+|-------|--------|-------|
+| gP-Profil autoritativ (`ChosenSignal.gP`) | [x] | Combined-Sentinel 999 gegen 1.2g-Fallback |
+| θ-Floor + Ratio | [x] | `max(50, theta×0.70)` (Härtung gegen Wackeln) |
+| Excursion-Dauer-Gate | [x] | `_minGpSamplesAbove` ≥ 15 (~300 ms @50 Hz) |
+| Peak-Amplitude-Gate in Excursion | [x] | Peak ≥ 1.2×θ |
+| Kurze/kleine Wiggles zählen nicht | [x] Unit | `tool_count_sim_test.dart` |
+| Echte Curl-Form zählt | [x] Unit | sin-Excursion ~800 ms, Peak ≥100 °/s |
+| HW: Wackeln vs. Curl am Arm | [~] | physisch offen / User-Retest |
+| `_useNewPipeline` | **false** | G7 — nicht freigeben ohne Shadow-DoD |
 
 ---
 
-## Commit-Historie (V1.0-relevant)
+## CV-Track (optional, nicht release-blockierend)
 
-| Commit | Beschreibung | Phase |
-|--------|-------------|-------|
-| `9755dc9` | CV-Implementationspläne (Docs) | Docs |
-| `8cfa524` | V1.0 Implementationspläne P0/P1/P2 (Docs) | Docs |
-| `0e419b6` | Exercise-Selection, Onboarding, Pipeline-Tests | Pre-V1.0 |
-| `a603b03` | Baseline-Gate + Zähl-Gating | Pre-V1.0 |
+| ID | Status |
+|----|--------|
+| CV-01 … CV-06 + UI | [x] Code/Docs; Geräte-Webcam/Emulator manuell optional |
 
 ---
 
-## Nächste Schritte
+## Builds / Qualitätstore
 
-1. **P0-1 starten**: Korrektur-UI implementieren (Doc 01, §1)
-2. Nach jedem Feature: Commit + Push
-3. Nach allen P0: P1 starten
-4. Nach P1+P2: Release-Build (Doc 10)
-5. Hardware-QA (Doc 11) → Go/No-Go
+| Check | Status | Stand |
+|-------|--------|-------|
+| `flutter analyze lib` | [x] | 0 issues (2026-07-23) |
+| `flutter test` | [x] | grün (siehe CI / lokale Runs) |
+| `flutter build apk --release` | [x] | ~108 MB; TFLite AGP9-Workaround |
+| Force-Push / Test-Abschwächung | verboten | siehe 00_UEBERSICHT |
 
 ---
 
-## Aktualisierungs-Regel
+## Offene 1.0-Punkte (ehrlich)
 
-> **WER**: Die implementierende KI aktualisiert dieses Dokument nach JEDEM Feature.
-> **WIE**: Status-Symbol ändern + Commit-Hash eintragen.
-> **WANN**: Im gleichen Commit wie das Feature selbst.
+1. **[ ]** Volle physische Session: Kalibrieren → Zählen (Curls) → **Satz beenden** → echte Reps eingeben → Training beenden  
+2. **[~]** Wiggle-Resistenz am Gerät (Unit grün; User meldete Rest-Wackeln → weitere Gates gelandet, HW-Retest)  
+3. **[ ]** Phase E–H Hardware-Protokoll (Zähl-DoD G5/G6, Shadow G7) — siehe Doc 11  
+4. Optional: CSV-Export Kalibrier-Puffer, Webcam-Live-Session
+
+---
+
+## Changelog dieses Trackers
+
+| Datum | Änderung |
+|-------|----------|
+| 2026-07-23 | Tracker angelegt aus 00 + HW_VALIDATION + Product-Fixes (manual end, learn, gP harden) |
