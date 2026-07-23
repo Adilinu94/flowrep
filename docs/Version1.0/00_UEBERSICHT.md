@@ -10,10 +10,16 @@
 
 ```
 docs/Version1.0/
-├── 00_UEBERSICHT.md          ← Diese Datei
+├── 00_UEBERSICHT.md              ← Diese Datei
 ├── 01_P0_KRITISCHE_FEATURES.md   ← Release-Blocker (5 Features)
 ├── 02_P1_WICHTIGE_FEATURES.md    ← Stark empfohlen (8 Features)
-└── 03_P2_VERBESSERUNGEN.md       ← Quality & Polish (7 Features)
+├── 03_P2_VERBESSERUNGEN.md       ← Quality & Polish (7 Features)
+├── 04_CV_ARCHITEKTUR.md          ← CV: Architektur & Grundlagen
+├── 05_CV_KAMERA_SETUP.md         ← CV: flutter_pose_detection Setup
+├── 06_CV_REP_COUNTER_WINKEL.md   ← CV: Winkel-basierter Rep-Counter
+├── 07_CV_SENSOR_FUSION.md        ← CV: IMU+Kamera Ensemble
+├── 08_CV_WEBCAM_TESTING.md       ← CV: Webcam-Modus (PC-Testing)
+└── 09_CV_ANDROID_SIMULATOR.md    ← CV: Android Emulator Setup
 ```
 
 ---
@@ -57,6 +63,25 @@ P2-4 Error-Messages (unabhängig) ───────────────�
 P2-5 Paketverlust-Warnung (unabhängig) ─────────────────────┤
 P2-6 Konstanten (unabhängig, aber VOR anderen P2 besser) ───┤
 P2-7 Logging (unabhängig) ──────────────────────────────────┘
+
+    ════════════════════════════════════════════════════════
+    CV-TRACK: Computer Vision (parallel zu P1/P2)
+    ════════════════════════════════════════════════════════
+
+CV-01 Architektur (unabhängig, nur lesen) ─────────────────
+    │
+    ▼
+CV-02 Kamera-Setup (flutter_pose_detection) ───────────────
+    │
+    ▼
+CV-03 Rep-Counter Winkel (Bicep Curl) ─────────────────────
+    │
+    ▼
+CV-04 Sensor Fusion (IMU+Kamera) ──────────────────────────
+    │
+    ├──→ CV-05 Webcam-Testing (PC, unabhängig)
+    │
+    └──→ CV-06 Android Simulator (unabhängig)
 ```
 
 ---
@@ -99,6 +124,20 @@ P2-7 Logging (unabhängig) ─────────────────�
 | 5 | Paketverlust-Warnung | 30min | keine |
 | 6 | Konstanten zentralisieren | 1h | keine |
 | 7 | Logging-Struktur | 30min | keine |
+
+### Phase 4: CV (Computer Vision) — ~3-5 Tage (parallel zu P1/P2)
+
+| # | Feature | Aufwand | Abhängigkeit |
+|---|---------|---------|--------------|
+| 1 | CV-Architektur (nur lesen) | 15min | keine |
+| 2 | Kamera-Setup (flutter_pose_detection) | 2-3h | P0-1 |
+| 3 | Rep-Counter Winkel (Bicep Curl) | 2-3h | CV-02 |
+| 4 | Sensor Fusion (IMU+Kamera) | 2h | CV-03 |
+| 5 | Webcam-Testing (Python-Tool) | 1h | keine |
+| 6 | Android Simulator Setup | 1h | keine |
+
+**WICHTIG**: CV ist OPTIONAL. Die App funktioniert vollständig ohne Kamera.
+Die IMU-Pipeline bleibt autoritativ. Kamera ist ein zusätzlicher Validator.
 
 ---
 
@@ -207,3 +246,11 @@ flutter test --coverage         # Mit Coverage-Report
   - [ ] BLE-Verlust → Auto-Reconnect funktioniert
   - [ ] Dark Mode lesbar
 - [ ] Keine TODO(hardware)-Marker mehr (außer Gyro-Gate)
+
+### CV-Track (optional, nicht release-blockierend)
+
+- [ ] CV-02: Kamera-Setup funktioniert auf physischem Gerät
+- [ ] CV-03: Bicep Curls werden über Kamera gezählt
+- [ ] CV-04: Fusion-Statistik wird korrekt angezeigt
+- [ ] CV-05: Webcam-Tool zählt korrekt (PC-Testing)
+- [ ] CV-06: App startet im Emulator ohne Crash
