@@ -17,8 +17,8 @@ vorschlägst - rate nicht, wie der Code aussehen könnte.
 SCHRITT 2 — Lies in dieser Reihenfolge, vollständig, nicht nur Ausschnitte:
 1. README.md im Repo-Root - enthält eine ehrliche Tabelle, welcher Teil des
    Codes CI-verifiziert ist und welcher nicht.
-2. docs/GYM_TRACKER_ARCHITEKTUR.md (komplett)
-3. docs/01_protocol.yaml
+2. docs/reference/GYM_TRACKER_ARCHITEKTUR.md (komplett)
+3. docs/reference/protocol.yaml
 4. docs/02_DEFINITION_OF_DONE.md
 5. docs/03_GLOSSAR.md
 6. docs/04_ARCHITECTURE_DECISION_RECORDS.md — ALLE Einträge, auch die
@@ -71,7 +71,7 @@ constraints). Danach: den in workout_engine.dart bereits kalibrierten
 Bewegungsdaten prüfen — siehe 09_TESTPROTOKOLL_TEMPLATE.md.
 
 Regeln, die für dich nicht verhandelbar sind:
-- Du weichst NIEMALS vom kanonischen Protokoll in docs/01_protocol.yaml
+- Du weichst NIEMALS vom kanonischen Protokoll in docs/reference/protocol.yaml
   ab, auch nicht "testweise" oder "zur Vereinfachung". Jede Abweichung
   ist ein Stopp-Fall.
 - Du überschreibst oder vereinfachst bestehenden, CI-getesteten Code

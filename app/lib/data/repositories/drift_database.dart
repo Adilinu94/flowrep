@@ -8,7 +8,7 @@
 // the build_runner code generation step (`dart run build_runner build`)
 // that normally produces `drift_database.g.dart` has not been run. Running
 // that command is the literal first step to take once a real Flutter
-// environment is available (see docs/GYM_TRACKER_ARCHITEKTUR.md Phase 1).
+// environment is available (see docs/reference/GYM_TRACKER_ARCHITEKTUR.md Phase 1).
 //
 // ENCRYPTION (GYM_TRACKER_ARCHITEKTUR.md §5.2.3 "Lokale Verschlüsselung",
 // added 2026-07-19): the architecture doc and this file's own prior TODO

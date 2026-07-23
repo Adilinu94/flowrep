@@ -2,7 +2,7 @@
 
 **Ersetzt:** `Contracts___Blueprints.txt` (vorherige KI-Sitzung)
 **Verbindlichkeit:** Wie im Original – diese Definitionen sind für die ausführende KI verbindlich. Abweichungen erfordern eine neue ADR.
-**Wichtiger Unterschied zum Original:** Dieses Dokument **erfindet das Wire-Protokoll nicht neu**, sondern übernimmt es unverändert aus der bestehenden, produktiv genutzten Quelle `docs/01_protocol.yaml` im echten Repository. Nur die DSP-Pipeline und die State-Machine-Korrektur sind neu.
+**Wichtiger Unterschied zum Original:** Dieses Dokument **erfindet das Wire-Protokoll nicht neu**, sondern übernimmt es unverändert aus der bestehenden, produktiv genutzten Quelle `docs/reference/protocol.yaml` im echten Repository. Nur die DSP-Pipeline und die State-Machine-Korrektur sind neu.
 
 ---
 
@@ -35,7 +35,7 @@ gyro_rad_s    = gyro_deg_s * (PI / 180.0)                 // deg/s -> rad/s, ZWE
 
 **Korrektur-Hinweis für die ausführende KI:** Ein früherer Entwurf dieses Dokuments enthielt die fehlerhafte Kurzformel `rad/s = int16_wert * (pi/180.0)` – das lässt den Skalierungsschritt `× 0.01` aus und ergibt Werte, die um Faktor 100 zu groß sind (rechnerisch bis zu 15.000 statt real ca. 150 Grad/Sekunde bei einer typischen Curl-Bewegung). **Immer zweistufig umrechnen: erst Rohwert → deg/s mit Faktor 0,01, dann erst bei Bedarf deg/s → rad/s.** Wenn die Ziel-Einheit ohnehin deg/s ist (wie im gesamten übrigen Projekt üblich), entfällt der zweite Schritt komplett – es besteht kein Zwang, überhaupt in rad/s umzurechnen.
 
-Quelle der Wahrheit bleibt `docs/01_protocol.yaml` im echten Repository. Bei jeder Unklarheit gilt diese Datei, nicht dieses Dokument.
+Quelle der Wahrheit bleibt `docs/reference/protocol.yaml` im echten Repository. Bei jeder Unklarheit gilt diese Datei, nicht dieses Dokument.
 
 ---
 

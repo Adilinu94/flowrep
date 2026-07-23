@@ -8,7 +8,7 @@ import '../../domain/workout_engine.dart';
 
 /// Records raw [SensorSample]s (plus the same derived combined signal the
 /// production pipeline computes) to a CSV file for offline DSP analysis
-/// in Python. See docs/Umbauplan Flowrep/07_STRATEGISCHES_ARBEITSDOKUMENT_
+/// in Python. See docs/archive/umbauplan/07_STRATEGISCHES_ARBEITSDOKUMENT_
 /// DATENAKQUISITION.md (why) and 08_CSV_AUFNAHME_IMPLEMENTIERUNGSPLAN.md
 /// (implementation decisions - storage location, column format).
 ///

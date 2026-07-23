@@ -1,4 +1,4 @@
-/// Agent 1 / Schritt C (docs/Umbauplan Flowrep/agenten-baupläne/
+/// Agent 1 / Schritt C (docs/archive/umbauplan/agenten-baupläne/
 /// AGENT_1_SIGNAL_PIPELINE.md, RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md S5):
 /// pure, BLE-independent dedup + gap-detection logic, extracted out of
 /// [BleSensorProvider]'s polling loop so it can be unit-tested without a
@@ -15,7 +15,7 @@
 /// bare `if (x == last) continue;` with no visibility into how often it
 /// happened.
 ///
-/// Since docs/01_protocol.yaml v2 (Agent 4, 2026-07-17), the firmware's
+/// Since docs/reference/protocol.yaml v2 (Agent 4, 2026-07-17), the firmware's
 /// honestly-paced batch rate is 12.5 Hz (80ms/batch: 4 samples x 20ms) -
 /// slower than this app's ~30 Hz poll rate, so in practice polling should
 /// now comfortably outrun the firmware and catch every batch. This class
@@ -25,7 +25,7 @@ class BatchDedupTracker {
   BatchDedupTracker({this.expectedBatchIntervalMs = 80});
 
   /// Nominal time between two genuinely different batches, per
-  /// docs/01_protocol.yaml `timing:` (4 samples x sample_interval_ms).
+  /// docs/reference/protocol.yaml `timing:` (4 samples x sample_interval_ms).
   /// Only used to size the missed-batch estimate below, not for the
   /// duplicate check itself (which is an exact equality test).
   final int expectedBatchIntervalMs;

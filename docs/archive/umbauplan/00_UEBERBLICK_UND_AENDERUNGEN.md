@@ -40,7 +40,7 @@ Das ist falsch. Der tatsächliche Stand (Branch `master`, nicht `main`) umfasst 
 
 `Contracts & Blueprints.txt` definierte: `Wert in rad/s = (int16_Wert * (pi / 180.0))`.
 
-Das reale, bereits produktiv gesendete Protokoll (`docs/01_protocol.yaml`, Firmware `firmware/src/main.cpp:421`) skaliert Gyro-Rohwerte mit Faktor `0.01` auf deg/s. Ein realer Messwert von 150 deg/s wird als Rohwert `15000` übertragen. Die korrekte Umrechnung ist `15000 * 0.01 * (π/180) ≈ 2,62 rad/s`. Die im alten Plan angegebene Formel ergibt `15000 * (π/180) ≈ 261,8 rad/s` – rechnerisch ca. 15.000 Grad/Sekunde, physiologisch unmöglich. Der Faktor `0,01` fehlte schlicht. Siehe Dokument 03 (Contracts & Blueprints, korrigiert) für die richtige Formel.
+Das reale, bereits produktiv gesendete Protokoll (`docs/reference/protocol.yaml`, Firmware `firmware/src/main.cpp:421`) skaliert Gyro-Rohwerte mit Faktor `0.01` auf deg/s. Ein realer Messwert von 150 deg/s wird als Rohwert `15000` übertragen. Die korrekte Umrechnung ist `15000 * 0.01 * (π/180) ≈ 2,62 rad/s`. Die im alten Plan angegebene Formel ergibt `15000 * (π/180) ≈ 261,8 rad/s` – rechnerisch ca. 15.000 Grad/Sekunde, physiologisch unmöglich. Der Faktor `0,01` fehlte schlicht. Siehe Dokument 03 (Contracts & Blueprints, korrigiert) für die richtige Formel.
 
 ### 3.2 Die vorgeschlagene Gravitationstrennung leckt bei realistischer Rep-Kadenz
 

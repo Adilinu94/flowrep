@@ -120,7 +120,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 | `11_HARDWARE_QA_CHECKLISTE.md` | Phone+M5 QA | **living** |
 | `12_IMPLEMENTIERUNGS_STATUS.md` | Ledger Code vs. offen | **living** |
 | `13_OFFENE_PUNKTE.md` | **Diese Datei** — konsolidiert | **living** |
-| `HW_VALIDATION_2026-07-23.md` | Geräte-Evidence Snapshot | archiviert/session |
+| `../hardware/sessions/2026-07-23/HW_VALIDATION.md` | Geräte-Evidence Snapshot | archiviert/session |
 
 ---
 

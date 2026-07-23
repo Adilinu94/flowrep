@@ -63,7 +63,7 @@ abstract class CalibrationController {
 
 ## 6. Dateien, die du NICHT anfassen darfst
 
-`workout_engine.dart`, `calibration_controller.dart` (nur lesen, nicht schreiben – das ist Agent 2s Datei), `ble_sensor_provider.dart`, `workout_engine_simulation.py`, `firmware/*`, `docs/01_protocol.yaml`.
+`workout_engine.dart`, `calibration_controller.dart` (nur lesen, nicht schreiben – das ist Agent 2s Datei), `ble_sensor_provider.dart`, `workout_engine_simulation.py`, `firmware/*`, `docs/reference/protocol.yaml`.
 
 ## 7. Aufgaben, Schritt für Schritt
 

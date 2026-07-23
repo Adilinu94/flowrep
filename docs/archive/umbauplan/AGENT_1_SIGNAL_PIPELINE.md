@@ -42,7 +42,7 @@ Noch offen und dein Auftrag (aus RECHERCHE_ZAEHLROBUSTHEIT, App-seitiger Anteil)
 
 ## 5. Dateien, die du NICHT anfassen darfst
 
-`calibration_controller.dart` (existiert noch nicht – falls doch, gehört sie Agent 2), alles unter `presentation/screens/calibration/`, `calibration_store.dart`, `drift_database.dart`, `firmware/*`, `docs/01_protocol.yaml` (du LIEST diese Datei, du schreibst sie nicht – die Protokoll-Version kommt von Agent 4), `pubspec.yaml`/`pubspec.lock` (siehe Abschnitt 6, Sonderfall).
+`calibration_controller.dart` (existiert noch nicht – falls doch, gehört sie Agent 2), alles unter `presentation/screens/calibration/`, `calibration_store.dart`, `drift_database.dart`, `firmware/*`, `docs/reference/protocol.yaml` (du LIEST diese Datei, du schreibst sie nicht – die Protokoll-Version kommt von Agent 4), `pubspec.yaml`/`pubspec.lock` (siehe Abschnitt 6, Sonderfall).
 
 ## 6. Aufgaben, Schritt für Schritt
 
@@ -62,7 +62,7 @@ Noch offen und dein Auftrag (aus RECHERCHE_ZAEHLROBUSTHEIT, App-seitiger Anteil)
 4. Erst danach: Port nach `workout_engine.dart`.
 
 ### Schritt C – P0 (App-Seite): ehrliche Zeitbasis, kein Datenverlust
-**Voraussetzung: Agent 4 muss zuerst die neue Protokoll-Spezifikation liefern (`docs/01_protocol.yaml`, kommt als dessen erstes, schnelles Ergebnis). Prüfe vor Beginn dieses Schritts, ob diese Datei bereits eine neue Protokollversion mit echten Zeitstempeln beschreibt. Falls nicht: Schritt C zurückstellen, mit Schritt A/B weitermachen, später zurückkommen.**
+**Voraussetzung: Agent 4 muss zuerst die neue Protokoll-Spezifikation liefern (`docs/reference/protocol.yaml`, kommt als dessen erstes, schnelles Ergebnis). Prüfe vor Beginn dieses Schritts, ob diese Datei bereits eine neue Protokollversion mit echten Zeitstempeln beschreibt. Falls nicht: Schritt C zurückstellen, mit Schritt A/B weitermachen, später zurückkommen.**
 1. `ble_sensor_provider.dart`: echte Zeitstempel aus dem (neuen) Protokoll parsen statt künstliche 20ms-Abstände zu synthetisieren.
 2. Dedup-Logik durchgehen: die aktuelle Lösung ist ein Polling-Workaround, der nachweislich still Daten verwerfen kann (S5). Ersetze das Kriterium so, dass kein Sample verworfen wird, das nicht nachweislich ein exaktes Duplikat ist (z.B. über die neue, echte Zeitstempel/Sequenznummer statt über einen Timing-Heuristik-Workaround).
 3. Wenn Agent 4s Protokoll die Gyro-Skalierung ändert (Clipping-Fix, aktuell ±327,67°/s durch int16/100-Skalierung, echte Curls erreichen bis zu ~344°/s): Parsing entsprechend anpassen.

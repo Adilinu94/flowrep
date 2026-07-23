@@ -4,7 +4,7 @@
 > **Commit-Basis**: siehe `git log` / `origin/main`  
 > **Zweck**: ehrlicher Ledger — erledigt vs. offen. Kein „alles grün“ ohne Evidence.
 
-Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [HW_VALIDATION](HW_VALIDATION_2026-07-23.md)
+Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [HW_VALIDATION](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
 
 ---
 

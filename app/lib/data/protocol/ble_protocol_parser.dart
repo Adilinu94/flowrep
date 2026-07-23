@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import '../../domain/workout_engine.dart';
 
-/// Parses the BLE sensor-data payload defined in docs/01_protocol.yaml.
+/// Parses the BLE sensor-data payload defined in docs/reference/protocol.yaml.
 /// This file and protocol.yaml MUST stay in sync.
 ///
 /// Wire-format detection (see protocol.yaml versions:):

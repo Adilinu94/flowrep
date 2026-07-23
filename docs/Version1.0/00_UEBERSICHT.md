@@ -3,7 +3,7 @@
 > **Stand**: 23. Juli 2026  
 > **Basis**: Gap-Analyse 22.07.2026 + HW-Session + Product-Fixes (manual set end, correction learning, gP wiggle harden)  
 > **Living Tracker**: [12_IMPLEMENTIERUNGS_STATUS](12_IMPLEMENTIERUNGS_STATUS.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md)  
-> **HW**: [HW_VALIDATION_2026-07-23](HW_VALIDATION_2026-07-23.md)
+> **HW**: [HW_VALIDATION_2026-07-23](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
 
 ---
 
@@ -24,8 +24,10 @@ docs/Version1.0/
 ├── 10_RELEASE_VORBEREITUNG.md    ← Release-Gates & Build-Smoke (living)
 ├── 11_HARDWARE_QA_CHECKLISTE.md  ← M5 + Phone QA (living)
 ├── 12_IMPLEMENTIERUNGS_STATUS.md ← P0–P2/CV/Engine Ledger (living)
-├── 13_OFFENE_PUNKTE.md           ← Konsolidiert: was noch aussteht (living)
-└── HW_VALIDATION_2026-07-23.md   ← Geräte-Evidence 2026-07-23
+└── 13_OFFENE_PUNKTE.md           ← Konsolidiert: was noch aussteht (living)
+
+# Geräte-Evidence: docs/hardware/sessions/2026-07-23/
+# Gesamt-Index: docs/README.md
 ```
 
 ---
@@ -246,7 +248,7 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] `flutter analyze lib` → 0 Issues (2026-07-23)
 - [x] `flutter test` → alle grün
 - [x] `flutter build apk --release` → OK (108.6MB; TFLite AGP9-Workaround)
-- [x] Manueller Test auf echtem M5StickC Plus2: **BLE Connect + Streaming verifiziert** (siehe `HW_VALIDATION_2026-07-23.md`)
+- [x] Manueller Test auf echtem M5StickC Plus2: **BLE Connect + Streaming verifiziert** (siehe `../hardware/sessions/2026-07-23/HW_VALIDATION.md`)
   - [x] Verbinden (UI Verbunden BLE + NOTIFY/batches)
   - [ ] Kalibrieren → Zählen → Korrigieren → Beenden (UI da; volle Bewegung manuell am Gerät)
   - [x] Bildschirm sperren 20s → Stream bleibt (batches 650→935; FGS)

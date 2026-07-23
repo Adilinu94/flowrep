@@ -2,7 +2,7 @@
 
 > **Stand**: 2026-07-23  
 > **Geräte-Referenz**: Xiaomi 21081111RG (`55j7xkiffixsyhxg`) + M5StickC Plus2 (COM3, MPU6886)  
-> **Detail-Logs**: `docs/hardware-tests/2026-07-23/`, `HW_VALIDATION_2026-07-23.md`, `CALIB_SESSION_ANALYSIS.md`  
+> **Detail-Logs**: `docs/hardware/sessions/2026-07-23/`, `../hardware/sessions/2026-07-23/HW_VALIDATION.md`, `CALIB_SESSION_ANALYSIS.md`  
 > **Konsolidierte Offene Punkte**: [13_OFFENE_PUNKTE.md](13_OFFENE_PUNKTE.md)
 
 Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.

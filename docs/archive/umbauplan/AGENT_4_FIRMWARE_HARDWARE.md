@@ -16,7 +16,7 @@ Behebe die zwei bekannten Firmware-seitigen Probleme (unehrliche Zeitbasis, Gyro
 
 1. `git checkout main && git pull origin main`.
 2. Lies `docs/Umbauplan Flowrep/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md`, Abschnitte zu S3 (Zeitbasis), S4 (Gyro-Clipping) und P0.
-3. Lies `docs/01_protocol.yaml` – das ist das aktuelle BLE-Protokoll, das du erweiterst (nicht ersetzt, sofern nicht zwingend nötig).
+3. Lies `docs/reference/protocol.yaml` – das ist das aktuelle BLE-Protokoll, das du erweiterst (nicht ersetzt, sofern nicht zwingend nötig).
 4. Lies `firmware/src/main.cpp` und `firmware/platformio.ini`. Firmware ist NimBLE-basiert (bereits migriert, nicht mehr die alte BLEDevice.h-Variante).
 5. Lies in `docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md` den Abschnitt zum `ENG:`/Sample-Test – dort steht seit mehreren Sessions ein offener Punkt "höchste Priorität", auf dessen Ergebnis gewartet wird. Das ist dein wichtigster erster physischer Test (Abschnitt 6, Test 1).
 
@@ -27,13 +27,13 @@ Das M5StickC Plus2 (BMI270-IMU) sendet Gyro-/Beschleunigungsdaten per BLE (NimBL
 - **S3 – Zeitbasis ist fiktiv:** Die Firmware sendet Sample-Batches ohne eingebettetes echtes Timing; die App synthetisiert aktuell künstliche, gleichmäßige 20ms-Abstände. Das verzerrt jede zeitbasierte Berechnung. Deine Aufgabe: echte Zeitstempel (oder zumindest ein verlässliches, gleichmäßiges Pacing mit bekannter, konstanter Sample-Rate) ins Protokoll aufnehmen.
 - **S4 – Gyro-Clipping:** Aktuell ±327,67°/s (das ist exakt 32767/100 – ein Hinweis, dass Gyro-Werte als int16, skaliert mit Faktor 100, übertragen werden). Echte, kräftige Curls erreichen bis zu ~344°/s. Werte darüber werden aktuell abgeschnitten (geclippt), was die Zählung bei kräftigen Wiederholungen verfälscht. Deine Aufgabe: Skalierung so anpassen, dass mindestens bis ±400°/s ohne Clipping übertragen wird (Sicherheitsspanne über den beobachteten 344°/s).
 
-Jede Protokolländerung braucht eine **Versionsnummer-Erhöhung** (prüfe, ob `docs/01_protocol.yaml` bereits ein Versionsfeld hat; falls nicht, führe eines ein) – damit die App-Seite (Agent 1) erkennen kann, mit welcher Firmware-Version sie spricht, statt stillschweigend falsch zu parsen.
+Jede Protokolländerung braucht eine **Versionsnummer-Erhöhung** (prüfe, ob `docs/reference/protocol.yaml` bereits ein Versionsfeld hat; falls nicht, führe eines ein) – damit die App-Seite (Agent 1) erkennen kann, mit welcher Firmware-Version sie spricht, statt stillschweigend falsch zu parsen.
 
 ## 4. Dateien, die dir gehören
 
 - `firmware/src/main.cpp`
 - `firmware/platformio.ini`
-- `docs/01_protocol.yaml`
+- `docs/reference/protocol.yaml`
 
 ## 5. Dateien, die du NICHT anfassen darfst
 
@@ -42,7 +42,7 @@ Alles unter `app/`, `tools/workout_engine_simulation.py`. Du LIEST App-Code, wen
 ## 6. Aufgaben, Schritt für Schritt
 
 ### Schritt A – Protokoll-Spezifikation zuerst (schnell, damit Agent 1 nicht blockiert wird)
-1. Aktualisiere `docs/01_protocol.yaml`: neues Feld/neue Felder für echten Zeitstempel oder verlässliches Sample-Timing, neue Gyro-Skalierung (mind. ±400°/s), neue Protokollversion.
+1. Aktualisiere `docs/reference/protocol.yaml`: neues Feld/neue Felder für echten Zeitstempel oder verlässliches Sample-Timing, neue Gyro-Skalierung (mind. ±400°/s), neue Protokollversion.
 2. Committe NUR diese Doku-Änderung als eigenen, schnellen ersten Commit (siehe Git-Workflow) – Agent 1 wartet darauf, um mit dem App-seitigen P0-Anteil weiterzumachen.
 
 ### Schritt B – Firmware-Implementierung
@@ -74,7 +74,7 @@ Prüfe die gemeldeten Werte auf Plausibilität (Zeitstempel monoton steigend, We
 
 ## 7. Definition of Done
 
-- [ ] `docs/01_protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung.
+- [ ] `docs/reference/protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung.
 - [ ] `pio run` kompiliert fehlerfrei.
 - [ ] Test 1 (`ENG:`/Sample) hat ein dokumentiertes Ergebnis – zum ersten Mal seit mehreren Sessions.
 - [ ] Test 2 (Firmware-Update) bestätigt: Verbindung und Grundzählung funktionieren nach dem Flash weiterhin.
@@ -88,7 +88,7 @@ git checkout main
 git pull origin main
 git checkout -b agent4-firmware-hardware
 # Schritt A zuerst, als eigener schneller Commit
-git add docs/01_protocol.yaml
+git add docs/reference/protocol.yaml
 git commit -m "docs(protocol): Protokoll-v[X] – echte Zeitbasis, Gyro-Skalierung bis ±400°/s (P0 Vorbereitung fuer Agent 1)"
 git push origin agent4-firmware-hardware
 # Schritt B danach

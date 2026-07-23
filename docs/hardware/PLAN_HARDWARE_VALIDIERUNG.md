@@ -2,8 +2,8 @@
 
 **Status:** Aktiv — Session 2026-07-23 pausiert nach Phase D  
 **Stand:** 2026-07-23 (Basis: `main` ab `ccda100` + Calib-Load-Fix)  
-**Letzte Ergebnisse:** `docs/hardware-tests/2026-07-23/PROTOCOL_RESULTS.md`  
-**Handoff:** `docs/hardware-tests/SESSION_HANDOFF.md`  
+**Letzte Ergebnisse:** `docs/hardware/sessions/2026-07-23/PROTOCOL_RESULTS.md`  
+**Handoff:** `docs/hardware/sessions/(archiviert — siehe docs/README.md)`  
 **Zweck:** Alles, was für Pipeline-Gate und Produktqualität auf echtem Gerät nötig ist — nicht nur „Gerät blinkt“.
 
 ---
@@ -73,7 +73,7 @@ Ohne Adi: **keine** Bewegungstests. Alles andere (Flash, Build, Analyse) kann di
 ### Artefakt-Ordner pro Testdatum
 
 ```
-docs/hardware-tests/YYYY-MM-DD/
+docs/hardware/sessions/YYYY-MM-DD/
   PROTOCOL_RESULTS.md      # Checklisten + Zahlen
   serial_boot.log
   logcat_session.txt       # optional
@@ -114,7 +114,7 @@ Gesamt **ca. 2,5–3,5 h** reine Testzeit (mit Pausen/Neuflashen eher ein Halbta
 
 **Fail → Stop.** Kein App-Test ohne grünes A.
 
-*Referenz:* `docs/HARDWARE_TESTPROTOKOLL_M5STICKC_PLUS2.md` Abschnitte 1–2 (Re-Verify nach App-Änderungen).
+*Referenz:* `docs/hardware/TESTPROTOKOLL_M5STICKC_PLUS2.md` Abschnitte 1–2 (Re-Verify nach App-Änderungen).
 
 ---
 
@@ -245,7 +245,7 @@ ELSE: New-Pipeline-Bugs fixen, erneut nur G (nicht alles von vorn)
 
 ## 11. Phase H — Auswertung & Dokumentation
 
-1. `docs/hardware-tests/YYYY-MM-DD/PROTOCOL_RESULTS.md` ausfüllen
+1. `docs/hardware/sessions/YYYY-MM-DD/PROTOCOL_RESULTS.md` ausfüllen
 2. CSV-Index + Shadow-Tabelle
 3. Kurzes Verdict:
    - Datenpfad: OK/NOK
@@ -315,9 +315,9 @@ Dann: **Phase A** (COM prüfen → flash falls nötig → Serial → App).
 
 ## 16. Verwandte Dokumente
 
-- `docs/HARDWARE_TESTPROTOKOLL_M5STICKC_PLUS2.md` — Boot/BLE/IMU-Grundprotokoll
+- `docs/hardware/TESTPROTOKOLL_M5STICKC_PLUS2.md` — Boot/BLE/IMU-Grundprotokoll
 - `docs/09_TESTPROTOKOLL_TEMPLATE.md` — Nutzer-/Satz-Template
-- `docs/01_protocol.yaml` — Wire-Format v2
+- `docs/reference/protocol.yaml` — Wire-Format v2
 - `docs/SPEC_CRITICAL_STEPS.md` — Status-Matrix Pipeline (Shadow-Gate)
 - `app/lib/domain/workout_engine.dart` — `enableShadowMode()`, `shadowStats`
 

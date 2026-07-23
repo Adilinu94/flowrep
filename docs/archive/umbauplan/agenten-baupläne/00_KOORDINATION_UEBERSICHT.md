@@ -18,7 +18,7 @@ Ich habe die 4 Agenten nicht nach "Feature" geschnitten (z.B. "einer macht Kalib
 | 1 | Signal & Datenpipeline | P0 (App-Seite) + P1 + P2 aus RECHERCHE_ZAEHLROBUSTHEIT: ehrliche, robuste Zählung im Live-Betrieb | `workout_engine.dart` (Live-Zählpfad), `signal_processor.dart`, `ble_sensor_provider.dart`, `workout_engine_simulation.py`, `workout_engine_test.dart` | Ja, sofort |
 | 2 | Calibration Controller | Guided Calibration 2.0, Paket 2+3: Known-Count-Engine aus Python nach Dart portieren + in WorkoutEngine einhängen | NEU: `calibration_controller.dart`, schmaler Hook in `workout_engine.dart` | Datei anlegen: sofort. Integration in workout_engine.dart: **erst nach Agent 1 gemerged** |
 | 3 | Calibration UI & Persistenz | Guided Calibration 2.0, Paket 4–9: Wizard-UI, Speicherung, Migration alter Kalibrierdaten | NEU: `presentation/screens/calibration/*`, `calibration_store.dart`, `drift_database.dart`, 1 Zeile in `home_screen.dart` | Ja, sofort (baut gegen Schnittstelle aus Abschnitt 4, nicht gegen Agent 2s Code) |
-| 4 | Firmware, Protokoll & Hardware-Verifikation | P0 (Firmware-Seite): ehrliche Timings, Clipping-Fix, Protokoll-Version; führt ALLE physischen Tests mit dir zusammen durch | `firmware/src/main.cpp`, `firmware/platformio.ini`, `docs/01_protocol.yaml` | Ja, sofort (Protokoll-Spec als schnelles erstes Ergebnis) |
+| 4 | Firmware, Protokoll & Hardware-Verifikation | P0 (Firmware-Seite): ehrliche Timings, Clipping-Fix, Protokoll-Version; führt ALLE physischen Tests mit dir zusammen durch | `firmware/src/main.cpp`, `firmware/platformio.ini`, `docs/reference/protocol.yaml` | Ja, sofort (Protokoll-Spec als schnelles erstes Ergebnis) |
 
 ## 3. Die einzige harte Abhängigkeit: Agent 1 → Agent 2
 

@@ -1,7 +1,7 @@
 > **STATUS-UPDATE, 2026-07-17, Claude (diese Konversation, kein physischer Zugriff):**
-> Adi hat mich gebeten, die Agent-4-Aufgaben zu übernehmen, ausdrücklich mit der Einschränkung "kein physischer Zugriff, aber so viel Vorarbeit wie möglich". Umgesetzt: **Analyse** (Branch-/Firmware-Stand geklärt, siehe unten), **Schritt A** (`docs/01_protocol.yaml` v2) und **Schritt B** (`firmware/src/main.cpp`) - beide committet auf Branch `agent4-firmware-hardware`, NICHT nach `main` gemerged (siehe Abschnitt 8 unten, das ist ohnehin die vorgeschriebene Regel). Details, Begründungen und die vollständigen Commit-Messages stehen im neuen `Agent-4-FirmwareHardware`-Abschnitt am Ende von `STATUS_FORTSCHRITT.md` - hier nur die Kurzfassung plus der aktualisierte Fortschritts-Status aus Abschnitt 7.
+> Adi hat mich gebeten, die Agent-4-Aufgaben zu übernehmen, ausdrücklich mit der Einschränkung "kein physischer Zugriff, aber so viel Vorarbeit wie möglich". Umgesetzt: **Analyse** (Branch-/Firmware-Stand geklärt, siehe unten), **Schritt A** (`docs/reference/protocol.yaml` v2) und **Schritt B** (`firmware/src/main.cpp`) - beide committet auf Branch `agent4-firmware-hardware`, NICHT nach `main` gemerged (siehe Abschnitt 8 unten, das ist ohnehin die vorgeschriebene Regel). Details, Begründungen und die vollständigen Commit-Messages stehen im neuen `Agent-4-FirmwareHardware`-Abschnitt am Ende von `STATUS_FORTSCHRITT.md` - hier nur die Kurzfassung plus der aktualisierte Fortschritts-Status aus Abschnitt 7.
 >
-> **Analyse (Branch-/Firmware-Stand):** `main` war zum Zeitpunkt meiner Arbeit sauber und aktuell (`git pull origin main`, keine Überraschungen). `docs/01_protocol.yaml` existierte bereits (Blueprint-Annahme "vielleicht noch nicht" traf nicht zu) und war vollständig, aber unversioniert. Firmware ist wie im Blueprint beschrieben bereits auf NimBLE migriert. Kernbefund zu S3: die Firmware sendet pro Batch **einen** echten `millis()`-Zeitstempel (nicht gar keinen, wie man "Zeitbasis ist fiktiv" lesen könnte) - fiktiv ist die Annahme, dass die 4 Samples INNERHALB eines Batches gleichmäßig 20ms auseinanderliegen. Sie wurden faktisch back-to-back erfasst (I2C-Lesezeit, ~0ms Abstand), nur der ganze Batch war per `delay(20)` getaktet.
+> **Analyse (Branch-/Firmware-Stand):** `main` war zum Zeitpunkt meiner Arbeit sauber und aktuell (`git pull origin main`, keine Überraschungen). `docs/reference/protocol.yaml` existierte bereits (Blueprint-Annahme "vielleicht noch nicht" traf nicht zu) und war vollständig, aber unversioniert. Firmware ist wie im Blueprint beschrieben bereits auf NimBLE migriert. Kernbefund zu S3: die Firmware sendet pro Batch **einen** echten `millis()`-Zeitstempel (nicht gar keinen, wie man "Zeitbasis ist fiktiv" lesen könnte) - fiktiv ist die Annahme, dass die 4 Samples INNERHALB eines Batches gleichmäßig 20ms auseinanderliegen. Sie wurden faktisch back-to-back erfasst (I2C-Lesezeit, ~0ms Abstand), nur der ganze Batch war per `delay(20)` getaktet.
 >
 > **Schritt A (Protokoll):** `protocol_version` (neues uint8-Feld), Gyro-Skala 0.01→0.02 (±655,34°/s statt ±327,67°/s), neuer `timing:`-Abschnitt mit firmwareseitig garantiertem `sample_interval_ms: 20`, `total_bytes` 52→53, `ble_mtu.minimum_required` 55→56 (App-seitig **keine** Code-Änderung nötig - `ble_sensor_provider.dart` fordert bereits `requiredMtu=185` an). Vollständiger `versions:`-Abschnitt mit v1→v2-Changelog ergänzt. YAML-Syntax mit PyYAML validiert.
 >
@@ -35,7 +35,7 @@ Behebe die zwei bekannten Firmware-seitigen Probleme (unehrliche Zeitbasis, Gyro
 
 1. `git checkout main && git pull origin main`.
 2. Lies `docs/Umbauplan Flowrep/RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md`, Abschnitte zu S3 (Zeitbasis), S4 (Gyro-Clipping) und P0.
-3. Lies `docs/01_protocol.yaml` – das ist das aktuelle BLE-Protokoll, das du erweiterst (nicht ersetzt, sofern nicht zwingend nötig).
+3. Lies `docs/reference/protocol.yaml` – das ist das aktuelle BLE-Protokoll, das du erweiterst (nicht ersetzt, sofern nicht zwingend nötig).
 4. Lies `firmware/src/main.cpp` und `firmware/platformio.ini`. Firmware ist NimBLE-basiert (bereits migriert, nicht mehr die alte BLEDevice.h-Variante).
 5. Lies in `docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md` den Abschnitt zum `ENG:`/Sample-Test – dort steht seit mehreren Sessions ein offener Punkt "höchste Priorität", auf dessen Ergebnis gewartet wird. Das ist dein wichtigster erster physischer Test (Abschnitt 6, Test 1).
 
@@ -46,13 +46,13 @@ Das M5StickC Plus2 (BMI270-IMU) sendet Gyro-/Beschleunigungsdaten per BLE (NimBL
 - **S3 – Zeitbasis ist fiktiv:** Die Firmware sendet Sample-Batches ohne eingebettetes echtes Timing; die App synthetisiert aktuell künstliche, gleichmäßige 20ms-Abstände. Das verzerrt jede zeitbasierte Berechnung. Deine Aufgabe: echte Zeitstempel (oder zumindest ein verlässliches, gleichmäßiges Pacing mit bekannter, konstanter Sample-Rate) ins Protokoll aufnehmen.
 - **S4 – Gyro-Clipping:** Aktuell ±327,67°/s (das ist exakt 32767/100 – ein Hinweis, dass Gyro-Werte als int16, skaliert mit Faktor 100, übertragen werden). Echte, kräftige Curls erreichen bis zu ~344°/s. Werte darüber werden aktuell abgeschnitten (geclippt), was die Zählung bei kräftigen Wiederholungen verfälscht. Deine Aufgabe: Skalierung so anpassen, dass mindestens bis ±400°/s ohne Clipping übertragen wird (Sicherheitsspanne über den beobachteten 344°/s).
 
-Jede Protokolländerung braucht eine **Versionsnummer-Erhöhung** (prüfe, ob `docs/01_protocol.yaml` bereits ein Versionsfeld hat; falls nicht, führe eines ein) – damit die App-Seite (Agent 1) erkennen kann, mit welcher Firmware-Version sie spricht, statt stillschweigend falsch zu parsen.
+Jede Protokolländerung braucht eine **Versionsnummer-Erhöhung** (prüfe, ob `docs/reference/protocol.yaml` bereits ein Versionsfeld hat; falls nicht, führe eines ein) – damit die App-Seite (Agent 1) erkennen kann, mit welcher Firmware-Version sie spricht, statt stillschweigend falsch zu parsen.
 
 ## 4. Dateien, die dir gehören
 
 - `firmware/src/main.cpp`
 - `firmware/platformio.ini`
-- `docs/01_protocol.yaml`
+- `docs/reference/protocol.yaml`
 
 ## 5. Dateien, die du NICHT anfassen darfst
 
@@ -61,7 +61,7 @@ Alles unter `app/`, `tools/workout_engine_simulation.py`. Du LIEST App-Code, wen
 ## 6. Aufgaben, Schritt für Schritt
 
 ### Schritt A – Protokoll-Spezifikation zuerst (schnell, damit Agent 1 nicht blockiert wird)
-1. Aktualisiere `docs/01_protocol.yaml`: neues Feld/neue Felder für echten Zeitstempel oder verlässliches Sample-Timing, neue Gyro-Skalierung (mind. ±400°/s), neue Protokollversion.
+1. Aktualisiere `docs/reference/protocol.yaml`: neues Feld/neue Felder für echten Zeitstempel oder verlässliches Sample-Timing, neue Gyro-Skalierung (mind. ±400°/s), neue Protokollversion.
 2. Committe NUR diese Doku-Änderung als eigenen, schnellen ersten Commit (siehe Git-Workflow) – Agent 1 wartet darauf, um mit dem App-seitigen P0-Anteil weiterzumachen.
 
 ### Schritt B – Firmware-Implementierung
@@ -93,7 +93,7 @@ Prüfe die gemeldeten Werte auf Plausibilität (Zeitstempel monoton steigend, We
 
 ## 7. Definition of Done
 
-- [x] `docs/01_protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung. *(2026-07-17: v2, siehe STATUS-UPDATE oben und STATUS_FORTSCHRITT.md)*
+- [x] `docs/reference/protocol.yaml` hat eine neue, dokumentierte Version mit echter Zeitbasis und erweiterter Gyro-Skalierung. *(2026-07-17: v2, siehe STATUS-UPDATE oben und STATUS_FORTSCHRITT.md)*
 - [x] `pio run` kompiliert fehlerfrei. *(2026-07-18, Session Grok-4c0deabc: [SUCCESS] 39,98 s; static_assert 53 Byte bestanden; RAM 12,0 %, Flash 58,4 %.)*
 - [x] Test 1 (`ENG:`/Sample) hat ein dokumentiertes Ergebnis – zum ersten Mal seit mehreren Sessions. *(2026-07-18 Grok-4c0deabc: samples steigen (Log+UI); nach v2-Flash zuerst Parse-Fehler, behoben durch App-Parser v1|v2. Details STATUS_FORTSCHRITT.md)*
 - [x] Test 2 (Firmware-Update) dokumentiert (Verbindung + Sample-Pfad OK; **Grundzählung qualitativ nicht OK**). *(2026-07-18: nach Flash verbunden, ~11,8 Hz, state=active, thresh~8.5; echte Curls zählen nicht zuverlässig, M5 nur bewegen/drehen zählt – Adi wörtlich in STATUS. Kein Engine-Fix in Agent-4-Fortsetzung.)*
@@ -107,7 +107,7 @@ git checkout main
 git pull origin main
 git checkout -b agent4-firmware-hardware
 # Schritt A zuerst, als eigener schneller Commit
-git add docs/01_protocol.yaml
+git add docs/reference/protocol.yaml
 git commit -m "docs(protocol): Protokoll-v[X] – echte Zeitbasis, Gyro-Skalierung bis ±400°/s (P0 Vorbereitung fuer Agent 1)"
 git push origin agent4-firmware-hardware
 # Schritt B danach

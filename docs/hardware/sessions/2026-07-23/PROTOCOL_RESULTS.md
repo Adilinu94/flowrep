@@ -100,7 +100,7 @@ Secure Storage ggf. leer → **nächste Session: Guided Calib wiederholen**, dan
 
 ## Phase E–H
 
-Nicht gestartet. Plan: `docs/hardware-tests/PLAN_HARDWARE_VALIDIERUNG.md`
+Nicht gestartet. Plan: `docs/hardware/sessions/PLAN_HARDWARE_VALIDIERUNG.md`
 
 ### Nächste Session — Checkliste
 

@@ -11,11 +11,11 @@ import 'batch_dedup_tracker.dart';
 import 'sensor_provider.dart';
 
 /// Real hardware implementation of ISensorProvider. Talks to the
-/// "GymTracker" GATT service defined in docs/protocol.yaml.
+/// "GymTracker" GATT service defined in docs/reference/protocol.yaml.
 ///
 /// Hardware-verified (2026-07-18, commit accf44d): live logcat against a
 /// real M5StickC Plus2 showed protocol v2 parsing correctly at ~11.8 Hz
-/// (nominal 12.5 Hz per docs/01_protocol.yaml timing:, close enough to
+/// (nominal 12.5 Hz per docs/reference/protocol.yaml timing:, close enough to
 /// account for BLE/GATT round-trip variance), with ENGINE sample counts
 /// rising as expected. Rep counting itself was still gated by calibration
 /// state/threshold in that same test - a WorkoutEngine concern, not a
@@ -25,7 +25,7 @@ class BleSensorProvider implements ISensorProvider {
 
   // UUIDs are placeholders - the firmware side (firmware/src/main.cpp) must
   // define and advertise the SAME UUIDs. Neither side is authoritative by
-  // itself; docs/protocol.yaml is. Replace these once the firmware assigns
+  // itself; docs/reference/protocol.yaml is. Replace these once the firmware assigns
   // concrete UUIDs (a random v4 UUID per characteristic is fine, they just
   // have to match on both sides).
   static const String serviceUuid = '0000fee0-0000-1000-8000-00805f9b34fb';
@@ -86,7 +86,7 @@ class BleSensorProvider implements ISensorProvider {
     return full == target || short == target || full.endsWith(target);
   }
 
-  // Accepted wire sizes from docs/01_protocol.yaml: 52 = v1, 53 = v2.
+  // Accepted wire sizes from docs/reference/protocol.yaml: 52 = v1, 53 = v2.
   static const int _sampleBytesV1 = 52;
   static const int _sampleBytesV2 = 53;
   int _receivedBatches = 0;
@@ -118,7 +118,7 @@ class BleSensorProvider implements ISensorProvider {
   /// two DIFFERENT accepted timestamps, larger than one batch interval).
   /// This is the number S5 was originally about - previously not tracked
   /// at all. Should stay at/near 0 now that the firmware's honestly-paced
-  /// v2 batch rate (~12.5 Hz, docs/01_protocol.yaml) is comfortably below
+  /// v2 batch rate (~12.5 Hz, docs/reference/protocol.yaml) is comfortably below
   /// this app's ~30 Hz poll rate; a persistently non-zero value here means
   /// that assumption no longer holds and is worth a fresh look.
   int get estimatedMissedBatches => _dedupTracker.estimatedMissedBatches;
@@ -289,7 +289,7 @@ class BleSensorProvider implements ISensorProvider {
           }
           // Deduplication + gap detection (S5): the v2 firmware updates the
           // characteristic at an honestly-paced ~12.5 Hz (80ms/batch,
-          // docs/01_protocol.yaml timing:), while we poll at ~30 Hz - so in
+          // docs/reference/protocol.yaml timing:), while we poll at ~30 Hz - so in
           // practice most polls should either see a genuinely new batch or
           // a duplicate of the one just processed, not silently miss one
           // outright. shouldSkip() tracks both cases instead of assuming

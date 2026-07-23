@@ -1,7 +1,7 @@
 name: flowrep
 description: >
   FlowRep - BLE/IMU-basiertes automatisches Wiederholungszaehlen fuer
-  Krafttraining. Siehe docs/GYM_TRACKER_ARCHITEKTUR.md fuer die vollstaendige
+  Krafttraining. Siehe docs/reference/GYM_TRACKER_ARCHITEKTUR.md fuer die vollstaendige
   Architekturdokumentation.
 publish_to: 'none'
 version: 0.1.0
@@ -50,7 +50,7 @@ dependencies:
   path_provider: ^2.1.4
   path: ^1.9.0
   # Ergaenzt: von calibration_store.dart benoetigt (ADR-020-Fix brachte
-  # diese Datei von master herueber, siehe docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md).
+  # diese Datei von master herueber, siehe docs/archive/umbauplan/STATUS_FORTSCHRITT.md).
   # Version uebernommen von origin/master's pubspec.yaml.
   flutter_secure_storage: ^9.2.2
   # CSV-Aufnahmefunktion (Dokument 07/08, Session Claude-9936160f 2026-07-15):

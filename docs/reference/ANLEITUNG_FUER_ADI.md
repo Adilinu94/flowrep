@@ -27,7 +27,7 @@ Menüwortlaut kann je nach Sprache/Region leicht abweichen, die drei Einstellung
 ## Teil 2: Wie du die erste Session mit der ausführenden KI startest
 
 1. Neue Unterhaltung mit der ausführenden KI (z. B. Claude Code) öffnen.
-2. Den Text aus `05_KI_ONBOARDING_PROMPT.md` **unverändert** einfügen, dabei `[PHASE_NUMMER_HIER_EINTRAGEN]` durch `0` ersetzen (ihr beginnt bei Phase 0).
+2. Den Text aus `../README.md` (Index) / archive process prompt **unverändert** einfügen, dabei `[PHASE_NUMMER_HIER_EINTRAGEN]` durch `0` ersetzen (ihr beginnt bei Phase 0).
 3. Alle zwölf Dateien hochladen: `GYM_TRACKER_ARCHITEKTUR.md`, `00` bis `09`, sowie diese Datei selbst muss die KI nicht bekommen — sie ist nur für dich.
 4. Abwarten. Eine gut funktionierende Session sollte jetzt zuerst zusammenfassen, was sie verstanden hat, und ggf. Rückfragen stellen — **nicht sofort anfangen, Code zu schreiben.**
 

@@ -1,4 +1,5 @@
-# Raw logcat dumps (large); keep excerpts only
+# Raw dumps (keep excerpts only)
 logcat_calib.txt
 logcat_live.txt
 logcat_session.txt
+*.bin

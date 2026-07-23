@@ -75,7 +75,7 @@ Diese Regeln sind aus dem ursprünglichen Charter übernommen, da sie sich als s
 
 1. **Iteratives Arbeiten.** Niemals mehr als eine Phase oder ein großes Modul auf einmal. Nach jedem Schritt: Erklärung in Prosa + nummerierte "USER ACTION"-Checkliste.
 2. **Keine Improvisation.** Bei ungeklärten technischen Problemen: stoppen, Problem beschreiben, auf Anweisung warten.
-3. **Dokumentationstreue.** ADRs sind kanonisch. `docs/01_protocol.yaml` (im echten Repo) bleibt der Maßstab für das BLE-Protokoll – **nicht** neu definieren, nur referenzieren.
+3. **Dokumentationstreue.** ADRs sind kanonisch. `docs/reference/protocol.yaml` (im echten Repo) bleibt der Maßstab für das BLE-Protokoll – **nicht** neu definieren, nur referenzieren.
 4. **Kein Dead Code**, sprechende Namen, keine unnötigen Abstraktionsschichten.
 5. **Neu – Validierungspflicht:** Kein neuer Schwellenwert-, Filter- oder Kalibrierungsparameter wird nach Dart portiert, ohne vorher in der Python-Simulation gegen mindestens ein Szenario mit kurzen Pausen zwischen mehreren Reps getestet worden zu sein (nicht nur gegen isolierte Einzel-Reps).
 6. **Neu – Bestandsprüfung vor Neubau:** Bevor eine KI eine Komponente "neu erstellt" (Interface, Provider, Datenbankschema etc.), muss sie zuerst im echten Repository prüfen, ob diese Komponente bereits existiert. Im Zweifel: existierenden Code lesen und erweitern, nicht duplizieren.

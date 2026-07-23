@@ -163,7 +163,7 @@ class WorkoutEngine {
   final bool autoEndSetEnabled;
   final int calibrationReps;
 
-  // Agent 1 / Schritt A (docs/Umbauplan Flowrep/agenten-baupläne/
+  // Agent 1 / Schritt A (docs/archive/umbauplan/agenten-baupläne/
   // AGENT_1_SIGNAL_PIPELINE.md, RECHERCHE_ZAEHLROBUSTHEIT_2026-07-16.md
   // S1/S2), superseding the earlier Duration-based minRepInterval patch
   // (Claude-c00679f3, commit a5e8aee): all values below are 1:1 ported
@@ -335,7 +335,7 @@ class WorkoutEngine {
   /// auto-calibration path (calibrationReps, defaulting to 1) and silently
   /// overwrites the carefully-calibrated guided-calibration threshold on
   /// the very next rep, no matter how good that threshold already was.
-  /// See docs/Umbauplan Flowrep/02_ARCHITECTURE_DECISION_RECORDS.md, ADR-020.
+  /// See docs/archive/umbauplan/02_ARCHITECTURE_DECISION_RECORDS.md, ADR-020.
   // ignore: prefer_final_fields
   bool hasValidCalibration;
 
@@ -366,7 +366,7 @@ class WorkoutEngine {
   /// moving (found via real `flutter test` execution, not simulation -
   /// neither this session's nor an earlier session's Python/Dart
   /// reconstruction caught it; see Änderungsprotokoll in
-  /// docs/Umbauplan Flowrep/STATUS_FORTSCHRITT.md for how this surfaced).
+  /// docs/archive/umbauplan/STATUS_FORTSCHRITT.md for how this surfaced).
   /// Cleared as soon as one sample is seen back at/below a settled level.
   // ignore: prefer_final_fields
   bool _awaitingSettleAfterCalibration = false;
@@ -1442,7 +1442,7 @@ class WorkoutEngine {
     if (minRepIntervalSeconds != null) {
       // Samples, not seconds - same S3 reason minRepIntervalSamples itself
       // is in samples. 1000/20 because per-SAMPLE pacing is honestly 20ms
-      // since docs/01_protocol.yaml v2 (Agent 4), independent of the
+      // since docs/reference/protocol.yaml v2 (Agent 4), independent of the
       // ~11.8Hz BATCH arrival rate that number could be confused with.
       minRepIntervalSamples = (minRepIntervalSeconds * 1000 / 20).round();
     }
