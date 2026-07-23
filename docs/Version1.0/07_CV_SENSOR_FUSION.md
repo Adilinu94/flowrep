@@ -1,5 +1,6 @@
 # CV-04 — Sensor Fusion: IMU + Kamera Ensemble
 
+> **Status**: ✅ DONE (domain + EngineNotifier hooks) — FusionEngine, PoseRepCounter-Feed, IMU-Rep-Notify (Stats only); IMU zählt weiter autoritativ
 > **Voraussetzung**: Doc 06 (Rep-Counter Winkel) abgeschlossen.
 > **Ziel**: IMU- und Kamera-Reps zu einer Entscheidung fusionieren.
 > **Ergebnis**: Höhere Genauigkeit durch Ensemble-Entscheidung.

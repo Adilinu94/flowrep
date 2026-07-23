@@ -17,6 +17,8 @@ import '../../data/services/foreground_service_manager.dart';
 import '../../domain/config/engine_constants.dart';
 import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
+import '../../domain/vision/fusion_engine.dart';
+import '../../domain/vision/pose_rep_counter.dart';
 import '../../domain/workout_engine.dart';
 import '../services/feedback_service.dart';
 import 'lifecycle_provider.dart';
@@ -72,6 +74,11 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   AppLifecycleObserver? _lifecycleObserver;
   /// Seconds remaining when rest timer was paused by app backgrounding (P1-2).
   int? _restSecondsWhenPaused;
+
+  // CV-04: optional fusion layer (does not change IMU counting authority).
+  final FusionEngine _fusionEngine = FusionEngine();
+  final PoseRepCounter _poseRepCounter = PoseRepCounter();
+  bool _cameraEnabled = false;
 
   // Session-Tracking (Phase 5.2)
   DateTime? _sessionStartedAt;
@@ -420,6 +427,40 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   @visibleForTesting
   ForegroundServiceManager get debugFgService => _fgService;
 
+  // === CV-04: optional camera fusion (stats / future UI) ===
+
+  void setCameraEnabled(bool enabled) {
+    _cameraEnabled = enabled;
+    if (!enabled) {
+      _poseRepCounter.reset();
+    }
+  }
+
+  bool get isCameraEnabled => _cameraEnabled;
+
+  FusionEngine get fusionEngine => _fusionEngine;
+
+  PoseRepCounter get poseRepCounter => _poseRepCounter;
+
+  /// Feed elbow angle from CameraPoseProvider into pose counter + fusion.
+  void processCameraAngle({
+    required double elbowAngleDegrees,
+    required int timestampMs,
+    double confidence = 0.8,
+  }) {
+    if (!_cameraEnabled) return;
+    final result = _poseRepCounter.processAngle(
+      elbowAngleDegrees: elbowAngleDegrees,
+      timestampMs: timestampMs,
+    );
+    if (result.repCounted) {
+      _fusionEngine.onCameraRep(
+        timestampMs: timestampMs,
+        confidence: confidence,
+      );
+    }
+  }
+
   /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
   /// Lädt die Kalibrierung für die neue Übung neu.
   void selectExercise(String exerciseId) {
@@ -584,6 +625,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     // Rep-Feedback (Phase 5.1)
     if (event.repsInCurrentSet > state.repsInCurrentSet) {
       _feedbackService.onRepCounted(qualityScore: state.lastQualityScore);
+      // CV-04: notify fusion for stats only — IMU remains authoritative.
+      _fusionEngine.onImuRep(
+        timestampMs: DateTime.now().millisecondsSinceEpoch,
+      );
     }
 
     // Satz abgeschlossen → Feedback + Persistence + Korrektur-Dialog
