@@ -129,6 +129,9 @@ class WorkoutEngine {
     SignalProcessor? signalProcessor,
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
+    /// When false (product default), sets end only via [endSetManually].
+    /// Tests that assert pause-timeout set-end pass `true`.
+    this.autoEndSetEnabled = true,
     this.calibrationReps = 1,
     this.minRepIntervalSamples = 24,
     this.fallingDebounce = 4,
@@ -155,6 +158,9 @@ class WorkoutEngine {
   final SignalProcessor _signalProcessor;
   final double envelopeDecayRate;
   final Duration pauseAfter;
+
+  /// Auto-close set after [pauseAfter] of stillness. Product UI uses false.
+  final bool autoEndSetEnabled;
   final int calibrationReps;
 
   // Agent 1 / Schritt A (docs/Umbauplan Flowrep/agenten-baupläne/
@@ -510,8 +516,9 @@ class WorkoutEngine {
       _emitStateEvent();
     }
 
-    // Pause-Timeout prüfen (Satz beenden nach Inaktivität)
-    if (_state == WorkoutState.active &&
+    // Pause-Timeout prüfen (optional — product uses manual endSet)
+    if (autoEndSetEnabled &&
+        _state == WorkoutState.active &&
         _lastMovementAt != null &&
         s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
       _endSet();
@@ -703,7 +710,8 @@ class WorkoutEngine {
           final gm = _signalProcessor.biasCorrectedGyroMagnitude(s);
           if (gm != null) _detectPeakGyroMag(s, gm);
         }
-        if (_lastMovementAt != null &&
+        if (autoEndSetEnabled &&
+            _lastMovementAt != null &&
             s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
           _endSet();
         }
@@ -887,6 +895,13 @@ class WorkoutEngine {
   /// [minRepIntervalSamples] suppresses the opposite-phase double-hump.
   bool _gpUseAbsProjection = false;
 
+  /// Samples spent above threshold in the current gP excursion (wiggle gate).
+  int _gpSamplesAbove = 0;
+
+  /// Min samples continuously above gP threshold before a falling edge
+  /// can count (~160ms @ 50Hz). Short spikes from wrist flicks are rejected.
+  static const int _minGpSamplesAbove = 10;
+
   bool get _gyroMagIsAuthoritative =>
       _gyroMagCountsReps && _gyroMagThreshold != null;
   int? get gyroMagRepCount => _gyroMagThreshold != null ? _gyroMagRepCount : null;
@@ -937,12 +952,25 @@ class WorkoutEngine {
     final value = _gpUseAbsProjection ? gp.abs() : gp * _gpDirection;
     if (!_gpAboveThreshold && value > threshold) {
       _gpAboveThreshold = true;
+      _gpSamplesAbove = 1;
       _lastMovementAt = timestamp;
-    } else if (_gpAboveThreshold && value < threshold * 0.3) {
-      _gpAboveThreshold = false;
-      _gpRepCount++;
-      if (_gpIsAuthoritative) {
-        _commitRep(timestamp: timestamp, peakMagnitude: gp.abs());
+    } else if (_gpAboveThreshold) {
+      if (value > threshold) {
+        _gpSamplesAbove++;
+        _lastMovementAt = timestamp;
+      } else if (value < threshold * 0.3) {
+        final longEnough = _gpSamplesAbove >= _minGpSamplesAbove;
+        _gpAboveThreshold = false;
+        final samplesAbove = _gpSamplesAbove;
+        _gpSamplesAbove = 0;
+        if (!longEnough) return; // reject short wiggle spikes
+        _gpRepCount++;
+        if (_gpIsAuthoritative) {
+          _commitRep(timestamp: timestamp, peakMagnitude: gp.abs());
+        }
+        AppLogger.d(
+          'gP rep samplesAbove=$samplesAbove |gp|=${gp.abs().toStringAsFixed(1)}',
+        );
       }
     }
   }
@@ -1011,9 +1039,32 @@ class WorkoutEngine {
     ));
   }
 
-  /// Ends the current set manually (user-triggered "Satz beenden"), rather
-  /// than waiting for the pauseAfter timeout.
+  /// Ends the current set manually (user-triggered "Satz beenden").
+  /// Preferred product path when [autoEndSetEnabled] is false.
   void endSetManually() => _endSet();
+
+  /// Live gP threshold (null if not on gP path). Used for correction learning.
+  double? get gpThreshold => _gpThreshold;
+
+  /// Live gyroMag threshold (null if unused).
+  double? get gyroMagThresholdLive => _gyroMagThreshold;
+
+  /// Apply a learned threshold nudge after user correction (profile path).
+  /// [factor] > 1 makes counting stricter (fewer false reps); < 1 more sensitive.
+  void nudgeDirectionAwareThreshold(double factor) {
+    if (factor <= 0 || !factor.isFinite) return;
+    if (_gpThreshold != null) {
+      _gpThreshold = (_gpThreshold! * factor).clamp(30.0, 250.0);
+    }
+    if (_gyroMagThreshold != null && _gyroMagCountsReps) {
+      _gyroMagThreshold = (_gyroMagThreshold! * factor).clamp(30.0, 250.0);
+    }
+    AppLogger.i(
+      'Threshold nudge ×${factor.toStringAsFixed(2)} → '
+      'gpT=${_gpThreshold?.toStringAsFixed(1)} '
+      'gmT=${_gyroMagThreshold?.toStringAsFixed(1)}',
+    );
+  }
 
   // ---- Guided calibration mode ----
 
@@ -1045,6 +1096,7 @@ class WorkoutEngine {
     _gpPeakDuringCalibrationAbs = 0.0;
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _gpSamplesAbove = 0;
     _gyroMagThreshold = null;
     _gyroMagAboveThreshold = false;
     _gyroMagRepCount = 0;
@@ -1332,19 +1384,17 @@ class WorkoutEngine {
     const wakeCombined = 1.5;
     switch (chosenSignal) {
       case ChosenSignal.gP:
-        // 0.55×theta: form/mount variance on device (2026-07-23 hardware).
-        // Combined stays at a sentinel so wiggle can never fall back to the
-        // ultra-sensitive default 1.2 combined threshold.
-        // |g_p| is sign-agnostic (mount flip); min refractory ≥0.7s so the
-        // opposite-phase hump of one curl is not double-counted.
-        _gpThreshold = max(25.0, peakThreshold * 0.55);
+        // 0.65×theta + floor 40°/s: less wiggle, still under real curl peaks
+        // (~100–200°/s on hardware). Combined sentinel kills 1.2g false path.
+        // |g_p| is sign-agnostic; min refractory ≥0.7s for double-hump.
+        _gpThreshold = max(40.0, peakThreshold * 0.65);
         _gpDirection = 1;
         _gpUseAbsProjection = true;
         _gyroMagCountsReps = false;
         _peakThreshold = combinedSentinel;
         _wakeThreshold = wakeCombined;
       case ChosenSignal.gyroMag:
-        _gyroMagThreshold = max(25.0, peakThreshold * 0.55);
+        _gyroMagThreshold = max(40.0, peakThreshold * 0.65);
         _gyroMagCountsReps = true;
         _gpUseAbsProjection = false;
         _peakThreshold = combinedSentinel;

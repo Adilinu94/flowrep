@@ -33,13 +33,15 @@ class CorrectionDialog extends StatelessWidget {
     final wasCorrected = userReps != countedReps;
 
     return AlertDialog(
-      title: const Text('Satz abgeschlossen'),
+      title: const Text('Satz beendet'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            'Gezählt: $countedReps Wiederholungen',
+            'App hat $countedReps gezählt. '
+            'Stelle die echten Wiederholungen ein:',
             style: theme.textTheme.bodyMedium,
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 16),
           Row(
@@ -95,7 +97,7 @@ class CorrectionDialog extends StatelessWidget {
         ),
         FilledButton(
           onPressed: onConfirm,
-          child: Text(wasCorrected ? 'Korrigieren' : 'Bestätigen'),
+          child: Text(wasCorrected ? 'Speichern & lernen' : 'Bestätigen'),
         ),
       ],
     );

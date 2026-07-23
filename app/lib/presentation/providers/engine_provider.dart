@@ -14,6 +14,7 @@ import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
 import '../../data/services/foreground_service_manager.dart';
 import '../../domain/config/engine_constants.dart';
+import '../../domain/models/exercise_profile.dart';
 import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
 import '../../domain/vision/fusion_engine.dart';
@@ -136,6 +137,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   /// Stoppt das Zählen und setzt die Engine zurück auf idle.
+  /// Does NOT end the current set — use [endSetManually] first if needed.
   void stopCounting() {
     if (!state.isCountingActive) return;
     _engine.pause();
@@ -145,6 +147,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       workoutState: WorkoutState.idle,
       repsInCurrentSet: 0,
     );
+  }
+
+  /// Manuelles Satzende → Korrektur-Dialog (kein Auto-Timeout).
+  void endSetManually() {
+    if (!state.isCountingActive && state.repsInCurrentSet <= 0) return;
+    _engine.endSetManually();
   }
 
   // === Manuelle Korrektur (SPEC §5.1.4 / P0-1) ===
@@ -199,10 +207,85 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         }
       }
 
+      // Online learning (rule-based, not ML): nudge thresholds from error.
+      await _learnFromCorrection(
+        systemCount: countedReps,
+        userCount: userReps,
+      );
+
       _saveSession();
     }
 
     dismissCorrection();
+  }
+
+  /// Rule-based threshold adaptation after a user correction.
+  ///
+  /// Over-count (system > user) → raise θ (stricter, fewer false reps).
+  /// Under-count (system < user) → lower θ (more sensitive).
+  /// Persists into [CalibrationStore] so the next session inherits it.
+  /// Spec: store CorrectionEvent forever; never claim "KI lernt" in UI copy.
+  Future<void> _learnFromCorrection({
+    required int systemCount,
+    required int userCount,
+  }) async {
+    if (systemCount <= 0 && userCount <= 0) return;
+    final sys = systemCount < 1 ? 1 : systemCount;
+    final ratio = sys / (userCount < 1 ? 1 : userCount);
+    // ratio > 1: over-count; ratio < 1: under-count
+    double factor = 1.0;
+    if (ratio > 1.05) {
+      factor = (1.0 + 0.15 * (ratio - 1.0)).clamp(1.05, 1.25);
+    } else if (ratio < 0.95) {
+      factor = (1.0 - 0.15 * (1.0 - ratio)).clamp(0.80, 0.95);
+    } else {
+      return; // within noise band
+    }
+
+    _engine.nudgeDirectionAwareThreshold(factor);
+
+    final deviceId = _bleDeviceId;
+    if (deviceId == null || isMock) return;
+    try {
+      final profile = await _calibrationStore.loadProfile(
+        exerciseId: _engine.exerciseId,
+        deviceId: deviceId,
+      );
+      if (profile == null || profile.migratedFrom != 0) return;
+      final newTheta = (profile.theta * factor).clamp(30.0, 250.0);
+      final updated = ExerciseProfile(
+        exerciseId: profile.exerciseId,
+        rotationAxis: profile.rotationAxis,
+        chosenSignal: profile.chosenSignal,
+        theta: newTheta,
+        minRepIntervalSeconds: profile.minRepIntervalSeconds,
+        prominenceMin: profile.prominenceMin,
+        medianTSeconds: profile.medianTSeconds,
+        madTSeconds: profile.madTSeconds,
+        gyroBias: profile.gyroBias,
+        spkInit: profile.spkInit,
+        npkInit: profile.npkInit,
+        repTemplate: profile.repTemplate,
+        templateCorrThreshold: profile.templateCorrThreshold,
+        expectedProminence: profile.expectedProminence,
+        prominenceTolerance: profile.prominenceTolerance,
+        concentricRatioExpected: profile.concentricRatioExpected,
+        durationRatioMin: profile.durationRatioMin,
+        durationRatioMax: profile.durationRatioMax,
+        qualityScore: profile.qualityScore,
+        calibratedAt: DateTime.now(),
+        migratedFrom: 0,
+      );
+      await _calibrationStore.saveProfile(profile: updated);
+      // Keep UI calibrated label in sync.
+      state = state.copyWith(calibratedThreshold: newTheta);
+      AppLogger.i(
+        'Learned from correction system=$systemCount user=$userCount '
+        'θ ${profile.theta.toStringAsFixed(1)}→${newTheta.toStringAsFixed(1)}',
+      );
+    } catch (_) {
+      // Non-fatal — in-memory nudge already applied.
+    }
   }
 
   /// Schließt den Korrektur-Dialog ohne zu speichern.

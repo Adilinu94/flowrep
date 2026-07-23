@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart';
+import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 
 void main() {
@@ -71,6 +72,37 @@ void main() {
     expect(lastReps, after,
         reason: 'small wiggle under threshold must not count');
 
+    engine.dispose();
+  });
+
+  test('autoEndSetEnabled false: stillness does not complete set', () {
+    final engine = WorkoutEngine(
+      exerciseId: 'bicep_curl',
+      autoEndSetEnabled: false,
+    );
+    ExerciseSet? finished;
+    engine.events.listen((e) {
+      if (e.completedSet != null) finished = e.completedSet;
+    });
+    var t = DateTime(2026, 1, 1);
+    // Calibrate with movement then rest far beyond pauseAfter.
+    for (var i = 0; i < 40; i++) {
+      final g = 3.0 * (i < 20 ? i / 20 : (40 - i) / 20);
+      engine.processSample(SensorSample(
+        timestamp: t, ax: 0, ay: g, az: 0, gx: 0, gy: 0, gz: 0,
+      ));
+      t = t.add(const Duration(milliseconds: 20));
+    }
+    for (var i = 0; i < 400; i++) {
+      engine.processSample(SensorSample(
+        timestamp: t, ax: 0, ay: 1, az: 0, gx: 0, gy: 0, gz: 0,
+      ));
+      t = t.add(const Duration(milliseconds: 20));
+    }
+    expect(finished, isNull,
+        reason: 'with autoEndSetEnabled=false, set must stay open');
+    engine.endSetManually();
+    expect(finished, isNotNull);
     engine.dispose();
   });
 }

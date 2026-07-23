@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers/ble_sensor_provider.dart';
+import '../../domain/workout_engine.dart' show WorkoutState;
 import '../providers/engine_provider.dart';
 import '../providers/workout_ui_state.dart';
 import '../widgets/connection_status_card.dart';
@@ -213,6 +214,32 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+                // Manuelles Satzende (kein Auto-Timeout) → Korrektur-Dialog
+                if (uiState.isCountingActive) ...[
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: FilledButton.tonalIcon(
+                      onPressed: uiState.repsInCurrentSet > 0 ||
+                              uiState.workoutState == WorkoutState.active ||
+                              uiState.workoutState == WorkoutState.calibrating
+                          ? notifier.endSetManually
+                          : null,
+                      icon: const Icon(Icons.flag_outlined),
+                      label: const Text(
+                        'Satz beenden',
+                        style: TextStyle(fontSize: 17),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Satz endet nur manuell — danach echte Reps bestätigen.',
+                    style: Theme.of(context).textTheme.bodySmall,
+                    textAlign: TextAlign.center,
+                  ),
+                ],
                 // Training beenden (P0-3)
                 if (uiState.isCountingActive ||
                     uiState.repsInCurrentSet > 0 ||

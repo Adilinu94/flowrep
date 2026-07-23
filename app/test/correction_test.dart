@@ -199,7 +199,8 @@ void main() {
       expect(find.text(CorrectionDialog.thankYouMessage), findsOneWidget);
       expect(find.textContaining('Die KI lernt'), findsNothing);
       expect(find.text('9'), findsOneWidget);
-      expect(find.text('Gezählt: 10 Wiederholungen'), findsOneWidget);
+      expect(find.textContaining('App hat 10 gezählt'), findsOneWidget);
+      expect(find.text('Speichern & lernen'), findsOneWidget);
     });
 
     testWidgets('ohne Korrektur keine Dankesnachricht', (tester) async {

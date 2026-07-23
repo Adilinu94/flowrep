@@ -40,6 +40,8 @@ void main() {
     final engine = WorkoutEngine(
       exerciseId: 'bicep_curl',
       useSignedProjectionCounting: true,
+      // Product: set ends only when user taps „Satz beenden“.
+      autoEndSetEnabled: false,
     );
     final db = AppDatabase();
     final repository = DriftWorkoutRepository(db);

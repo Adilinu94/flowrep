@@ -20,8 +20,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Satz abgeschlossen'), findsOneWidget);
-      expect(find.text('Gezählt: 10 Wiederholungen'), findsOneWidget);
+      expect(find.text('Satz beendet'), findsOneWidget);
+      expect(find.textContaining('App hat 10 gezählt'), findsOneWidget);
       expect(find.text('10'), findsOneWidget);
       expect(find.byIcon(Icons.add), findsOneWidget);
       expect(find.byIcon(Icons.remove), findsOneWidget);
