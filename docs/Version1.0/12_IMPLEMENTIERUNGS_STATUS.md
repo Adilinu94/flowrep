@@ -116,3 +116,4 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 | Datum | Änderung |
 |-------|----------|
 | 2026-07-23 | Tracker angelegt aus 00 + HW_VALIDATION + Product-Fixes (manual end, learn, gP harden) |
+| 2026-07-23 | gP-Härtung: floor 50, 0.70×θ, minSamples 15, peak≥1.2×θ; Tests `tool_count_sim` + `product_path_structural`; Suite 369 grün (`08f98c6`) |
