@@ -4,7 +4,7 @@
 > **Commit-Basis**: siehe `git log` / `origin/main`  
 > **Zweck**: ehrlicher Ledger — erledigt vs. offen. Kein „alles grün“ ohne Evidence.
 
-Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [HW_VALIDATION](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
+Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [15_POST_1.0_BACKLOG](15_VERBESSERUNGEN_EXTERNE_REPOS.md) · [HW_VALIDATION](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
 
 ---
 
@@ -119,10 +119,26 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 ---
 
+## Post-1.0 Backlog (Doc 15) — nicht 1.0-DoD
+
+> Details, Ticket-IDs, Already/Delta: **[15_VERBESSERUNGEN_EXTERNE_REPOS.md](15_VERBESSERUNGEN_EXTERNE_REPOS.md)**.
+
+| Phase | Fokus | Gate |
+|-------|--------|------|
+| **V1.1** | B10 Diagnose → B6 Ghost-Rep → B2 Export → A1 VBT light; A2 Akku **DONE** | Nach/mit Doc-13 A1–A5 |
+| **V1.2** | B1/B3/B7, Shadow-Report, Korrektur-Analytics, Multi-Übung | Nach V1.1 |
+| **V2.0** | ML Recognition + LOSO, History-Trends, CV-Form | Daten + LOSO |
+| **V3.0** | LLM Coaching, Teachable-Presets | Opt-in / Privacy |
+
+**Already (nicht neu bauen):** Akku UI (`fee3`), gP-Gates, History-Liste, Calib+θ-Nudge, `peakMagnitude`, Skelett-Overlay (Doc 14).
+
+---
+
 ## Changelog dieses Trackers
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | Post-1.0 Abschnitt Doc 15 (V1.1 schlank, A2 DONE, Already) |
 | 2026-07-23 | Optional-goal final: 375 tests, C3 tag, B*/D* living status |
 | 2026-07-23 | CV-07: 401+ tests; no-pose stream + FileLandmarkSink; CHANGELOG entry |
 | 2026-07-23 | D2 echte Confidence + Tests; D1/D5 Status |

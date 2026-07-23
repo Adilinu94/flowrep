@@ -3,6 +3,7 @@
 > **Stand**: 23. Juli 2026  
 > **Basis**: Gap-Analyse 22.07.2026 + HW-Session + Product-Fixes (manual set end, correction learning, gP wiggle harden)  
 > **Living Tracker**: [12_IMPLEMENTIERUNGS_STATUS](12_IMPLEMENTIERUNGS_STATUS.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md)  
+> **Post-1.0 Backlog**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) (V1.1/V2.0/V3.0 — **nach** physischer QA Doc 13 A1–A5)  
 > **HW**: [HW_VALIDATION_2026-07-23](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
 
 ---

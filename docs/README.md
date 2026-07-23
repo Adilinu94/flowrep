@@ -10,6 +10,7 @@
 | **1.0 Produkt-Status / was offen ist** | [`Version1.0/13_OFFENE_PUNKTE.md`](Version1.0/13_OFFENE_PUNKTE.md) |
 | **1.0 Living Tracker** | [`Version1.0/`](Version1.0/) (00, 10–13) |
 | **CV Skelett-Overlay Plan** | [`Version1.0/14_CV_SKELETT_OVERLAY_PLAN.md`](Version1.0/14_CV_SKELETT_OVERLAY_PLAN.md) |
+| **Post-1.0 Backlog (V1.1+)** | [`Version1.0/15_VERBESSERUNGEN_EXTERNE_REPOS.md`](Version1.0/15_VERBESSERUNGEN_EXTERNE_REPOS.md) |
 | **BLE-Protokoll (kanonisch)** | [`reference/protocol.yaml`](reference/protocol.yaml) |
 | **Architektur** | [`reference/GYM_TRACKER_ARCHITEKTUR.md`](reference/GYM_TRACKER_ARCHITEKTUR.md) |
 | **Setup (Adi)** | [`reference/SETUP_ANLEITUNG.md`](reference/SETUP_ANLEITUNG.md) · [`reference/ANLEITUNG_FUER_ADI.md`](reference/ANLEITUNG_FUER_ADI.md) |

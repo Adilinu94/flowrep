@@ -1,10 +1,11 @@
 # FlowRep 1.0 — Offene Punkte (konsolidiert)
 
-> **Stand**: 2026-07-23 (optional-goal final)  
+> **Stand**: 2026-07-23 (optional-goal final + Doc-15-Review)  
 > **Git**: `main` = `origin/main`; RC-Tag `v1.0.0-rc.1`  
 > **Zweck**: eine Seite für „was ist fertig / was steht noch aus“ aus dem gesamten Ordner `docs/Version1.0/`.  
 > **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09 (Implementierungspläne), Product-Code-Stand.  
-> **Dieses Ziel**: alle Optionals außer C1/C2/C4; B5 bleibt off; Motion-B* ehrlich env-deferred.
+> **Dieses Ziel**: alle Optionals außer C1/C2/C4; B5 bleibt off; Motion-B* ehrlich env-deferred.  
+> **Post-1.0**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) — **nicht** vor A1–A5 starten.
 
 ---
 
@@ -125,7 +126,20 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 | `12_IMPLEMENTIERUNGS_STATUS.md` | Ledger Code vs. offen | **living** |
 | `13_OFFENE_PUNKTE.md` | **Diese Datei** — konsolidiert | **living** |
 | `14_CV_SKELETT_OVERLAY_PLAN.md` | Skelett-Overlay MVP + 10 Ergänzungen | Plan |
+| `15_VERBESSERUNGEN_EXTERNE_REPOS.md` | Post-1.0 Backlog (externe Recherche + B11–B16) | **living** Backlog |
 | `../hardware/sessions/2026-07-23/HW_VALIDATION.md` | Geräte-Evidence Snapshot | archiviert/session |
+
+---
+
+## 6b. Nach 1.0 — nicht vermischen
+
+| Was | Doc | Wann |
+|-----|-----|------|
+| Physische Release-Gates A1–A5 | **dieses Doc §1** | **jetzt / vor Store** |
+| V1.1 Quick Wins (B10, B6, B2, A1 light; A2 DONE) | [15](15_VERBESSERUNGEN_EXTERNE_REPOS.md) Teil C | **nach** A1–A5 (B10 darf parallel zur QA gebaut werden) |
+| V2/V3 ML, LLM, History-Trends | Doc 15 | später |
+
+**Bereits im Code (Doc 15 §0b), nicht als Greenfield planen:** M5-Akkustand UI, gP-Wiggle-Gates, History-Liste, Guided Calib + θ-Nudge, `peakMagnitude`.
 
 ---
 
@@ -135,7 +149,8 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 2. `flutter test` + `analyze` grün (bereits).  
 3. Release-APK + Tag (C3).  
 4. G7 **nicht** erzwingen — Shadow-Pipeline bleibt aus bis eigene DoD.  
-5. CV D* optional, blockiert Release nicht.
+5. CV D* optional, blockiert Release nicht.  
+6. Post-1.0-Tickets aus Doc 15 sind **kein** 1.0-DoD.
 
 ---
 
@@ -143,6 +158,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | Doc 15 verlinkt: Post-1.0 Gate, §6b Already, Datei-Index + 1.0-DoD Punkt 6 |
 | 2026-07-23 | B* env-probe + ehrliche Deferrals; D3 headless Webcam; D4 kein AVD |
 | 2026-07-23 | C3: Semver `1.0.0-rc.1+1`, CHANGELOG, tag `v1.0.0-rc.1`; C1/C2/C4 out of scope |
 | 2026-07-23 | D2: echte Landmark-Confidence live; D1 Code soft-fail [x]; D5 yuv420-Pfad / deferred native |

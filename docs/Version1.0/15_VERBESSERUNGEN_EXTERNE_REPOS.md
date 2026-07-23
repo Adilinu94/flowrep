@@ -1,37 +1,77 @@
 # FlowRep 1.x/2.x — Verbesserungs-Leitfaden aus externer Recherche
 
-> **Stand**: 22. Juli 2026
-> **Basis**: Analyse von 8 GitHub-Repos, 1 Peer-Review-Studie (PMC), 1 Tech-Artikel (Edge Impulse)
-> **Zweck**: Kuratierter, ticket-fähiger Backlog konkreter Verbesserungen für FlowRep über V1.0 hinaus
-> **Verwandte Docs**: [00_UEBERSICHT](00_UEBERSICHT.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [07_CV_SENSOR_FUSION](07_CV_SENSOR_FUSION.md)
+> **Stand**: 23. Juli 2026 (Code-Review-Korrektur)  
+> **Basis**: Analyse von 8 GitHub-Repos, 1 Peer-Review-Studie (PMC), 1 Tech-Artikel (Edge Impulse)  
+> **Gegen Code verifiziert**: 2026-07-23 (`main` / Product-Pfad gP, `_useNewPipeline = false`)  
+> **Zweck**: Kuratierter, ticket-fähiger Backlog konkreter Verbesserungen für FlowRep **nach** 1.0  
+> **Verwandte Docs**: [00_UEBERSICHT](00_UEBERSICHT.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [12_IMPLEMENTIERUNGS_STATUS](12_IMPLEMENTIERUNGS_STATUS.md) · [07_CV_SENSOR_FUSION](07_CV_SENSOR_FUSION.md) · [14_CV_SKELETT_OVERLAY_PLAN](14_CV_SKELETT_OVERLAY_PLAN.md)
 
 ---
 
 ## 0. Wie dieses Dokument zu lesen ist
 
-Jeder Verbesserungsvorschlag ist als **eigenständige Ticket-Karte** formuliert und
-kann 1:1 in ein GitHub-Issue übernommen werden. Die Karten folgen einem festen Schema:
+### Reihenfolge relativ zu 1.0
+
+**Vor jedem V1.1-Feature** gilt die physische Release-QA aus [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) Priorität A:
+
+> A1–A5 am Gerät (Kalibrieren → echte Curls → Satz beenden → Korrektur → Session-Ende)  
+> **B10 (Diagnose-Overlay)** unterstützt diese QA — es **ersetzt** sie nicht.
+
+Dieses Doc ist **Post-1.0-Backlog**, kein Ersatz für Doc 11/13.
+
+### Ticket-Schema
+
+Jeder Vorschlag ist eine **Ticket-Karte** (1:1 als GitHub-Issue nutzbar):
 
 | Feld | Bedeutung |
 |------|-----------|
-| **Quelle** | Externes Repo/Studie, das die Idee liefert |
-| **Priorität** | `V1.1` (Quick Win) · `V2.0` (Feature-Release) · `V3.0` (Vision/Langfrist) |
-| **Kategorie** | `MUST` (Kern-Nutzen, klare Nachfrage) · `NICE` (Zusatz, differenzierend) |
-| **Risiko** | `Niedrig` / `Mittel` / `Hoch` — technisches + Produktrisiko |
-| **Machbarkeit** | Realistische Umsetzbarkeit mit dem aktuellen Stack |
-| **Aufwand** | Grobschätzung in Personentagen (PT) |
-| **Integration** | Betroffene bestehende Dateien + Einbaupunkt |
-| **DoD** | Definition of Done — direkt als Akzeptanzkriterien nutzbar |
+| **ID** | Kanonisch `FR-A*` / `FR-B*` (siehe Teil D) |
+| **Quelle** | Externes Repo/Studie *oder* `FlowRep-Kontext` |
+| **Priorität** | `V1.1` · `V1.2` · `V2.0` · `V3.0` |
+| **Kategorie** | `MUST` · `NICE` · `DONE` (Code da, nur Polish/QA) |
+| **Code-Stand** | `Already` / `Delta` / `Greenfield` — was schon im Repo steckt |
+| **Risiko** | `Niedrig` / `Mittel` / `Hoch` |
+| **Machbarkeit** | Realistisch mit aktuellem Stack |
+| **Aufwand** | Grobschätzung Personentage (PT) |
+| **Integration** | Dateien + Einbaupunkt am **Product-Pfad** |
+| **DoD** | Akzeptanzkriterien |
 
 ### Leitprinzipien (dürfen NIE verletzt werden)
 
-Alle Vorschläge respektieren die harten FlowRep-Invarianten aus [00_UEBERSICHT](00_UEBERSICHT.md#verbotene-aktionen):
+Aus [00_UEBERSICHT](00_UEBERSICHT.md#verbotene-aktionen):
 
 1. **IMU bleibt autoritativ.** Kamera/ML sind *Validatoren*, nie die Zählquelle für V1.x.
-2. **`_useNewPipeline` bleibt `false`.** Neue Signalverarbeitung läuft zuerst im Shadow-Mode.
-3. **`correctedReps` wird nie in `countedReps` zurückgeschrieben.** Der System-Count ist das ML-Trainingssignal.
-4. **Keine „Die KI lernt dazu"-Kommunikation** in der UI.
-5. **App funktioniert vollständig ohne Kamera und ohne Cloud.** Alle neuen Features sind additiv & degradierbar.
+2. **`_useNewPipeline` bleibt `false`.** Neue Signalverarbeitung zuerst im Shadow-Mode.
+3. **`correctedReps` wird nie in `countedReps` zurückgeschrieben.**
+4. **Keine „Die KI lernt dazu“-Kommunikation** in der UI.
+5. **App funktioniert ohne Kamera und ohne Cloud.** Features additiv & degradierbar.
+
+### Quellen-Nutzung
+
+Externe Repos liefern **Ideen und Algorithmen**, keinen Copy-Paste-Code. Lizenzen (MIT/GPL/…) und Urheberrecht prüfen, bevor Code übernommen wird. Peer-Review (Q4) und eigene Messungen schlagen anekdotische Accuracy-Claims.
+
+### Product-Pfad (wichtig für Integration)
+
+| Pfad | Status | Relevanz |
+|------|--------|----------|
+| **gP-Excursion** (`workout_engine._commitRep`, Envelope, θ-Gates) | **Product live** | Primärer Einbau für A1, A5, B6, B10 |
+| New Pipeline (`PeakDetector` / `PhaseValidator` / `_emitRep`) | hinter `_useNewPipeline = false` | Nur Shadow / später; **nicht** als V1.1-Hauptintegration annehmen |
+
+---
+
+## 0b. Already im Code (Stand 2026-07-23)
+
+Nicht erneut als Greenfield planen:
+
+| Bereich | Evidence | Ticket-Implikation |
+|---------|----------|--------------------|
+| **Akkustand BLE + UI** | Firmware `batteryChar` (`0000fee3-…`), `readBatteryPercent()`, `connection_status_card` + Icon &lt;20 % | **FR-A2 = DONE / Polish** |
+| **gP-Härtung** | θ-Floor 50, 0.70×θ, minSamples 15, Peak≥1.2×θ | **FR-B6** = zusätzliches Ablegen/Periodizitäts-Gate, nicht dieselben Gates nochmal |
+| **Guided Calib + θ-Nudge** | Calib-Wizard, `nudgeDirectionAwareThreshold` nach Korrektur | **FR-A10** = Multi-Preset-UX, kein Calib von Null |
+| **History-Liste** | `history_screen.dart` (Sessions) | **FR-B5** = Trends/Charts **erweitern** |
+| **peakMagnitude pro Rep** | `Rep.peakMagnitude` + Drift-Spalte | **FR-A1** startet hier (Aggregation/UI, nicht „Signal erfinden“) |
+| **Skelett-Overlay** | Doc 14 A–F Code | **FR-A6** baut auf Doc 14 auf |
+| **protocol.yaml Battery / ControlPoint** | `BatteryLevel`, `REQUEST_BATTERY 0x03`, Low-Power-Ideen | **FR-A2/A3** an Protokoll koppeln |
 
 ---
 
@@ -54,437 +94,412 @@ Alle Vorschläge respektieren die harten FlowRep-Invarianten aus [00_UEBERSICHT]
 
 ## Teil A — Verbesserungen aus externen Projekten
 
-### A1 — Velocity-Based Training (VBT) Metriken
+### A1 — Velocity-Based Training (VBT) Metriken · `FR-A1`
 
 - **Quelle**: Q1 (VBT), Q5 (Vein)
-- **Priorität**: `V1.1` · **Kategorie**: `MUST` · **Risiko**: Niedrig · **Machbarkeit**: Hoch · **Aufwand**: 2–3 PT
+- **Priorität**: `V1.1` (light) / `V1.2` (Autoregulation) · **Kategorie**: `MUST` · **Risiko**: **Mittel** (Anzeigen = niedrig; „Satz endet bei Loss“ = mittel) · **Machbarkeit**: Hoch · **Aufwand**: 2–3 PT (light) / +1–2 PT Autoreg
+- **Code-Stand**: **Delta** — `peakMagnitude` pro Rep vorhanden; Mean/Loss/UI/Persist fehlen
 
-**Was**: Pro Rep zusätzlich zur Zählung eine **mittlere & Peak-Konzentrik-Geschwindigkeit**
-(Mean/Peak Concentric Velocity), abgeleitete **geschätzte Explosivität** und **Velocity-Loss %**
-über den Satz berechnen und anzeigen. VBT ist ein etablierter Trainingsansatz (Autoregulation):
-Wenn die Geschwindigkeit um X % einbricht, ist der Satz „technisch" beendet.
+**Was**: Pro Rep **Peak- (und optional Mean-) Konzentrik-Velocity** aus dem **gP-Envelope-Fenster** sowie **Velocity-Loss %** über den Satz. Klar als **relative Einheit (°/s-Proxy)**, nie als lineare m/s.
 
-**Algorithmus / Technische Details**:
-- FlowRep hat bereits die geglättete Winkelgeschwindigkeit aus der Gyro-Pipeline
-  (`GpProjection` → Butterworth → One-Euro → Envelope). Die **Envelope-Amplitude pro Peak**
-  korreliert direkt mit der Bewegungsgeschwindigkeit.
-- Pro erkanntem Rep (Peak im `PeakDetector`) das Zeitfenster der Konzentrik isolieren und
-  berechnen:
-  - `peakAngularVelocity = max(|envelope|)` im Rep-Fenster (bereits verfügbar als `peakMagnitude`).
-  - `meanAngularVelocity = mean(|envelope|)` über die Konzentrik-Phase (`PhaseValidator` liefert Phasen).
-  - `velocityLossPct = (peakVel[0] - peakVel[i]) / peakVel[0] * 100` — Referenz ist der erste (schnellste) Rep.
-- **Keine neue Hardware nötig** — nur Aggregation vorhandener Signale.
+**V1.1 light (empfohlen zuerst)**:
+- Peak pro Rep (bestehendes `peakMagnitude` oder Fenster-Max) + Loss % in Summary anzeigen
+- Optional Settings-Toggle; Persist kann V1.2 sein
 
-**Integration / betroffene Dateien**:
-- `Rep`-Modell in `lib/domain/models/workout_models.dart` um optionale Felder erweitern:
-  `meanVelocity`, `peakVelocity` (bereits `peakMagnitude` vorhanden → wiederverwenden/umbenennen).
-- `workout_engine.dart`: bei `_emitRep()` die Velocity-Werte anhängen.
-- `drift_database.dart`: Spalten `mean_velocity`, `velocity_loss` (nullable, Migration additiv).
-- UI: `home_screen.dart` / Session-Summary — kleine Velocity-Zeile pro Rep (opt-in via Settings).
+**V1.2+**: Mean über Konzentrik-Phase; optionale Autoregulation „bei Loss X % Satz-Hinweis“ — **kein stilles Auto-Enden** ohne User-Consent (Product hat `autoEndSetEnabled: false`).
 
-**Vergleich mit bestehendem FlowRep**: FlowRep speichert heute nur `peakMagnitude` pro Rep.
-VBT hebt genau diesen Wert vom „internen Debug-Wert" zum **sichtbaren Trainings-KPI**.
+**Algorithmus (Product-Pfad)**:
+- Bei `_commitRep` / gP-Excursion-Ende: Peak = max(|envelope|) im Fenster (heute oft schon `peakMagnitude`).
+- `velocityLossPct = (peak[0] - peak[i]) / peak[0] * 100` (Referenz: erster Rep des Satzes, oder Satz-Max — im DoD festlegen).
+- Mean nur wenn Phasengrenzen robust verfügbar; **nicht** an New-Pipeline `PhaseValidator` koppeln, solange `_useNewPipeline = false`.
 
-**Risiko**: Niedrig — keine Pipeline-Änderung, nur Ableitung. Kalibrierung „echte m/s" ist NICHT
-möglich (Gyro misst Winkel, nicht linear) → wir zeigen **relative Velocity-Einheiten**, klar so beschriftet.
+**Integration**:
+- `workout_engine.dart` — gP-Pfad `_commitRep`
+- `workout_models.dart` / Drift: optionale Felder `meanVelocity`, `velocityLoss` (additiv)
+- UI: Session-Summary / kleine Zeile pro Rep; Settings-Toggle
 
-**DoD**:
-- [ ] Pro Rep werden Mean/Peak-Velocity (relative Einheit) berechnet und persistiert.
-- [ ] Velocity-Loss % pro Satz in der Session-Summary.
-- [ ] Feature per Settings-Toggle abschaltbar (Default: an).
-- [ ] Unit-Tests: Velocity-Aggregation, Velocity-Loss-Berechnung, DB-Migration.
+**Risiko**: Anzeige/Persist = beherrschbar. **Autoregulation und „technisches Satzende“** greifen in UX ein → separat freigeben, nicht mit light-V1.1 mischen.
+
+**DoD (V1.1 light)**:
+- [ ] Peak-Velocity (relativ) pro Rep berechnet und in Summary sichtbar.
+- [ ] Velocity-Loss % pro Satz sichtbar.
+- [ ] Einheit/Label klar („relativ / °/s-Proxy“, nicht m/s).
+- [ ] Unit-Tests: Aggregation + Loss; Product-Pfad unverändert bzgl. Zähllogik.
 - [ ] `_useNewPipeline` bleibt `false`.
 
+**DoD (V1.2 optional)**: Mean; Settings; DB-Migration; kein Auto-End ohne Opt-in.
+
 ---
 
-### A2 — Akkustand-Anzeige des M5StickC (Battery Monitoring)
+### A2 — Akkustand-Anzeige des M5StickC · `FR-A2`
 
 - **Quelle**: Q1 (VBT)
-- **Priorität**: `V1.1` · **Kategorie**: `MUST` · **Risiko**: Niedrig · **Machbarkeit**: Hoch · **Aufwand**: 1–2 PT
+- **Priorität**: `V1.1` · **Kategorie**: **`DONE` / Polish** · **Risiko**: Niedrig · **Machbarkeit**: Hoch · **Aufwand**: 0–0.5 PT (QA/Polish)
+- **Code-Stand**: **Already** (Firmware + App)
 
-**Was**: Batteriestand des M5StickC Plus2 in der App anzeigen (Prozent + Icon), Warnung bei <15 %.
+**Was (ursprünglich)**: Batteriestand in der App — **bereits implementiert**.
 
-**Algorithmus / Technische Details**:
-- M5StickC Plus2 hat AXP192/PMIC → Firmware kann Akku-% als zusätzliches BLE-Feld senden.
-- **Zwei Wege**:
-  1. **BLE Battery Service (0x180F)** — Standard-GATT-Charakteristik `0x2A19`. Sauberste Lösung.
-  2. Akku-Byte in bestehendes Notify-Paket packen (kompatibel, aber Protokoll ändern).
-- Empfehlung: Standard-Battery-Service abonnieren, falls vorhanden; sonst graceful ausblenden.
+**Ist-Stand (Code 2026-07-23)**:
+- Firmware: `AXP2101` (nicht AXP192); spannungsbasiertes `getBatteryPercent()`; Char **`0000fee3-…`** im Gym-Tracker-Service (nicht Standard-GATT `0x180F`/`0x2A19`).
+- App: `BleSensorProvider.batteryLevelCharUuid` / `readBatteryPercent()` (Control `0x03` REQUEST_BATTERY), `WorkoutUiState.batteryPercent`, `ConnectionStatusCard` mit Icon und Warnfarbe **&lt;20 %**.
+- Protokoll: [protocol.yaml](../reference/protocol.yaml) `BatteryLevel`.
 
-**Integration / betroffene Dateien**:
-- `lib/data/providers/ble_sensor_provider.dart`: zweite Charakteristik `0x2A19` abonnieren.
-- `workout_ui_state.dart`: Feld `batteryLevel: int?`.
-- `home_screen.dart`: Batterie-Icon in der Statuszeile (neben BLE-Status).
-- **Firmware-Seite** (separates Repo): Battery-Service publizieren — als eigenes HW-Ticket.
+**Delta (optional Polish)**:
+- [ ] HW-QA: Anzeige während Session plausibel (Doc 11).
+- [ ] Optional: Snackbar bei &lt;15 % (zusätzlich zu Icon).
+- [ ] Optional: periodisches Refresh während langer Session (heute on-demand/read).
+- [ ] Docs/Tickets: **kein** separates Firmware-Greenfield mehr.
 
-**Vergleich**: FlowRep zeigt heute nur „Verbunden/Getrennt". Akkustand verhindert
-Mid-Workout-Ausfälle → direkter QA-/Robustheitsgewinn (siehe [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md)).
-
-**Risiko**: Niedrig auf App-Seite; Firmware-Änderung nötig → als Abhängigkeit markieren.
-
-**DoD**:
-- [ ] App liest Battery-Level (falls Charakteristik vorhanden), sonst UI degradiert sauber.
-- [ ] Warn-Snackbar bei <15 %.
-- [ ] Unit-Test für Parsing + Null-Fall.
+**DoD (Polish)**:
+- [ ] Manueller HW-Check dokumentiert in Doc 11.
+- [ ] Graceful bei fehlendem Char (falls ältere FW) — kein Crash.
 
 ---
 
-### A3 — Stromspar-/Deep-Sleep-Strategie (BLE-seitig)
+### A3 — Stromspar-/Deep-Sleep-Strategie (BLE-seitig) · `FR-A3`
 
 - **Quelle**: Q1 (VBT)
 - **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Mittel · **Machbarkeit**: Mittel · **Aufwand**: 2–3 PT (großteils Firmware)
+- **Code-Stand**: **Delta** — ControlPoint STOP / DeviceStatus LOW_POWER in Spec; App-Idle-Disconnect unvollständig
 
-**Was**: M5StickC in Deep Sleep, wenn keine Bewegung/keine App-Verbindung; Wake per Button/IMU-Interrupt.
+**Was**: M5 in Deep Sleep ohne Bewegung/Verbindung; Wake per Button/IMU-Interrupt.
 
 **Technische Details**:
-- App-Seite: sauberes „Idle → Disconnect" nach N Minuten ohne aktiven Satz signalisieren.
-- Firmware: BMI270-Motion-Interrupt als Wake-Source; Deep Sleep spart ~10× Strom.
-- FlowRep hat bereits **Reconnection mit Backoff (P0-4)** → Wiederaufwachen ist bereits abgedeckt.
+- App: Idle → Disconnect nach N Minuten ohne aktiven Satz.
+- Firmware: BMI270-Motion-Wake; an `protocol.yaml` / bestehende Control-Commands anbinden.
+- Reconnection (P0-4) deckt Wiederaufwachen ab.
 
-**Integration**: `ble_sensor_provider.dart` (Idle-Timer + expliziter Disconnect), primär Firmware.
-
-**Risiko**: Mittel — Wake-Latenz könnte UX stören; braucht HW-Tests.
+**Risiko**: Mittel — Wake-Latenz stört UX; HW-Tests Pflicht.
 
 **DoD**:
-- [ ] App trennt nach konfigurierbarem Idle-Timeout aktiv.
-- [ ] Reconnect nach Wake < 3 s (HW-Test dokumentiert in Doc 11).
+- [ ] App Idle-Timeout konfigurierbar + Disconnect.
+- [ ] Reconnect nach Wake &lt; 3 s (Doc 11).
+- [ ] Kein Verlust des Product-Zählsignals während aktiver Session.
 
 ---
 
-### A4 — ML-basierte Exercise Recognition (automatische Übungserkennung)
+### A4 — ML-basierte Exercise Recognition · `FR-A4`
 
-- **Quelle**: Q2 (RF 99.4%), Q3 (End-to-End), Q4 (CNN/LOSO), Q5 (Vein)
-- **Priorität**: `V2.0` · **Kategorie**: `MUST` · **Risiko**: Mittel · **Machbarkeit**: Mittel-Hoch · **Aufwand**: 8–12 PT
+- **Quelle**: Q2, Q3, Q4, Q5
+- **Priorität**: `V2.0` · **Kategorie**: `MUST` · **Risiko**: Mittel · **Machbarkeit**: Mittel · **Aufwand**: **15–25 PT** (Vollausbau inkl. Daten/LOSO/On-Device); Shadow-Demo 1–2 Übungen ~8–12 PT
+- **Code-Stand**: **Greenfield** (+ Recorder-Muster aus CV)
 
-**Was**: Die Übung automatisch aus IMU-Daten erkennen, statt manueller Auswahl. Erste Stufe der Pipeline:
-`IMU-Fenster → Klassifikator → {Bicep Curl, Squat, ...} + Confidence`.
+**Was**: Übung aus IMU-Fenstern vorschlagen (nie still umschalten):  
+`IMU-Fenster → Klassifikator → {Curl, …} + Confidence → UI „übernehmen?“`.
 
-**Algorithmus / Technische Details** (aus Q2/Q4 abgeleitet):
-- **Input**: Sliding Window, 2 s @ ~52 Hz → ~104 Samples × Achsen. Q4 zeigt: **52 Hz reichen**,
-  **1 Sensor am Handgelenk = 98.6 %** mit Scaling-FCN.
-- **Feature-Engineering (klassischer Pfad, Q2)**: pro Fenster statistische Features
-  (Mean, Std, Min, Max, MAD, Energie), spektrale Features (dominante Frequenz, spektrale Entropie),
-  **Magnitude-Feature** `r = √(x²+y²+z²)` für **Orientierungs-Unabhängigkeit** (kritisch bei Wearables),
-  optional PCA (3 Komponenten genügen). → Random Forest / SVM.
-- **Deep-Learning-Pfad (Q4, empfohlen langfristig)**: 1D-CNN (FCN/ResNet-artig) direkt auf
-  Roh-Zeitreihe; Prediction 1–2 ms vs. 93 ms klassisch, höhere Genauigkeit, kein Handcrafted-FE.
-- **On-Device**: Export als **TFLite**, Inferenz via `tflite_flutter`. Fenster laufen im Shadow-Mode
-  parallel zur IMU-Zählung, ohne die autoritative Zählung zu verändern.
-- **Validierung (Pflicht, Q4)**: **Leave-One-Subject-Out (LOSO)** Cross-Validation. Ohne LOSO
-  memoriert das Modell Nutzer-Biomechanik statt Übungsmuster → scheitert bei neuen Nutzern.
+**Algorithmus**: Sliding Window ~2 s @ ~50 Hz; Magnitude `r` für Orientierungs-Unabhängigkeit; klassisch (RF) oder 1D-CNN → TFLite; **LOSO Pflicht** (A9).
 
-**Integration / betroffene Dateien**:
-- Neues Modul `lib/domain/ml/exercise_classifier.dart` (Interface + TFLite-Impl).
-- Datensammlung: bestehendes `landmark_session_recorder.dart`-Muster auf IMU übertragen
-  → `imu_session_recorder.dart` (opt-in, lokal, für Trainingsdaten).
-- Shadow-Anbindung in `engine_provider.dart`: Klassifikator-Output nur loggen/anzeigen, nicht zählen.
-- Vorschlag-UI: „Erkannt: Bicep Curl (92 %) — übernehmen?" statt Auto-Switch.
+**Integration**: `lib/domain/ml/exercise_classifier.dart`; `imu_session_recorder.dart` (opt-in, lokal); Shadow in `engine_provider` — nur Vorschlag.
 
-**Vergleich**: Heute wählt der Nutzer die Übung manuell (`exercise_registry.dart`, 170 Zeilen).
-ML-Recognition macht daraus einen **Vorschlag** — Nutzer behält Kontrolle (kein stiller Auto-Switch).
-
-**Risiko**: Mittel — braucht Trainingsdaten (mehrere Personen!), sonst schlechte Generalisierung.
-Datenschutz: Training lokal/anonymisiert. Mitigation: als Vorschlag, nie erzwungen.
+**Risiko**: Mittel — braucht Daten mehrerer Personen. Ohne LOSO memoriert das Modell Nutzer.
 
 **DoD**:
-- [ ] IMU-Recorder (opt-in) sammelt gelabelte Fenster lokal.
-- [ ] TFLite-Klassifikator läuft im Shadow-Mode, Ergebnis nur als UI-Vorschlag.
-- [ ] LOSO-Report im Repo (Notebook/Doc), Accuracy pro Übung dokumentiert.
-- [ ] `_useNewPipeline`/Zählquelle unverändert.
+- [ ] Opt-in IMU-Recorder, lokal.
+- [ ] TFLite Shadow, nur UI-Vorschlag.
+- [ ] LOSO-Report im Repo.
+- [ ] Zählquelle unverändert.
 
 ---
 
-### A5 — Form-Quality-Score aus IMU (Range-of-Motion & Konsistenz)
+### A5 — Form-Quality-Score aus IMU · `FR-A5`
 
-- **Quelle**: Q3, Q7 (AI-Trainer), Q10
-- **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig-Mittel · **Machbarkeit**: Hoch · **Aufwand**: 3–4 PT
+- **Quelle**: Q3, Q7, Q10
+- **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig–Mittel · **Machbarkeit**: Hoch · **Aufwand**: 3–4 PT
+- **Code-Stand**: **Delta** — baut auf A1-Rep-Fenstern (gP)
 
-**Was**: Pro Rep einen **Qualitäts-Score (0–100)** aus IMU-Daten ableiten: Bewegungsumfang (ROM),
-Tempo-Konsistenz, Symmetrie zwischen Reps. Feedback: „Rep 7 war 30 % flacher als dein Schnitt".
+**Was**: Score 0–100 pro Rep: ROM-Proxy, Tempo-Konsistenz, relativ zum **Satz-Median** (kein absolutes „richtige Form“-Urteil).
 
-**Algorithmus / Technische Details**:
-- **ROM-Proxy**: integrierte Winkelgeschwindigkeit über die Konzentrik = zurückgelegter Winkel.
-  Kleinerer integrierter Winkel ⇒ flacherer Rep.
-- **Tempo-Konsistenz**: Std der Rep-Dauer im Satz; hohe Streuung ⇒ Ermüdung/Formverlust.
-- **Score-Aggregation**: gewichteter Mix `w1·ROM_norm + w2·Tempo_norm + w3·Peak_norm`,
-  normiert gegen den Satz-Median (nicht gegen absolute Grenzen → nutzer-unabhängig).
-
-**Integration**: `workout_engine.dart` (Aggregation pro Rep + pro Satz), Anzeige in Session-Summary.
-Baut direkt auf A1 (Velocity) auf — gleiche Rep-Fenster.
-
-**Risiko**: Niedrig-Mittel — „Qualität" ohne Referenz ist heikel; daher **relativ** zum eigenen Satz,
-klar als Konsistenz-Indikator beschriftet (nicht als „richtige Form"-Urteil).
+**Integration**: `workout_engine.dart` gP-Pfad; Session-Summary.
 
 **DoD**:
-- [ ] ROM-Proxy + Tempo-Konsistenz + Score pro Rep/Satz.
-- [ ] Session-Summary hebt Ausreißer-Reps hervor.
-- [ ] Unit-Tests für Score-Normalisierung.
+- [ ] ROM-Proxy + Tempo + Score.
+- [ ] Ausreißer in Summary.
+- [ ] Unit-Tests Normalisierung.
+- [ ] Labeling: „Konsistenz“, nicht „Form korrekt“.
 
 ---
 
-### A6 — CV-Form-Feedback über Gelenkwinkel (Skelett-Overlay-Erweiterung)
+### A6 — CV-Form-Feedback (Skelett-Erweiterung) · `FR-A6`
 
-- **Quelle**: Q7 (AI-Trainer BlazePose), Q9, Q10
+- **Quelle**: Q7, Q9, Q10
 - **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Mittel · **Machbarkeit**: Mittel · **Aufwand**: 4–6 PT
+- **Code-Stand**: **Delta** — Doc 14 Overlay + Angle/Fusion vorhanden
 
-**Was**: Die bestehende CV-Pipeline (MediaPipe/BlazePose, Doc 05–07, 14) nicht nur zum Zählen,
-sondern für **Form-Hinweise** nutzen: Live-Gelenkwinkel, ROM-Marker, „Ellbogen driftet"-Warnung.
+**Was**: Live-Gelenkwinkel, ROM-Marker, Warnfarbe am Skelett; Cross-Check-Log gegen IMU-ROM (kein Zwang).
 
-**Technische Details**:
-- `AngleCalculator` + `PoseRepCounter` existieren bereits (CV-01/03).
-- Erweiterung: pro Frame relevante Gelenkwinkel (z. B. Ellbogen, Knie) berechnen, Min/Max pro Rep
-  tracken → **ROM-Score identisch zu A5, aber aus Kamera** → cross-check gegen IMU (Sensor-Fusion, Doc 07).
-- Overlay: farbige Gelenke bei Grenzwert-Verletzung (`skeleton_painter.dart` erweitern).
-
-**Integration**: `lib/domain/vision/*`, `skeleton_painter.dart`, `camera_session_screen.dart`.
-Fusion-Hook in `fusion_pulse.dart` — Kamera bestätigt/relativiert IMU-ROM.
-
-**Risiko**: Mittel — Kameraqualität/Beleuchtung; bleibt **optional** und degradiert (Leitprinzip 5).
+**Integration**: `lib/domain/vision/*`, `skeleton_painter.dart`, `fusion_pulse.dart`; optional degradiert.
 
 **DoD**:
-- [ ] Live-Gelenkwinkel + ROM pro Rep aus Kamera.
-- [ ] Overlay-Warnfarbe bei Grenzverletzung.
-- [ ] Cross-Check-Log gegen IMU-ROM (kein Zwang zur Übernahme).
+- [ ] Live-Winkel + ROM pro Rep aus Kamera.
+- [ ] Overlay-Warnfarbe.
+- [ ] Cross-Check-Log; IMU bleibt autoritativ.
 
 ---
 
-### A7 — LLM-basiertes Coaching-Feedback (Post-Session)
+### A7 — LLM Post-Session-Coaching · `FR-A7`
 
-- **Quelle**: Q6 (smart-fitness 2-Stufen-Architektur)
+- **Quelle**: Q6
 - **Priorität**: `V3.0` · **Kategorie**: `NICE` · **Risiko**: Hoch · **Machbarkeit**: Mittel · **Aufwand**: 6–10 PT
+- **Code-Stand**: Greenfield
 
-**Was**: Nach der Session strukturierte Daten (Reps, Velocity, ROM-Scores, Verlauf) an ein LLM geben,
-das **personalisiertes Feedback in natürlicher Sprache** erzeugt: „Deine Squat-Tiefe fiel im 3. Satz ab."
+**Was**: Stufe 1 = Engine-Zahlen; Stufe 2 = LLM formuliert Sprache. LLM zählt nie. Opt-in Cloud; Offline-Regel-Fallback.
 
-**Architektur (aus Q6)**: Stufe 1 = deterministische Engine (Zahlen), Stufe 2 = LLM (Sprache).
-LLM zählt NIE — es formuliert nur über bereits berechnete Metriken.
-
-**Integration**: Neuer optionaler `coaching_service.dart`; Cloud-Call **nur mit explizitem Opt-in**.
-Offline-Fallback: regelbasierte Textbausteine (kein Cloud-Zwang).
-
-**Risiko**: Hoch — Datenschutz (Gesundheitsdaten!), Kosten, Konsistenz, Halluzination.
-Mitigation: LLM bekommt nur aggregierte Zahlen, strikt via Template-Prompt, Opt-in, kein Rohdaten-Upload.
-
-**DoD**:
-- [ ] Opt-in-Flow mit klarer Datenschutz-Erklärung.
-- [ ] Offline-Regel-Fallback funktioniert ohne Netz.
-- [ ] LLM-Prompt getemplatet + Guardrails (nur gelieferte Zahlen verwenden).
+**DoD**: Opt-in + Privacy-Text; Offline-Fallback; Template-Prompt nur mit gelieferten Zahlen.
 
 ---
 
-### A8 — Robusteres Feature-Engineering für die IMU-Signalkette
+### A8 — Magnitude/PCA Shadow-Signal · `FR-A8`
 
 - **Quelle**: Q2, Q4
 - **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Machbarkeit**: Hoch · **Aufwand**: 2–3 PT
+- **Code-Stand**: Delta (gP ist live; Magnitude-Kanal Shadow)
 
-**Was**: Magnitude-Feature `r = √(x²+y²+z²)` und PCA-Vorverarbeitung als **Shadow-Signalquelle**
-ergänzen, um Orientierungs-Unabhängigkeit zu erhöhen (Sensor-Rotation am Handgelenk).
+**Was**: `r = √(x²+y²+z²)` (+ optional PCA) als Shadow parallel zu gP loggen; Zähl-Delta dokumentieren; Live-Pfad unverändert.
 
-**Technische Details**: FlowRep projiziert heute über `GpProjection` auf die Hauptachse.
-Ergänzend Magnitude-Kanal berechnen → robuster gegen unterschiedliche Anlege-Orientierung.
-Als Shadow-Signal parallel loggen und gegen die Live-Zählung vergleichen (kein Umschalten).
-
-**Integration**: neue Stufe in der Shadow-Pipeline (nicht die autoritative), Logging via bestehendem Logger.
-
-**Risiko**: Niedrig — reines Zusatzsignal, Shadow-only.
-
-**DoD**:
-- [ ] Magnitude-Kanal berechnet + geloggt.
-- [ ] Vergleichs-Metrik (Zähl-Delta Magnitude vs. gP) dokumentiert.
-- [ ] Live-Pfad unverändert.
+**DoD**: Magnitude geloggt; Vergleichsmetrik; Live unverändert; einheitliches Shadow-Report-Format (siehe B12).
 
 ---
 
-### A9 — Leave-One-Subject-Out (LOSO) Evaluations-Harness
+### A9 — LOSO Evaluations-Harness · `FR-A9`
 
-- **Quelle**: Q4 (PMC-Studie)
+- **Quelle**: Q4
 - **Priorität**: `V2.0` · **Kategorie**: `MUST` (für jedes ML-Feature) · **Risiko**: Niedrig · **Machbarkeit**: Hoch · **Aufwand**: 2 PT
+- **Code-Stand**: Greenfield (`tools/ml/`)
 
-**Was**: Reproduzierbares Offline-Evaluationsskript (Python), das Modelle mit LOSO validiert —
-Voraussetzung für A4/A5. Verhindert die häufigste Falle: Modell memoriert Nutzer statt Übung.
+**Was**: Python LOSO-Eval für exportierte IMU-Sessions; Confusion-Matrix + Per-Subject-Accuracy.
 
-**Integration**: `tools/ml/` (analog zum bestehenden Python-Webcam-Tool aus Doc 08).
-Input: exportierte IMU-Sessions; Output: Accuracy/Confusion-Matrix pro Übung + pro Subjekt.
-
-**Risiko**: Niedrig — reines Offline-Tooling, kein App-Impact.
-
-**DoD**:
-- [ ] `tools/ml/loso_eval.py` mit README.
-- [ ] Confusion-Matrix + Per-Subject-Accuracy als Output.
-- [ ] In CI optional als Report-Artefakt.
+**DoD**: `tools/ml/loso_eval.py` + README; optional CI-Artefakt.
 
 ---
 
-### A10 — On-Device „Teachable"-Personalisierung (Kalibrierungs-Presets)
+### A10 — Teachable-Kalibrierungs-Presets · `FR-A10`
 
-- **Quelle**: Q8 (Edge Impulse GetFit), Q5 (Vein)
+- **Quelle**: Q8, Q5
 - **Priorität**: `V3.0` · **Kategorie**: `NICE` · **Risiko**: Mittel · **Machbarkeit**: Mittel · **Aufwand**: 4–6 PT
+- **Code-Stand**: **Delta** — Guided Calib + Korrektur-θ-Nudge existieren
 
-**Was**: Nutzer nimmt kurz Referenz-Reps auf → App speichert ein **persönliches Schwellen-Preset**
-(Peak-Amplitude θ, Rep-Dauer-Bänder) pro Übung. Kein echtes On-Device-Training, sondern
-**leichtgewichtige Kalibrierung** vorhandener Pipeline-Parameter.
+**Was (Delta, nicht Greenfield)**:
+- Heute: ein gP-Profil aus Calib; θ-Nudge nach „Speichern & lernen“.
+- Neu: **benannte Presets pro Übung**, wählbar/rücksetzbar; optional 3–5 Referenz-Reps → Median-θ + Dauer-Bänder als Preset-Datei in Drift.
 
-**Technische Details**: Aus 3–5 Referenz-Reps Median-θ und Dauer-Bänder ableiten →
-`gP`-Härtungs-Parameter (theta-floor, Excursion-Gate) nutzerspezifisch justieren.
-Speichern als Preset in Drift-DB, pro Übung wählbar.
-
-**Integration**: `exercise_registry.dart` (Preset-Referenz), Kalibrier-Flow im Onboarding,
-`workout_engine.dart` liest Preset-θ statt globalem Default.
-
-**Risiko**: Mittel — schlechte Referenzaufnahme verschlechtert Zählung; daher „Zurücksetzen auf Standard" immer möglich.
+**Nicht** nochmal den gesamten Calib-Wizard neu bauen.
 
 **DoD**:
-- [ ] Kalibrier-Flow erzeugt Preset pro Übung.
-- [ ] Preset persistiert + umschaltbar + rücksetzbar.
-- [ ] A/B-Vergleich Preset vs. Default dokumentiert.
+- [ ] Preset erzeugen/persistieren/umschalten/zurücksetzen.
+- [ ] A/B Preset vs. Default dokumentiert.
+- [ ] Schlechte Aufnahme darf Zählung nicht „ohne Escape“ verschlechtern.
 
 ---
 
-## Teil B — 10 eigene, zusätzliche Verbesserungsideen
+## Teil B — Eigene Verbesserungsideen (FlowRep-Kontext)
 
-> Nicht aus den Repos abgeleitet, sondern aus dem FlowRep-Kontext (BLE-Wearable, Single-Sensor,
-> lokale-first, Trainings-Tracking) heraus entworfen. Jede respektiert die Leitprinzipien.
+### B1 — Adaptive Ruhepausen · `FR-B1`
 
-### B1 — „Set-Autopilot": intelligente Ruhepausen-Vorschläge
-- **Priorität**: `V1.1` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 1–2 PT
-- **Was**: Der bestehende Pausen-Timer (P0-2, 90 s) wird adaptiv: bei hohem Velocity-Loss (A1)
-  längere Pause vorschlagen, bei geringem eine kürzere. Kombiniert VBT-Autoregulation mit dem Timer.
-- **Integration**: `RestTimer`-Widget + `workout_engine.dart` (Velocity-Loss-Input).
-- **DoD**: Timer-Default passt sich an Velocity-Loss an; manuell überschreibbar.
+- **Priorität**: `V1.2` (hängt an A1) · **NICE** · Risiko niedrig · 1–2 PT · **Delta**
+- **Was**: Pausen-Timer (P0-2) schlägt bei hohem Velocity-Loss längere Pause vor; manuell überschreibbar.
+- **DoD**: Vorschlag aus Loss; User-Override; kein Zwang.
 
-### B2 — Session-Export als CSV/JSON (Datenhoheit)
-- **Priorität**: `V1.1` · **Kategorie**: `MUST` · **Risiko**: Niedrig · **Aufwand**: 1 PT
-- **Was**: Kompletten Trainingsverlauf lokal als CSV/JSON exportieren (Share-Sheet). Fördert
-  Vertrauen (lokale-first) und liefert nebenbei Trainingsdaten für A4/A9.
-- **Integration**: neuer `export_service.dart`, nutzt Drift-Queries; Settings-Eintrag „Daten exportieren".
-- **DoD**: Export enthält Sätze, Reps, Korrekturen, Velocity; teilbar via OS-Share.
+### B2 — Session-Export CSV/JSON · `FR-B2`
 
-### B3 — Rep-Timeline-Visualisierung pro Satz
-- **Priorität**: `V1.1` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 2 PT
-- **Was**: Nach dem Satz ein kleines Sparkline-Diagramm der Envelope/Peaks — visuelles Feedback,
-  wo Reps erkannt wurden (auch didaktisch bei Fehlzählungen).
-- **Integration**: neues `rep_timeline.dart`-Widget in der Session-Summary; Daten aus `reps`-Liste.
-- **DoD**: Sparkline zeigt Peaks + Rep-Marker; rein lesend.
+- **Priorität**: `V1.1` · **MUST** · Risiko niedrig · 1 PT · **Greenfield-Service**
+- **Was**: Lokaler Export (Share-Sheet): Sätze, Reps, Korrekturen, optional Velocity.
+- **Privacy-DoD**: Kein Auto-Upload; Nutzer sieht was exportiert wird; Löschen der App-Daten unabhängig.
+- **DoD**: Export + Share; Unit/Integration auf Query-Ebene.
 
-### B4 — Persönliche Rekorde & Fortschritts-Badges
-- **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 2–3 PT
-- **Was**: PRs erkennen (meiste Reps, höchste Velocity, längste Serie) und dezent feiern.
-  Retention-Feature ohne Gamification-Overkill.
-- **Integration**: `records_service.dart` + Drift-Aggregate; Anzeige in History-Screen.
-- **DoD**: PR-Erkennung pro Übung; Badge in der Session-Summary bei neuem PR.
+### B3 — Rep-Timeline-Sparkline · `FR-B3`
 
-### B5 — Trainingsverlauf / History-Screen mit Trends
-- **Priorität**: `V2.0` · **Kategorie**: `MUST` · **Risiko**: Niedrig · **Aufwand**: 3 PT
-- **Was**: Volumen (Sätze×Reps) und Velocity-Trend pro Übung über Zeit (Wochen/Monate).
-  Macht FlowRep vom Einzel-Session-Tool zum Tracker.
-- **Integration**: neuer `history_screen.dart`, Drift-Zeitreihen-Queries, `fl_chart` o. Ä.
-- **DoD**: Trend-Charts pro Übung; Zeitraum-Filter; rein lesend.
+- **Priorität**: `V1.2` · **NICE** · 2 PT
+- **Was**: Sparkline Peaks/Rep-Marker nach Satz (didaktisch bei Fehlzählungen).
+- **DoD**: Rein lesend; aus `reps`-Liste.
 
-### B6 — Watchdog gegen „Ghost-Reps" bei Ablegen/Wackeln
-- **Priorität**: `V1.1` · **Kategorie**: `MUST` · **Risiko**: Niedrig · **Aufwand**: 1–2 PT
-- **Was**: Erkennen, wenn das Gerät abgelegt/nicht getragen wird (niedrige, nicht-periodische
-  Aktivität) und Zählung pausieren. Adressiert direkt HW-Beobachtung A3/B3 aus Doc 13 (Wackeln → Fehlzählung).
-- **Technik**: Aktivitäts-Gate über Envelope-Varianz + fehlende Periodizität (Autokorrelation).
-- **Integration**: zusätzliches Gate in `workout_engine.dart` (Shadow-verträglich, konservativ).
-- **DoD**: Bei Ablegen keine neuen Reps; Unit-Test mit synthetischem Rausch-Signal.
+### B4 — PRs & Badges · `FR-B4`
 
-### B7 — Onboarding-Tutorial für Sensor-Platzierung
-- **Priorität**: `V1.1` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 1–2 PT
-- **Was**: Kurzer bebilderter Flow: Wo/wie sitzt der M5StickC, warum Kalibrierung. Reduziert
-  die #1-Fehlerquelle bei Wearables (falsche Orientierung → schlechte Zählung, siehe A8).
-- **Integration**: erweitert bestehendes Onboarding; einmalig, überspringbar.
-- **DoD**: Tutorial beim Erststart; jederzeit in Settings erneut aufrufbar.
+- **Priorität**: `V2.0` · **NICE** · 2–3 PT
+- **Was**: Meiste Reps / höchste Velocity / Serie dezent feiern.
+- **DoD**: PR pro Übung; Badge in Summary.
 
-### B8 — „Blind-Mode" / Audio-First-Training
-- **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 2 PT
-- **Was**: Reine Audio-Führung (Rep-Klick, Ansage bei Satzende, Pausen-Ende) für Training
-  ohne Blick aufs Handy. Baut auf Sound-Asset (P1-5) + Glanceability (P2-3) auf.
-- **Integration**: `feedback_service.dart` erweitern (TTS-Ansagen), Settings-Toggle.
-- **DoD**: Vollständiger Satz ohne Bildschirmkontakt führbar; respektiert Stumm-Schalter.
+### B5 — History Trends · `FR-B5`
 
-### B9 — Konfigurierbare Übungs-Profile (Ziel-Reps/Sätze)
-- **Priorität**: `V2.0` · **Kategorie**: `NICE` · **Risiko**: Niedrig · **Aufwand**: 2 PT
-- **Was**: Pro Übung Zielwerte (z. B. 4×12) definieren; Fortschrittsanzeige „Satz 2/4".
-  Strukturiert das Training, ohne Zwang.
-- **Integration**: `exercise_registry.dart` + Drift-Preset; Anzeige in `home_screen.dart`.
-- **DoD**: Ziele setzbar/persistent; Fortschritt sichtbar; optional.
+- **Priorität**: `V2.0` · **MUST** · 3 PT · **Delta**
+- **Already**: `history_screen.dart` listet Sessions.
+- **Delta**: Volumen- und Velocity-Trends, Zeitraum-Filter, Charts (`fl_chart` o. Ä.) — **nicht** neuen Screen von Null.
+- **DoD**: Trends pro Übung; Filter; lesend.
 
-### B10 — Diagnose-/Debug-Overlay für Feldtests (Developer-Mode)
-- **Priorität**: `V1.1` · **Kategorie**: `MUST` (für HW-QA) · **Risiko**: Niedrig · **Aufwand**: 1–2 PT
-- **Was**: Versteckter Entwickler-Modus, der Live-Signal (Envelope, θ-Schwelle, Peaks, Paketrate,
-  Shadow-Pipeline-Delta) einblendet. Beschleunigt die offene HW-Validierung (A1–A5 in Doc 13) massiv.
-- **Integration**: Overlay über `home_screen.dart`, Aktivierung via versteckter Geste in Settings.
-- **DoD**: Overlay zeigt Live-Signale + Shadow-Delta; standardmäßig aus; kein Release-UI-Impact.
+### B6 — Ghost-Rep-Watchdog · `FR-B6`
+
+- **Priorität**: `V1.1` · **MUST** · **Risiko: Mittel** · 1–2 PT · **Delta**
+- **Already**: gP-Gates (Floor, Dauer, Peak) gegen Wackeln.
+- **Delta**: Erkennen **Ablegen / nicht-periodische Aktivität** (Envelope-Varianz + fehlende Periodizität) und Zählung **pausieren** — zusätzlich, nicht Ersatz der Gates.
+- **Risiko**: Zu aggressiv → echte langsame Reps sterben. Pflicht: HW-Retest Curl vs. Ablegen vs. Wackeln (Doc 11/13).
+- **DoD**:
+  - [ ] Bei Ablegen keine neuen Reps.
+  - [ ] Unit: synthetisches Rauschen / Ablegen-Signal.
+  - [ ] HW-Notiz: Curl noch zählbar; Ablegen still.
+
+### B7 — Sensor-Platzierungs-Tutorial · `FR-B7`
+
+- **Priorität**: `V1.2` · **NICE** · 1–2 PT · **Delta**
+- **Already**: Onboarding / Guided Calib erklären Platzierung teilweise.
+- **Delta**: Kurzer bebilderter Flow „wo sitzt der Stick“, aus Settings wiederholbar.
+- **DoD**: Erststart optional; Settings re-run.
+
+### B8 — Audio-First / Blind-Mode · `FR-B8`
+
+- **Priorität**: `V2.0` · **NICE** · 2 PT
+- **Was**: Rep-Klick, Satzende, Pause-Ende ohne Blick aufs Handy (P1-5 + P2-3).
+- **DoD**: Satz ohne Screen; respektiert Stumm.
+
+### B9 — Übungs-Zielprofile · `FR-B9`
+
+- **Priorität**: `V2.0` · **NICE** · 2 PT
+- **Was**: z. B. 4×12; Fortschritt „Satz 2/4“.
+- **DoD**: Ziele persistent; optional.
+
+### B10 — Diagnose-/Debug-Overlay · `FR-B10`
+
+- **Priorität**: `V1.1` · **MUST** (für HW-QA) · Risiko niedrig · 1–2 PT · **Greenfield-UI**
+- **Was**: Dev-Mode: Live Envelope, θ, Peaks, Paketrate, Shadow-Delta.
+- **Integration**: Overlay `home_screen`; versteckte Geste/Settings.
+- **DoD**: Standard aus; kein Release-UI-Impact; beschleunigt Doc-13 A1–A5 + A1/A5/A8/B6.
+
+---
+
+### B11+ — Ergänzungen aus Code-Review (2026-07-23)
+
+### B11 — BLE/Paket-Qualitäts-Indikator · `FR-B11`
+
+- **Priorität**: `V1.2` · **NICE** · 1 PT
+- **Was**: Live-Hinweis bei Jitter/Paketverlust (an P2-5 / B10 andocken).
+- **DoD**: Sichtbar im Dev-Overlay; optional dezent im Product-UI.
+
+### B12 — Einheitliches Shadow-vs-Live-Report-Format · `FR-B12`
+
+- **Priorität**: `V1.2` · **MUST** (für A8/A4) · 1 PT
+- **Was**: Ein Log-/Export-Schema für Shadow-Deltas (gP vs. Magnitude vs. ML-Vorschlag).
+- **DoD**: Spec in Doc + optional JSONL-Export; B10 kann es anzeigen.
+
+### B13 — Korrektur-Analytics (lokal) · `FR-B13`
+
+- **Priorität**: `V1.2` · **NICE** · 1–2 PT
+- **Was**: Under/Over-Count-Häufigkeit pro Übung aus `CorrectionEvent` — steuert B6/A1-Tuning, ohne Cloud.
+- **DoD**: Aggregate lokal; Anzeige Dev oder History.
+
+### B14 — Multi-Übung-Session ohne ML · `FR-B14`
+
+- **Priorität**: `V1.2` · **NICE** · 2 PT
+- **Was**: Schneller Übungswechsel + letzter θ/Preset pro Übung — billiger Nutzen als A4.
+- **DoD**: Wechsel &lt; 2 Taps; Profil pro Übung geladen.
+
+### B15 — Privacy-DoD für Exporte · `FR-B15`
+
+- **Priorität**: mit **B2** · **MUST** · 0.5 PT
+- **Was**: Klartext was in CSV/JSON steckt; kein stiller Upload; Löschpfad dokumentiert.
+- **DoD**: In B2-Issue mit abhaken.
+
+### B16 — Firmware Power-States an Spec koppeln · `FR-B16`
+
+- **Priorität**: mit **A3** · **NICE** · (in A3 enthalten)
+- **Was**: `DeviceStatus` / LOW_POWER aus protocol.yaml gegen echte FW-States prüfen und dokumentieren.
 
 ---
 
 ## Teil C — Konsolidierte Roadmap
 
-### V1.1 — Quick Wins (datenschutzfreundlich, geringes Risiko, hoher Nutzen)
+### Gate vor Feature-Arbeit
 
-| ID | Feature | Kat. | Aufwand | Risiko |
-|----|---------|------|---------|--------|
-| A1 | VBT-Velocity-Metriken | MUST | 2–3 PT | Niedrig |
-| A2 | Akkustand-Anzeige | MUST | 1–2 PT | Niedrig |
-| B2 | Session-Export CSV/JSON | MUST | 1 PT | Niedrig |
-| B6 | Ghost-Rep-Watchdog | MUST | 1–2 PT | Niedrig |
-| B10 | Diagnose-Overlay (Dev) | MUST | 1–2 PT | Niedrig |
-| B1 | Adaptive Ruhepausen | NICE | 1–2 PT | Niedrig |
-| B3 | Rep-Timeline-Sparkline | NICE | 2 PT | Niedrig |
-| B7 | Sensor-Platzierungs-Tutorial | NICE | 1–2 PT | Niedrig |
+| Gate | Quelle | Status |
+|------|--------|--------|
+| Physische Session A1–A5 | Doc 13 | **[ ] offen** — priorisieren |
+| B10 Diagnose-Overlay | dieses Doc | empfohlen **erstes** V1.1-Ticket |
+
+### V1.1 — Schlanke Quick Wins (~6–10 PT gesamt)
+
+| ID | Feature | Kat. | Aufwand | Risiko | Code-Stand |
+|----|---------|------|---------|--------|------------|
+| **FR-B10** | Diagnose-Overlay | MUST | 1–2 PT | Niedrig | Greenfield-UI |
+| **FR-B6** | Ghost-Rep-Watchdog (Ablegen) | MUST | 1–2 PT | **Mittel** | Delta zu gP-Gates |
+| **FR-B2** (+B15) | Session-Export + Privacy | MUST | 1–1.5 PT | Niedrig | Greenfield |
+| **FR-A1** | VBT light (Peak + Loss UI) | MUST | 2–3 PT | Niedrig* | Delta `peakMagnitude` |
+| **FR-A2** | Akku Polish/QA | DONE | 0–0.5 PT | Niedrig | **Already** |
+
+\*A1 light = nur Anzeige. Autoregulation → V1.2.
+
+**Nicht in V1.1** (früher als „Quick Win“ zu voll): B1, B3, B7 → **V1.2**.
+
+**Empfohlene Reihenfolge V1.1**:  
+`B10 → B6 → B2(+B15) → A1 light → A2 QA abschließen`.
+
+### V1.2 — Nach VBT/Export
+
+| ID | Feature | Kat. | Aufwand |
+|----|---------|------|---------|
+| FR-B1 | Adaptive Ruhepausen | NICE | 1–2 PT |
+| FR-B3 | Rep-Timeline | NICE | 2 PT |
+| FR-B7 | Platzierungs-Tutorial | NICE | 1–2 PT |
+| FR-B11 | BLE-Qualitäts-Indikator | NICE | 1 PT |
+| FR-B12 | Shadow-Report-Format | MUST | 1 PT |
+| FR-B13 | Korrektur-Analytics | NICE | 1–2 PT |
+| FR-B14 | Multi-Übung ohne ML | NICE | 2 PT |
+| FR-A1 | VBT Persist/Mean (optional Autoreg Opt-in) | MUST | 1–2 PT |
 
 ### V2.0 — Feature-Release (ML & Tiefe)
 
 | ID | Feature | Kat. | Aufwand | Risiko |
 |----|---------|------|---------|--------|
-| A4 | ML Exercise Recognition | MUST | 8–12 PT | Mittel |
-| A9 | LOSO-Eval-Harness | MUST | 2 PT | Niedrig |
-| B5 | History/Trends-Screen | MUST | 3 PT | Niedrig |
-| A5 | IMU Form-Quality-Score | NICE | 3–4 PT | Niedrig-Mittel |
-| A6 | CV-Form-Feedback (Winkel) | NICE | 4–6 PT | Mittel |
-| A8 | Magnitude/PCA Shadow-Signal | NICE | 2–3 PT | Niedrig |
-| A3 | Deep-Sleep-Strategie | NICE | 2–3 PT | Mittel |
-| B4 | PRs & Badges | NICE | 2–3 PT | Niedrig |
-| B8 | Audio-First-Mode | NICE | 2 PT | Niedrig |
-| B9 | Übungs-Profile (Ziele) | NICE | 2 PT | Niedrig |
+| FR-A4 | ML Exercise Recognition | MUST | **15–25 PT** (Voll) / 8–12 Demo | Mittel |
+| FR-A9 | LOSO-Harness | MUST | 2 PT | Niedrig |
+| FR-B5 | History Trends (extend) | MUST | 3 PT | Niedrig |
+| FR-A5 | IMU Form-Quality | NICE | 3–4 PT | Niedrig–Mittel |
+| FR-A6 | CV Form-Feedback | NICE | 4–6 PT | Mittel |
+| FR-A8 | Magnitude Shadow | NICE | 2–3 PT | Niedrig |
+| FR-A3 | Deep-Sleep | NICE | 2–3 PT | Mittel |
+| FR-B4 | PRs & Badges | NICE | 2–3 PT | Niedrig |
+| FR-B8 | Audio-First | NICE | 2 PT | Niedrig |
+| FR-B9 | Zielprofile | NICE | 2 PT | Niedrig |
 
-### V3.0 — Vision (Cloud/Personalisierung, höheres Risiko)
+### V3.0 — Vision
 
 | ID | Feature | Kat. | Aufwand | Risiko |
 |----|---------|------|---------|--------|
-| A7 | LLM Post-Session-Coaching | NICE | 6–10 PT | Hoch |
-| A10 | Teachable-Personalisierung | NICE | 4–6 PT | Mittel |
+| FR-A7 | LLM Coaching | NICE | 6–10 PT | Hoch |
+| FR-A10 | Teachable-Presets (Delta zu Calib) | NICE | 4–6 PT | Mittel |
 
 ---
 
-## Teil D — Ticket-Backlog (Copy-Paste-fähig)
+## Teil D — Ticket-Backlog (Copy-Paste)
 
-> Format pro Zeile: `[ID] Titel — Priorität/Kategorie — Aufwand`. Details in der jeweiligen Karte oben.
+> Kanonische ID = `FR-*`. Details in den Karten oben.
 
 ```
-[FR-A1]  VBT-Velocity-Metriken pro Rep + Velocity-Loss %   — V1.1/MUST — 2-3 PT
-[FR-A2]  M5StickC Akkustand via BLE 0x180F                 — V1.1/MUST — 1-2 PT
-[FR-A3]  Deep-Sleep + Motion-Wake (Firmware+App)           — V2.0/NICE — 2-3 PT
-[FR-A4]  ML Exercise Recognition (TFLite, Shadow)          — V2.0/MUST — 8-12 PT
-[FR-A5]  IMU Form-Quality-Score (ROM/Tempo)                — V2.0/NICE — 3-4 PT
-[FR-A6]  CV Form-Feedback über Gelenkwinkel                — V2.0/NICE — 4-6 PT
-[FR-A7]  LLM Post-Session-Coaching (Opt-in)                — V3.0/NICE — 6-10 PT
-[FR-A8]  Magnitude/PCA Shadow-Signal                       — V2.0/NICE — 2-3 PT
-[FR-A9]  LOSO Evaluations-Harness (tools/ml)               — V2.0/MUST — 2 PT
-[FR-A10] Teachable-Kalibrierungs-Presets                   — V3.0/NICE — 4-6 PT
-[FR-B1]  Adaptive Ruhepausen (VBT-gesteuert)               — V1.1/NICE — 1-2 PT
-[FR-B2]  Session-Export CSV/JSON                           — V1.1/MUST — 1 PT
-[FR-B3]  Rep-Timeline-Sparkline                            — V1.1/NICE — 2 PT
-[FR-B4]  Persönliche Rekorde & Badges                      — V2.0/NICE — 2-3 PT
-[FR-B5]  History-Screen mit Trends                         — V2.0/MUST — 3 PT
-[FR-B6]  Ghost-Rep-Watchdog (Ablegen/Wackeln)              — V1.1/MUST — 1-2 PT
-[FR-B7]  Sensor-Platzierungs-Tutorial                      — V1.1/NICE — 1-2 PT
-[FR-B8]  Audio-First / Blind-Mode                          — V2.0/NICE — 2 PT
-[FR-B9]  Übungs-Profile (Ziel-Reps/Sätze)                  — V2.0/NICE — 2 PT
 [FR-B10] Diagnose-/Debug-Overlay (Developer-Mode)          — V1.1/MUST — 1-2 PT
-```
+[FR-B6]  Ghost-Rep-Watchdog (Ablegen/nicht-periodisch)     — V1.1/MUST — 1-2 PT  [Risiko Mittel]
+[FR-B2]  Session-Export CSV/JSON                           — V1.1/MUST — 1 PT
+[FR-B15] Privacy-DoD Exporte (mit B2)                      — V1.1/MUST — 0.5 PT
+[FR-A1]  VBT light: Peak + Velocity-Loss % UI              — V1.1/MUST — 2-3 PT
+[FR-A2]  M5 Akkustand — DONE; Polish/HW-QA                 — V1.1/DONE — 0-0.5 PT
 
-**Empfohlene Reihenfolge V1.1**: B10 (Diagnose zuerst → beschleunigt alles) → A2 → A1 → B6 → B2 → B1/B3/B7.
+[FR-B1]  Adaptive Ruhepausen (VBT-gesteuert)               — V1.2/NICE — 1-2 PT
+[FR-B3]  Rep-Timeline-Sparkline                            — V1.2/NICE — 2 PT
+[FR-B7]  Sensor-Platzierungs-Tutorial                      — V1.2/NICE — 1-2 PT
+[FR-B11] BLE/Paket-Qualitäts-Indikator                     — V1.2/NICE — 1 PT
+[FR-B12] Shadow-vs-Live Report-Format                      — V1.2/MUST — 1 PT
+[FR-B13] Korrektur-Analytics lokal                         — V1.2/NICE — 1-2 PT
+[FR-B14] Multi-Übung-Session ohne ML                       — V1.2/NICE — 2 PT
+
+[FR-A3]  Deep-Sleep + Motion-Wake (Firmware+App)           — V2.0/NICE — 2-3 PT
+[FR-A4]  ML Exercise Recognition (TFLite, Shadow)          — V2.0/MUST — 15-25 PT
+[FR-A5]  IMU Form-Quality-Score                            — V2.0/NICE — 3-4 PT
+[FR-A6]  CV Form-Feedback Gelenkwinkel                     — V2.0/NICE — 4-6 PT
+[FR-A8]  Magnitude/PCA Shadow-Signal                       — V2.0/NICE — 2-3 PT
+[FR-A9]  LOSO Evaluations-Harness                          — V2.0/MUST — 2 PT
+[FR-B4]  Persönliche Rekorde & Badges                      — V2.0/NICE — 2-3 PT
+[FR-B5]  History Trends (extend history_screen)            — V2.0/MUST — 3 PT
+[FR-B8]  Audio-First / Blind-Mode                          — V2.0/NICE — 2 PT
+[FR-B9]  Übungs-Zielprofile                                — V2.0/NICE — 2 PT
+
+[FR-A7]  LLM Post-Session-Coaching (Opt-in)                — V3.0/NICE — 6-10 PT
+[FR-A10] Teachable-Presets (Delta zu Calib/Nudge)          — V3.0/NICE — 4-6 PT
+```
 
 ---
 
@@ -492,21 +507,36 @@ Speichern als Preset in Drift-DB, pro Übung wählbar.
 
 | Abgelehnt | Quelle | Begründung |
 |-----------|--------|------------|
-| Edge Impulse / proprietäre TinyML-Plattform | Q8 | Kein Flutter, Vendor-Lock-in; wir nutzen TFLite offen (A4) |
-| Multi-Sensor-Setup (4 IMUs) | Q4 | FlowRep bleibt Single-Sensor; Q4 zeigt selbst: 1 Sensor genügt |
-| OpenPose-basierte CV | Q10 | Veraltet/schwer für Mobile; MediaPipe/BlazePose ist überlegen |
-| Flask/Web-Backend als Kern | Q3 | FlowRep ist native Flutter-App, lokale-first; kein Web-Wrapper |
-| LLM als Zählquelle | Q6 | Verletzt Leitprinzip 1 (IMU autoritativ); LLM nur für Sprache |
+| Edge Impulse / proprietäre TinyML-Plattform | Q8 | Vendor-Lock-in; TFLite offen (A4) |
+| Multi-Sensor-Setup (4 IMUs) | Q4 | Single-Sensor; Q4: 1 Sensor genügt |
+| OpenPose-basierte CV | Q10 | Veraltet; MediaPipe/BlazePose |
+| Flask/Web-Backend als Kern | Q3 | Native Flutter, lokale-first |
+| LLM als Zählquelle | Q6 | Verletzt Leitprinzip 1 |
+| A2 als Firmware-Greenfield | — | **Code existiert** (fee3 + UI) |
+| A1 primär über New-Pipeline PeakDetector | — | Product = gP; New-Pipeline Shadow |
 
 ---
 
 ## Teil F — Querverweise & nächste Schritte
 
-- **Sensor-Fusion-Basis** für A6: [07_CV_SENSOR_FUSION](07_CV_SENSOR_FUSION.md)
-- **Skelett-Overlay** für A6: [14_CV_SKELETT_OVERLAY_PLAN](14_CV_SKELETT_OVERLAY_PLAN.md)
-- **Offene HW-Punkte**, die B10/B6 direkt adressieren: [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md)
-- **Release-Invarianten**: [00_UEBERSICHT](00_UEBERSICHT.md#verbotene-aktionen)
+| Thema | Doc |
+|-------|-----|
+| 1.0 offene HW-Gates | [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) A1–A5 |
+| Ledger Code vs. offen | [12_IMPLEMENTIERUNGS_STATUS](12_IMPLEMENTIERUNGS_STATUS.md) |
+| Sensor-Fusion / CV | [07_CV_SENSOR_FUSION](07_CV_SENSOR_FUSION.md) · [14](14_CV_SKELETT_OVERLAY_PLAN.md) |
+| BLE/Battery-Protokoll | [protocol.yaml](../reference/protocol.yaml) |
+| Invarianten | [00_UEBERSICHT](00_UEBERSICHT.md#verbotene-aktionen) |
 
-**Vorschlag als unmittelbar nächster Schritt**: Mit **FR-B10 (Diagnose-Overlay)** starten — es ist
-gering-riskant, additiv und liefert das Werkzeug, um die noch offene physische HW-Validierung
-(A1–A5 in Doc 13) sowie alle folgenden Signal-Features (A1, A5, A8, B6) sauber zu verifizieren.
+**Unmittelbar**:
+1. Doc-13 **A1–A5** physisch abschließen (mit oder ohne B10).  
+2. **FR-B10** bauen → QA und Signal-Features entblocken.  
+3. Dann **B6 → B2 → A1 light**.
+
+---
+
+## Changelog dieses Docs
+
+| Datum | Änderung |
+|-------|----------|
+| 2026-07-22 | Erstfassung: 10 Quellen, A1–A10, B1–B10, Roadmap V1.1/V2/V3 |
+| 2026-07-23 | Code-Review-Korrektur: A2 DONE; A1 gP-Pfad; Already/Delta; V1.1 schlank; B1/B3/B7 → V1.2; Risiken A1/B6/A4; B11–B16; Gate Doc 13; Product-Pfad-Tabelle |

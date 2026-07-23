@@ -16,11 +16,13 @@ Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physi
 - Real pose landmark confidence into fusion (`PoseFrameMapper.armConfidence` / `primaryElbow`; no live `0.8` placeholder)
 - **CV-07 skeleton overlay** (optional): live bones/joints over preview, active-arm highlight (E1), elbow form color (E2), tracking badge (E3), framed guide (E4), confidence hysteresis (E5), draw modes full/upper/arm-only (E6), fusion rep pulse UI-only (E7), opt-in local landmark CSV under app documents (E9), `VisionFocus.forExercise` (E10). No E8 privacy blur. Empty no-pose frames keep tracking quality honest when person leaves frame.
 - Living docs: `docs/Version1.0/10`–`14`, hardware session notes
+- Post-1.0 backlog: `docs/Version1.0/15_VERBESSERUNGEN_EXTERNE_REPOS.md` (external-repo research + ticket IDs)
 
 ### Changed
 
 - gP counting hardened against wiggle (θ-floor 50, 0.70×θ, duration ≥15 samples, peak ≥1.2×θ)
 - Docs reorganized under `docs/reference/`, `docs/hardware/`, `docs/design/`, `docs/archive/`
+- Doc 15 code-review pass: A2 battery marked DONE, A1 on gP product path, slim V1.1, Already/Delta, B11–B16; cross-links in 00/12/13
 
 ### Fixed
 
