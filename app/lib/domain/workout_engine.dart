@@ -5,6 +5,7 @@ import 'package:flowrep/data/logger.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
+import 'package:flowrep/domain/exercise_engine.dart' as pipeline;
 
 enum WorkoutState { idle, calibrating, active, paused, guidedCalibration, connectionLost }
 
@@ -80,6 +81,29 @@ class WorkoutEngineEvent {
 /// Both parameter choices are simulation-tuned starting points, not
 /// validated against real hardware yet.
 class WorkoutEngine {
+  // === NEUE PIPELINE (KRITISCHER SCHRITT 3: Facade-Pattern) ===
+  // Feature-Flag: solang false, läuft der Legacy-Pfad unverändert weiter.
+  // Aktivierung erst, wenn die neue Pipeline gegen reale Daten validiert ist.
+  // ignore: prefer_final_fields
+  bool _useNewPipeline = false;
+
+  /// Die neue ExerciseEngine-Pipeline (SignalChain → RepCounter → StateMachine).
+  /// Wird lazy initialisiert, sobald rotationAxis/gyroBias verfügbar sind.
+  pipeline.ExerciseEngine? _exerciseEngine;
+
+  /// Initialisiert die neue Pipeline mit Kalibrierungsdaten.
+  /// Wird aus [applyCalibration] aufgerufen, wenn rotationAxis/gyroBias vorhanden.
+  void _initNewPipeline(List<double> rotationAxis, List<double> gyroBias) {
+    _exerciseEngine?.dispose();
+    _exerciseEngine = pipeline.ExerciseEngine(
+      config: pipeline.ExerciseEngineConfig(
+        rotationAxis: rotationAxis,
+        gyroBias: gyroBias,
+        hasValidCalibration: hasValidCalibration,
+      ),
+    );
+  }
+
   WorkoutEngine({
     required this.exerciseId,
     SignalProcessor? signalProcessor,
@@ -394,6 +418,43 @@ class WorkoutEngine {
   int get finalCalibrationSignalCount => _finalCalibrationSignalCount;
 
   void processSample(SensorSample s) {
+    if (_useNewPipeline && _exerciseEngine != null) {
+      _processSampleNewPipeline(s);
+      return;
+    }
+    _processSampleLegacy(s);
+  }
+
+  /// NEUER PFAD (KRITISCHER SCHRITT 3): delegiert an ExerciseEngine.
+  /// Öffentliche API bleibt identisch — gleiche Events, gleiche Zustände.
+  void _processSampleNewPipeline(SensorSample s) {
+    _diagEngineSampleCount++;
+
+    final result = _exerciseEngine!.processSample(
+      timestampMs: s.timestamp.millisecondsSinceEpoch,
+      gx: s.gx,
+      gy: s.gy,
+      gz: s.gz,
+    );
+
+    if (result.repResult.repCounted) {
+      _repsInSet.add(Rep(
+        timestamp: s.timestamp,
+        peakMagnitude: result.repResult.qualityScore ?? 0.0,
+      ));
+      _lastMovementAt = s.timestamp;
+      _emitStateEvent();
+    }
+
+    // Pause-Timeout prüfen (Satz beenden nach Inaktivität)
+    if (_state == WorkoutState.active &&
+        _lastMovementAt != null &&
+        s.timestamp.difference(_lastMovementAt!) > pauseAfter) {
+      _endSet();
+    }
+  }
+
+  void _processSampleLegacy(SensorSample s) {
     _diagEngineSampleCount++;
 
     final combinedSignal = _signalProcessor.process(s);
@@ -1009,7 +1070,10 @@ class WorkoutEngine {
     return peaks;
   }
 
-  void dispose() => _controller.close();
+  void dispose() {
+    _exerciseEngine?.dispose();
+    _controller.close();
+  }
 
   /// Call when the BLE connection is lost mid-workout. Saves the current
   /// set as aborted and transitions to [WorkoutState.connectionLost].
@@ -1174,6 +1238,9 @@ class WorkoutEngine {
     // authoritative yet (still calibrationReps/_gpIsAuthoritative's job).
     if (rotationAxis != null && gyroBias != null) {
       _signalProcessor.setKnownAxis(rotationAxis, gyroBias);
+      // KRITISCHER SCHRITT 3: Neue Pipeline initialisieren (Feature-Flag
+      // bleibt vorerst false — Aktivierung nach Validierung gegen reale Daten).
+      _initNewPipeline(rotationAxis, gyroBias);
     }
     // Reset transient state so the engine starts fresh with the new
     // threshold, mirroring what a freshly-constructed engine would have.
