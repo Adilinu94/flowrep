@@ -1,11 +1,12 @@
 # CV-07 — Skelett-Overlay & Pose-Sichtbarkeit (Implementierungsplan)
 
-> **Status**: 📋 PLAN (noch nicht implementiert)  
+> **Status**: 📋 PLAN (noch nicht implementiert) — **Scope: MVP + E1–E7, E9, E10**  
 > **Stand**: 2026-07-23  
 > **Bezug**: Screenshot-Referenz (Fitness-App mit gelben Gelenkpunkten + grünen Knochenlinien)  
 > **Voraussetzung**: CV-01…06 Code-Scaffold (`CameraPoseProvider`, `PoseFrame`, `AngleCalculator`, Fusion)  
 > **Priorität**: Optional CV-Track — **kein** 1.0 Release-Blocker  
 > **Living Tracker**: nach Umsetzung in `12` / `13` abhaken  
+> **Out**: **E8 Privacy-Blur** — bewusst **nicht** im Scope (User-Entscheidung)
 
 ---
 
@@ -16,13 +17,32 @@ Die App soll wie im Referenz-Screenshot:
 1. Das **Live-Kamerabild** zeigen.
 2. Den Körper des Users als **Skelett** erkennen (Arme, Gelenke, optional ganzer Körper).
 3. **Punkte** (Gelenke) und **Linien** (Knochenverbindungen) darüber zeichnen.
-4. Optional Form-/Tracking-Hinweise (z. B. „Tracking“, Winkel, good/bad).
+4. Form-/Tracking-Hinweise: aktiver Arm, Winkel-Farbe, Tracking-Badge, Framed-Guide, Fusion-Pulse.
 
 **Produktprinzip bleibt unverändert:**
 
 - IMU (M5StickC) ist **autoritativ** fürs Zählen.
 - Kamera ist **optionaler** Validator / Trust-UI / Demo-Pfad.
 - App funktioniert vollständig ohne Kamera.
+- Verarbeitung **nur lokal** (kein Upload) — ohne E8-Blur-UI.
+
+---
+
+## 0.1 Scope-Matrix (verbindlich)
+
+| ID | Feature | Im Plan? | Phase |
+|----|---------|----------|--------|
+| MVP | Live-Skelett (Bones + Joints) über Preview | **ja** | A–C |
+| **E1** | Aktiven Arm hervorheben | **ja** | B + C |
+| **E2** | Winkel-Farbcodierung am Ellenbogen | **ja** | C + E |
+| **E3** | Tracking-Quality-Badge | **ja** | C |
+| **E4** | Framed-Guide / „Person nicht erkannt“ | **ja** | C + D |
+| **E5** | Confidence-Hysterese (weniger Flackern) | **ja** | D |
+| **E6** | Skeleton-Modi Full / Upper / Arm-only | **ja** | A + B + Settings |
+| **E7** | Fusion-Visual Sync (Pulse bei bestätigter Rep) | **ja** | E |
+| **E8** | Privacy Mode (Blur / nur Stickfigure) | **nein** | — out of scope |
+| **E9** | Landmark-CSV/JSON Debug (opt-in, lokal) | **ja** | F |
+| **E10** | Multi-Exercise Joint Maps (vorbereiten) | **ja** | A + F |
 
 ---
 
@@ -42,7 +62,7 @@ Die App soll wie im Referenz-Screenshot:
 | Desktop-Skelett (Python) | `tools/webcam_rep_counter.py` | ✅ Referenz für Look & Landmark-Indizes |
 
 **Lücke:** Kein `CustomPainter` / Overlay, der Landmarks auf das Preview mappt.  
-Ohne diese Schicht „sieht“ der User die Erkennung nicht — obwohl die Pipeline Daten liefert.
+Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“ der User die Erkennung nicht.
 
 ---
 
@@ -52,9 +72,10 @@ Ohne diese Schicht „sieht“ der User die Erkennung nicht — obwohl die Pipel
 |--------------|------|------------|
 | Pose-Modell | Bestehendes `flutter_pose_detection` (MediaPipe-ähnlich, 33 Punkte) | Schon integriert, getestet, Mapper vorhanden |
 | Rendering | Flutter `CustomPaint` + `Stack` über `CameraPreview` | Kein nativer Extra-Layer; testbar; Theme-fähig |
-| Koordinaten | Normalisierte Landmark-`x/y` (0…1) → Widget-Pixel | MediaPipe-Standard; mit Aspect-Ratio / Mirror korrigieren |
-| Neue Dependencies | **Keine** für MVP-Overlay | Vermeidet Doppel-Pipeline |
+| Koordinaten | Normalisierte Landmark-`x/y` (0…1) → Widget-Pixel | MediaPipe-Standard; Aspect-Ratio / Mirror |
+| Neue Dependencies | **Keine** für Overlay + E1–E7 | Vermeidet Doppel-Pipeline |
 | Cloud-Vision | **Nein** | Privacy, Offline-Gym, Latenz |
+| E8 Blur | **Nicht bauen** | Explizit aus Scope genommen |
 
 ---
 
@@ -67,254 +88,312 @@ Ohne diese Schicht „sieht“ der User die Erkennung nicht — obwohl die Pipel
          │                               └──────────┬───────────┘
          │ Preview                                   │ PoseFrame
          ▼                                           ▼
+                    ┌────────────────────────────────┐
+                    │ Confidence smoother (E5)       │
+                    │ + TrackingQuality (E3)         │
+                    └───────────────┬────────────────┘
+                                    ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ CameraPreviewOverlay (Stack)                                │
 │  ┌────────────────────┐  ┌────────────────────────────────┐ │
-│  │ CameraPreview      │  │ SkeletonOverlay (CustomPaint)  │ │
-│  │ (live video)       │  │ points + bones + optional HUD  │ │
+│  │ CameraPreview      │  │ SkeletonPainter (E1,E2,E6)     │ │
+│  │ + Framed-Guide E4  │  │ bones/joints + arm highlight   │ │
+│  └────────────────────┘  └────────────────────────────────┘ │
+│  ┌────────────────────┐  ┌────────────────────────────────┐ │
+│  │ Tracking badge E3  │  │ Fusion pulse E7 (kurz)         │ │
 │  └────────────────────┘  └────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
          │
-         ▼
-  camera_session_screen: last PoseFrame, angle, fusion badge
+         ├──→ camera_session_screen (HUD, toggles)
+         ├──→ FusionEngine (Decision → E7, Winkel → E2)
+         └──→ optional LandmarkRecorder (E9, debug only)
 ```
 
 ### 3.1 Neue / geänderte Dateien
 
-| Aktion | Pfad | Verantwortung |
-|--------|------|----------------|
-| **NEU** | `app/lib/presentation/widgets/skeleton_painter.dart` | `CustomPainter`: Punkte, Linien, Confidence-Filter |
-| **NEU** | `app/lib/domain/vision/pose_skeleton.dart` | Reine Daten: Bone-Liste (Index-Paare), MediaPipe-Konstanten |
-| **NEU** | `app/test/vision/pose_skeleton_test.dart` | Unit: Bone-Indizes, Mapping-Hilfen |
-| **NEU** | `app/test/widgets/skeleton_painter_test.dart` | Widget/Pump: Overlay malt ohne Crash bei leeren Landmarks |
-| **ÄNDERN** | `camera_preview_overlay.dart` | `Stack` + optionale `landmarks` / `showSkeleton` / `mirror` |
-| **ÄNDERN** | `camera_session_screen.dart` | Letzten `PoseFrame` halten und an Overlay reichen |
-| **ÄNDERN** | `vision_config.dart` (optional) | `highlightActiveArm`, `skeletonStyle` später |
-| **ÄNDERN** | Docs `12` / `13` | Checkbox nach Implementierung |
+| Aktion | Pfad | Verantwortung | Features |
+|--------|------|----------------|----------|
+| **NEU** | `app/lib/domain/vision/pose_skeleton.dart` | Bone-Listen, `SkeletonDrawMode`, Joint-Maps | MVP, **E6**, **E10** |
+| **NEU** | `app/lib/domain/vision/tracking_quality.dart` | Enum Tracking/Partial/Lost + Hysterese-State | **E3**, **E5** |
+| **NEU** | `app/lib/domain/vision/vision_focus.dart` | `VisionFocus` (primary joints/angles pro Übung) | **E10** |
+| **NEU** | `app/lib/presentation/widgets/skeleton_painter.dart` | CustomPainter: Bones, Joints, Farben | MVP, **E1**, **E2**, **E6** |
+| **NEU** | `app/lib/presentation/widgets/framed_guide_overlay.dart` | Silhouette/Rahmen + Empty-State-Copy | **E4** |
+| **NEU** | `app/lib/data/repositories/landmark_session_recorder.dart` | Opt-in CSV/JSON Landmarks lokal | **E9** |
+| **NEU** | Tests unter `app/test/vision/` + `app/test/widgets/` | Unit/Widget | alle |
+| **ÄNDERN** | `camera_preview_overlay.dart` | Stack + Skeleton + Guide + Badge-Slot | MVP, E3, E4 |
+| **ÄNDERN** | `camera_session_screen.dart` | Frame-State, HUD, Toggle, Pulse-Trigger | C–E |
+| **ÄNDERN** | `vision_config.dart` | `drawMode`, `highlightArm`, `recordLandmarks`, … | E1, E6, E9 |
+| **ÄNDERN** | `exercise_profile.dart` / registry | optionales `visionFocus` | **E10** |
+| **ÄNDERN** | `fusion` / session feedback hook | Pulse nur UI, keine Zähllogik | **E7** |
+| **ÄNDERN** | Docs `12` / `13` | Checkboxen nach Implementierung | — |
 
 **Nicht ändern (Guardrails):**
 
 - `workout_engine.dart` / `exercise_engine.dart` Zähllogik
 - `_useNewPipeline` (bleibt `false`)
 - IMU-autoritative Fusion-Regeln (nur UI-Feedback erweitern)
+- **Kein** Preview-Blur / Privacy-Stickfigure-Modus (**E8**)
 
 ---
 
-## 4. Detailplan — Phasen
+## 4. Detailplan — Phasen (inkl. aller Scope-Features)
 
-### Phase A — Domain: Skelett-Topologie (rein, testbar)
+### Phase A — Domain: Skelett-Topologie + Joint Maps (E6, E10)
 
-**Ziel:** Stabil definieren, *welche* Punkte verbunden werden.
+**Ziel:** Stabil definieren, *welche* Punkte verbunden und *pro Übung* primär sind.
 
 **Tasks:**
 
-1. `PoseSkeleton` mit MediaPipe-Indizes (bereits in `PoseLandmarkIndex` / AngleCalculator genutzt):
-   - Oberkörper-Core: 11–16 (Schultern, Ellenbogen, Handgelenke), 23–24 (Hüfte)
-   - Optional Beine: 25–28 (Knie, Knöchel)
-   - Gesicht optional weglassen (Noise im Gym)
-2. `List<(int, int)> bones` als const — Paare nur gültige Indizes 0…32.
-3. Helper `visibleEnough(landmark, minConf)` für Filter.
-4. Helper `toCanvasOffset(landmark, Size canvas, {bool mirrorX})`.
+1. `PoseSkeleton` mit MediaPipe-Indizes:
+   - **Full**: Torso + Arme + Beine (ohne Gesicht, Noise im Gym)
+   - **Upper** (**E6**): Schultern, Ellenbogen, Handgelenke, Hüfte
+   - **ArmOnly** (**E6**): nur aktive Armkette (Shoulder–Elbow–Wrist ± Gegenschulter)
+2. `List<(int, int)> bonesFor(SkeletonDrawMode mode, {ArmSide? active})`
+3. Helper `visibleEnough`, `toCanvasOffset(..., {bool mirrorX})`
+4. **E10:** `VisionFocus` Modell:
+   ```text
+   primaryAngle: elbow | shoulder | knee | …
+   primaryLandmarks: [shoulderIdx, elbowIdx, wristIdx]
+   secondaryBones: optional dimmed
+   ```
+5. Default-Map nur für **Bicep Curl** verdrahten; andere Übungen: Enum/Platzhalter ohne Produkt-Zwang Squats.
+6. Unit-Tests: Indizes 0…32; Modi; Curl-Focus zeigt Elbow-Kette.
 
 **DoD Phase A:**
 
-- [ ] Unit-Tests: alle Bone-Indizes in 0…32
-- [ ] Unit-Tests: Mapping (0,0)→links-oben, (1,1)→rechts-unten; Mirror invertiert X
-- [ ] `flutter test` grün, kein UI
+- [ ] Unit-Tests Bones/Modi/Mapping grün
+- [ ] `VisionFocus` für Curl definiert und getestet
+- [ ] Kein UI nötig
 
 ---
 
-### Phase B — Painter + Overlay-UI
+### Phase B — Painter + Overlay-UI (MVP + E1 + E6)
 
-**Ziel:** Screenshot-ähnliches Live-Skelett.
+**Ziel:** Screenshot-ähnliches Live-Skelett mit Arm-Highlight und Zeichen-Modi.
 
 **Tasks:**
 
-1. `SkeletonPainter extends CustomPainter`:
-   - Input: `List<FlowPoseLandmark>?`, `minConfidence`, `highlightArm` (left/right/both/none), Farben
-   - Zeichne erst **Bones** (Linien), dann **Joints** (Kreise) — wie im Referenzbild
-   - Punkt-Radius ~4–6 dp, Linie Stroke ~2–3 dp
-   - Default-Farben: Gelenke accent/gelb, Knochen primary/grün (Theme-aware optional)
-   - `shouldRepaint`: nur wenn landmarks/config sich ändern
-2. `CameraPreviewOverlay` erweitern:
-   ```dart
-   // konzeptionell
-   Stack(
-     fit: StackFit.expand,
-     children: [
-       CameraPreview(controller!),
-       if (showSkeleton && landmarks != null)
-         CustomPaint(
-           painter: SkeletonPainter(...),
-           size: Size.infinite,
-         ),
-       // optional: Tracking-Badge unten
-     ],
-   )
-   ```
-3. Aspect-Ratio / Letterboxing: Painter muss **dieselbe** Box wie Preview nutzen (nicht Full-Screen verzerren).
-4. Frontkamera: `mirrorX: true` wenn Lens front (User-Spiegel).
-5. Leere/fehlende Pose: kein Skelett, kein Crash; Status-Text „Person nicht erkannt“ optional.
+1. `SkeletonPainter`:
+   - Input: landmarks, `minConfidence`, `SkeletonDrawMode`, `ArmSide highlight`, optional elbow angle color
+   - Zuerst Bones, dann Joints
+   - **E1:** aktive Armkette volle Opacity/Farbe; Rest gedimmt (~0.35)
+   - **E6:** nur Bones des gewählten Modus zeichnen
+   - `shouldRepaint` streng
+2. `CameraPreviewOverlay`: Stack Preview + CustomPaint; gleiche Aspect-Box
+3. Frontkamera: `mirrorX: true`
+4. Leere Pose: kein Crash
 
 **DoD Phase B:**
 
-- [ ] Overlay kompiliert; Analyze 0 Issues
-- [ ] Widget-Test: leere Landmarks → kein Exception
-- [ ] Manuell am Gerät: Skelett sitzt ungefähr auf Schultern/Armen (erste grobe QA)
+- [ ] Analyze 0; Widget-Test leere Landmarks
+- [ ] Unit/Widget: Highlight-Arm und DrawMode ändern sichtbare Bone-Menge (über testbare pure API)
 
 ---
 
-### Phase C — Session-Screen-Anbindung
+### Phase C — Session-Anbindung + E3 Tracking-Badge + E2 Winkel-Farbe (Grund)
 
-**Ziel:** Live-Datenfluss end-to-end.
+**Ziel:** End-to-end Live-Pfad.
 
 **Tasks:**
 
-1. In `_CameraSessionScreenState`:
-   - `PoseFrame? _lastFrame`
-   - In `_onPoseFrame`: Frame speichern + Winkel wie bisher
-2. `CameraPreviewOverlay(..., landmarks: _lastFrame?.landmarks, showSkeleton: config.showSkeletonOverlay)`
-3. `VisionConfig.showSkeletonOverlay` aus Provider/Settings lesen (falls Settings schon CV-Flags haben; sonst vorerst hart `true` wenn detecting).
-4. Kleines HUD:
-   - „Tracking“ wenn `armConfidence >= min`
-   - „Niedrige Sichtbarkeit“ wenn confidence niedrig
-   - optional Ellenbogen-Winkel als Chip (schon Text vorhanden — optisch näher ans Preview)
+1. `_lastFrame` / smoothed quality state im Session-Screen
+2. Overlay mit live landmarks + config
+3. **E3:** `TrackingQuality` aus `armConfidence`:
+   - `tracking` ≥ minConfidence (z. B. 0.5)
+   - `partial` zwischen low und min
+   - `lost` darunter oder keine Pose
+   - Badge im Overlay (wie Referenz „Tracking“)
+4. **E2 (Grund):** Ellenbogen-Joint-Farbe:
+   - grün: Winkel im sinnvollen Curl-ROM-Pfad (zwischen up/down thresholds mit Hysterese der SM)
+   - gelb: außerhalb / grenzwertig
+   - rot: confidence zu niedrig **oder** klar partial (konfigurierbar)
+5. Copy: „Validierung — Zählen über Sensor“
+6. Soft-fail ohne Kamera unverändert
 
 **DoD Phase C:**
 
-- [ ] Start Detection → bei Person im Bild Skelett sichtbar
-- [ ] Stop → Overlay aus / letzte Frame cleared
-- [ ] Soft-fail ohne Kamera unverändert
-- [ ] Fusion/Winkel-Pfad unverändert grün in Unit-Tests
+- [ ] Person im Bild → Skelett + Badge
+- [ ] Stop cleared frame
+- [ ] Bestehende Vision/Fusion-Tests grün
 
 ---
 
-### Phase D — Polish & QA
+### Phase D — E4 Framed-Guide + E5 Hysterese + Polish
+
+**Ziel:** Nutzbarkeit im Gym + stabiles Overlay.
 
 **Tasks:**
 
-1. FPS-Label optional (debug only, `kDebugMode`)
-2. Skeleton Toggle im Camera-Screen (IconButton), schreibt lokal / Config
-3. Screenshot-Vergleich: Punkte auf Gelenken, nicht versetzt (Mapping-Bug fixen falls Letterbox)
-4. Dokumentieren in `docs/hardware/sessions/…` bei Geräte-Test
-5. `12_IMPLEMENTIERUNGS_STATUS` + `13_OFFENE_PUNKTE` updaten
+1. **E4:** `FramedGuideOverlay`
+   - Rahmen / stilisierte Oberkörper-Silhouette solange `lost` oder noch nie getrackt
+   - Text: „Oberkörper mittig, Arme im Bild“
+   - Nach N Frames ohne Pose während Detection: Warn-Chip (nicht spammen: max 1× / 3 s)
+2. **E5:** Confidence-Glättung
+   - EMA oder einfacher One-Euro auf `armConfidence` (bestehende Filter-Idee nutzen)
+   - Hysterese: z. B. 3 Frames under threshold → `lost`; 2 Frames good → `tracking`
+   - Verhindert Skelett-Flackern
+3. Skeleton Toggle + **E6** Mode-Picker (SegmentedButton oder Settings-Eintrag)
+4. Debug FPS nur `kDebugMode`
+5. Mapping-QA (Letterbox)
 
 **DoD Phase D:**
 
-- [ ] Manuelle Checkliste (unten §7) grün oder ehrlich env-deferred
-- [ ] Commit + Push mit Doc-Update
+- [ ] Unit-Tests Hysterese-Übergänge
+- [ ] Guide sichtbar wenn lost; weg wenn tracking
+- [ ] Manuell: weniger Flackern bei Grenz-Licht
 
 ---
 
-## 5. Implementierungsreihenfolge (empfohlen)
+### Phase E — E2 Feinschliff + E7 Fusion-Pulse
 
-```
-A Domain Bones/Mapping  →  B Painter/Overlay  →  C Session bind  →  D Polish/QA
-         │                        │                     │
-         └──── unit tests ────────┴── widget smoke ─────┘
-```
+**Ziel:** Form-Feedback und IMU↔Kamera Trust.
 
-Geschätzter Aufwand:
+**Tasks:**
 
-| Phase | Aufwand |
-|-------|---------|
-| A | 1–2 h |
-| B | 2–4 h |
-| C | 1–2 h |
-| D | 1–2 h + Gerätezeit |
-| **Summe MVP** | **ca. 1 Arbeitstag** (+ HW) |
+1. **E2 Feinschliff:** Farben an `PoseRepCounter`-Phase koppeln (down/up/transition), nicht nur Rohwinkel
+2. **E7:** Bei Fusion-Decision „beide einig / rep confirmed“:
+   - 200–400 ms Scale-Pulse am primären Ellenbogen-Punkt (oder kurzer Glow)
+   - **Kein** Einfluss aufs Zählen; nur UI
+   - Optional: bestehende Haptik/Sound unverändert mitnutzen
+3. Widget/Unit: Pulse-Flag wird gesetzt und nach Timeout cleared
+
+**DoD Phase E:**
+
+- [ ] Pulse nur bei bestätigter Fusion-Rep (simuliert in Test)
+- [ ] Zählstand IMU unverändert durch Pulse-Code
 
 ---
 
-## 6. Zehn sinnvolle Ergänzungen / Verbesserungen
+### Phase F — E9 Debug-Recorder + E10 Registry-Verdrahtung
 
-Über das reine Skelett hinaus — priorisiert nach Nutzen für FlowRep (nicht Feature-Creep).
+**Ziel:** Entwickler-Repro + skalierbare Fokus-Maps.
+
+**Tasks:**
+
+1. **E9:** `LandmarkSessionRecorder`
+   - Opt-in Flag `VisionConfig.recordLandmarks` (Default **false**)
+   - Pro Frame (throttled, z. B. 10 Hz): `timestampMs, conf, x0,y0,…` oder JSONL
+   - Pfad unter App-Documents / `data/` — **gitignore** beachten; **kein** Netzwerk
+   - UI: nur Debug-Menü oder Long-Press Settings „Landmark-Log“
+2. **E10:** `ExerciseProfile.visionFocus` (optional nullable)
+   - Curl-Profil füllt Elbow-Focus
+   - Painter/Highlight liest Focus wenn gesetzt, sonst Default Curl
+   - Keine neuen Übungen implementieren — nur Hook + Docs
+3. Kurze README-Notiz in Doc 14 / hardware session: wie man Log startet
+
+**DoD Phase F:**
+
+- [ ] Recorder-Unit-Test (in-memory sink)
+- [ ] Curl-Profil hat `visionFocus`; Registry-Test
+- [ ] Default: Recording aus
+
+---
+
+## 5. Implementierungsreihenfolge
+
+```
+A Domain (E6/E10 models)
+    → B Painter (MVP + E1 + E6 draw)
+        → C Session + E3 + E2 basic
+            → D E4 Guide + E5 Hysterese + Toggle
+                → E E2 polish + E7 Pulse
+                    → F E9 Recorder + E10 wire
+```
+
+| Phase | Scope | Aufwand (Richtwert) |
+|-------|--------|---------------------|
+| A | Topology, Modi, VisionFocus | 2–3 h |
+| B | Painter, Overlay, E1, E6 | 3–5 h |
+| C | Live-Bind, E3, E2 basic | 2–3 h |
+| D | E4, E5, Polish | 3–4 h |
+| E | E2 polish, E7 | 2–3 h |
+| F | E9, E10 | 2–3 h |
+| **Summe** | **ohne E8** | **ca. 2–3 Arbeitstage** (+ Geräte-QA) |
+
+---
+
+## 6. Feature-Spezifikation (E1–E7, E9, E10)
 
 ### E1 — Aktiven Arm hervorheben
 
-**Was:** Primärer Curl-Arm (links/rechts aus Settings oder Auto-Detect) in voller Farbe; Gegenseite und Beine gedimmt.  
-**Warum:** Reduziert visuelle Last; User sieht sofort, was die App „zählt“.  
-**Anker:** `PoseFrameMapper.primaryElbow` / Settings Arm-Seite.
+- Quelle: Settings Arm-Seite **oder** höhere `armConfidence` links vs. rechts (Auto, optional)
+- Painter: volle Farbe aktive Kette; Rest Alpha reduziert
+- Bei `ArmOnly`-Modus: nur aktive Kette sichtbar
 
-### E2 — Winkel-Farbcodierung am Ellenbogen
+### E2 — Winkel-Farbcodierung
 
-**Was:** Gelenkfarbe nach Winkel: grün (ROM ok, z. B. zwischen up/down-Schwellen-Pfad), gelb (grenzwertig), rot (zu flach / partial rep).  
-**Warum:** Wie „Rejects Bad Reps“ im Referenz-Screenshot — sofortiges Form-Feedback ohne Text wälzen.  
-**Anker:** `VisionConfig.angleUpThreshold` / `angleDownThreshold`.
+- Primärgelenk = Elbow (Curl) bzw. `VisionFocus.primaryAngle` (E10)
+- Farblogik an Thresholds + optional Phase der Pose-SM
+- Nicht mit IMU-Rep-Count verwechseln: Farbe = Form-Hinweis, kein Zähl-Veto in der UI-Schicht
 
 ### E3 — Tracking-Quality-Badge
 
-**Was:** Persistentes Badge: Tracking / Teilweise / Verloren (aus mittlerer Landmark-Confidence Armkette).  
-**Warum:** Erklärt, warum Kamera-Fusion „unsicher“ ist; baut Vertrauen.  
-**Anker:** `armConfidence`, `FusionEngine` Diagnostics.
+- Drei Zustände: Tracking / Teilweise / Verloren
+- Sichtbar während Detection; Farbe success / warning / error (Theme)
+- Speist sich aus geglätteter Confidence (E5), nicht Roh-Frame allein
 
-### E4 — Auto-Kamerawahl & Framed-Guide
+### E4 — Framed-Guide
 
-**Was:** Onboarding-Overlay: Silhouette / Rahmen „Oberkörper mittig, Arme im Bild“; Warnung wenn >N Frames ohne Pose.  
-**Warum:** Häufigster Fail: Person nicht im Bild / zu nah / Gegenlicht — nicht das Modell.  
-**Anker:** Doc 05 Permissions + Session-Screen Empty-State.
+- Nur wenn tracking lost / first-run
+- Kein permanentes Clutter wenn gut getrackt
+- Copy DE: klar, kurz, ohne Jargon
 
-### E5 — Low-Light & Confidence-Hysterese
+### E5 — Confidence-Hysterese
 
-**Was:** Confidence-Glättung (z. B. One-Euro oder einfaches EMA) + Mindest-Frames bevor „Tracking lost“.  
-**Warum:** Flackerndes Skelett zerstört Trust; Gym-Licht ist oft schlecht.  
-**Anker:** Bestehende Filter-Patterns in `domain/filters/`.
+- Glättung + Frame-Counts für Zustandswechsel
+- Verhindert Blinken bei visibility ~threshold
+- Unit-Tests für Übergangsmatrix
 
-### E6 — Skeleton-Modi: Full / Upper / Arm-only
+### E6 — SkeletonDrawMode
 
-**Was:** Drei Zeichen-Modi in Settings: ganzer Körper, nur Torso+Arme, nur aktive Armkette.  
-**Warum:** Bizeps-Curl braucht keine Knie; weniger Clutter und etwas weniger Paint-Kosten.  
-**Anker:** `VisionConfig` erweitern (`SkeletonDrawMode` enum).
+```dart
+enum SkeletonDrawMode { full, upper, armOnly }
+```
+
+- Default für Curl: `upper` oder `armOnly` (Empfehlung: **`upper`**)
+- Persistenz über `VisionConfig` / Settings
 
 ### E7 — Fusion-Visual Sync
 
-**Was:** Bei bestätigter IMU+CV-Rep kurzer Pulse am Ellenbogen-Punkt / Confetti-frei: 1× Scale-Animation.  
-**Warum:** Verknüpft haptisches/IMU-Count mit dem, was die Kamera „sieht“.  
-**Anker:** `FusionEngine` Decision + FeedbackService (ohne Zähllogik zu ändern).
+- Trigger: Fusion bestätigt Rep (beide Quellen / policy laut bestehender Engine)
+- UI-only Pulse; Engine-API nicht umbauen außer lesendem Hook auf Decision-Stream/Snapshot
 
-### E8 — Privacy Mode (Preview blur, Pose only)
+### E8 — **OUT OF SCOPE**
 
-**Was:** Optional Hintergrund stark unscharf / abdunkeln, nur Skelett scharf (oder nur Stickfigure auf dunklem Grund).  
-**Warum:** Nutzer filmen sich im Gym; weniger „Video von mir“, mehr „Stickfigure“. DSGVO-Story.  
-**Anker:** Settings + Overlay-Stack (Blur-Filter teuer → erst nach FPS-Messung).
+- Kein Blur, kein „nur Stickfigure auf Schwarz“, kein extra Privacy-Video-Modus
+- Lokale Verarbeitung + kein Upload bleiben implizite Privacy-Story; kein zusätzliches UI-Feature
 
-### E9 — Record-for-Debug (opt-in, lokal)
+### E9 — Landmark Debug Record
 
-**Was:** Debug-only: kurze Landmark-CSV/JSON pro Session (Timestamps + 33 Punkte), **kein** Video-Upload.  
-**Warum:** Repro von Mapping-Bugs und schlechten Winkeln ohne personenbezogene Videos im Repo.  
-**Anker:** `CsvSessionRecorder`-Muster; gitignore `data/`.
+- Opt-in, lokal, throttled
+- Format dokumentieren (CSV-Header oder JSONL schema)
+- Nie in Release-UI prominent; Debug/Dev-Schalter
 
 ### E10 — Multi-Exercise Joint Maps
 
-**Was:** Pro ExerciseProfile definieren, welche Bones/Winkel primär sind (Curl: Elbow; später Overhead: Shoulder; Squats: Knee — wenn Scope wächst).  
-**Warum:** Ein generisches Skelett skaliert; die *Semantik* pro Übung macht CV nützlich.  
-**Anker:** `exercise_registry` / `ExerciseProfile` optional `visionFocus` Feld — **nur vorbereiten**, Squats nicht in 1.0 erzwingen.
-
----
-
-### Priorisierung der 10 Ergänzungen
-
-| Prio | ID | Wann |
-|------|-----|------|
-| P0 (mit Overlay-MVP) | E1, E3 | direkt nach Phase C |
-| P1 (nächster Sprint CV) | E2, E4, E6 | nach stabilem Mapping |
-| P2 (Qualität) | E5, E7 | wenn Flackern / Trust-Themen |
-| P3 (später / optional) | E8, E9, E10 | Privacy, Debug, Multi-Exercise |
+- Datenmodell + Curl verdrahtet
+- Zukünftige Übungen erweitern `VisionFocus` ohne Painter-Rewrite
+- **Nicht** Squats/Deadlifts als 1.0-Produkt liefern
 
 ---
 
 ## 7. Manuelle Abnahme-Checkliste (Gerät)
 
-| # | Check | Erwartung |
-|---|--------|-----------|
-| M1 | Kamera-Permission erteilen | Preview erscheint |
-| M2 | Person im Bild, Oberkörper sichtbar | Skelett an Schultern/Armen |
-| M3 | Arm beugen (Curl-Geste) | Ellenbogen-Punkt wandert; Winkel-Text ändert sich |
-| M4 | Aus dem Bild gehen | Skelett weg / Badge „Verloren“; App crasht nicht |
-| M5 | Front vs. Back | Mapping gespiegelt korrekt bei Front |
-| M6 | Skeleton Toggle aus | Nur Video, Zähllogik IMU unberührt |
-| M7 | Ohne Kamera / Soft-fail | Home/IMU weiter nutzbar |
-| M8 | `flutter test` + `analyze` | grün / 0 Issues |
+| # | Check | Feature | Erwartung |
+|---|--------|---------|-----------|
+| M1 | Kamera-Permission | MVP | Preview erscheint |
+| M2 | Person im Bild | MVP | Skelett an Schultern/Armen |
+| M3 | Arm beugen | MVP, E2 | Ellenbogen wandert; Farbe/Winkel plausibel |
+| M4 | Aus dem Bild | E3, E4 | Badge Verloren; Guide/Hinweis; kein Crash |
+| M5 | Front vs. Back | MVP | Mirror korrekt |
+| M6 | Skeleton Toggle aus | MVP | Nur Video; IMU unberührt |
+| M7 | DrawMode Upper/ArmOnly | E6 | Weniger/ andere Bones |
+| M8 | Aktiver Arm | E1 | Eine Seite dominant |
+| M9 | Schlechtes Licht / Rand | E5 | Weniger Flackern als Roh-Frames |
+| M10 | Bestätigte Fusion-Rep | E7 | Kurzer Pulse (wenn IMU+CV Session) |
+| M11 | Debug-Record an | E9 | Datei lokal wächst; Default aus |
+| M12 | Ohne Kamera | Soft-fail | Home/IMU ok |
+| M13 | `flutter test` + `analyze` | alle | grün / 0 |
 
 ---
 
@@ -322,48 +401,53 @@ Geschätzter Aufwand:
 
 | Risiko | Mitigation |
 |--------|------------|
-| Landmark-Koordinaten versetzt (Letterbox) | Painter in **derselben** AspectRatio-Box wie Preview; Tests mit bekannten Sizes |
-| Frontkamera gespiegelt falsch | `mirrorX` an `cameraLens` koppeln |
-| FPS-Drop durch Paint | `shouldRepaint` streng; nur Arm-Bones (E6); max. 30 Hz UI-Update throttlen |
-| User denkt Kamera ersetzt IMU | Copy im Screen: „Validierung — Zählen über Sensor“ |
-| Privacy-Bedenken | Lokale Verarbeitung betonen; E8 später; kein Upload |
-| Package-API ändert Landmark-Layout | Mapper-Tests; Indizes zentral in `pose_skeleton.dart` |
+| Landmark versetzt (Letterbox) | Painter in gleicher Aspect-Box; Mapping-Tests |
+| Frontkamera falsch gespiegelt | `mirrorX` an Lens |
+| FPS-Drop | `shouldRepaint`; E6 ArmOnly; UI max ~30 Hz |
+| User denkt Kamera ersetzt IMU | Screen-Copy + E7 nur Bestätigungs-Feedback |
+| Feature-Creep | E8 gestrichen; E10 nur Hook; keine neuen Übungen |
+| Debug-Daten versehentlich committed | gitignore `data/`; Recording default off |
+| Package ändert Landmark-Layout | zentrale Indizes in `pose_skeleton.dart` |
 
 ---
 
-## 9. Explizit out of scope (dieses Plan-Doc)
+## 9. Explizit out of scope
 
+- **E8 Privacy-Blur / Stickfigure-only Preview**
 - Store-Listing / iOS Archive (C1/C2/C4)
 - `_useNewPipeline = true` freischalten
 - Cloud ML / Server-Side Pose
-- Vollständige Multi-Person-Erkennung
-- Ersatz der IMU-Pipeline durch Kamera-Only als Default
-- Neue Übungen (Squat/Deadlift) als Produkt-Scope 1.0
+- Multi-Person
+- Kamera-Only als Default-Zähler
+- Neue Übungen (Squat/Deadlift) als fertiges Produkt-Feature
 
 ---
 
-## 10. Definition of Done (Overlay-MVP = Phasen A–C)
+## 10. Definition of Done (gesamter Scope dieses Plans)
 
-1. Live-Skelett (Punkte + Linien) über Kameravorschau bei erkannter Pose.  
-2. Confidence-Filter; kein Crash ohne Person.  
-3. Anbindung an bestehenden `PoseFrame`-Stream; Winkel/Fusion ungebrochen.  
-4. Unit- (+ optional Widget-)Tests für Topology und leeres Overlay.  
-5. `flutter analyze` 0, `flutter test` grün.  
-6. Doc-Update in `12`/`13` + kurzer Changelog-Eintrag.  
-7. E1/E3 idealerweise schon grob (Highlight + Badge); E2–E10 als Backlog in diesem Doc.
+1. Live-Skelett über Preview (MVP A–C).  
+2. **E1** Arm-Highlight, **E3** Badge, **E2** Winkel-Farbe.  
+3. **E4** Framed-Guide bei lost, **E5** Hysterese.  
+4. **E6** drei Draw-Modi wählbar.  
+5. **E7** Fusion-Pulse UI-only.  
+6. **E9** opt-in lokaler Landmark-Log.  
+7. **E10** `VisionFocus` + Curl verdrahtet.  
+8. **E8 nicht** implementiert.  
+9. Tests + analyze grün; Docs `12`/`13` abgehakt; Changelog-Eintrag.  
 
 ---
 
 ## 11. Commit-Plan bei Umsetzung
 
-Empfohlene atomare Commits:
+1. `feat(cv): pose skeleton topology, draw modes, vision focus` (A, E6/E10 models)  
+2. `feat(cv): skeleton painter + arm highlight overlay` (B, E1)  
+3. `feat(cv): live skeleton, tracking badge, elbow color` (C, E2/E3)  
+4. `feat(cv): framed guide + confidence hysteresis` (D, E4/E5)  
+5. `feat(cv): fusion rep pulse on skeleton` (E, E7)  
+6. `feat(cv): optional landmark session recorder` (F, E9)  
+7. `docs(cv): skeleton overlay scope done; QA notes`
 
-1. `feat(cv): pose skeleton topology + coordinate mapping`  
-2. `feat(cv): skeleton CustomPainter + preview stack overlay`  
-3. `feat(cv): wire live PoseFrame into camera session skeleton`  
-4. `docs(cv): mark skeleton overlay done; QA notes`
-
-Jeder Commit: nur passende Dateien, Tests grün.
+Jeder Commit: passende Tests grün.
 
 ---
 
@@ -371,7 +455,8 @@ Jeder Commit: nur passende Dateien, Tests grün.
 
 | Datum | Änderung |
 |-------|----------|
-| 2026-07-23 | Erster detaillierter Plan: Overlay-MVP + 10 Ergänzungen (E1–E10), Phasen A–D, DoD |
+| 2026-07-23 | Erster Plan: Overlay-MVP + E1–E10 als Ergänzungen |
+| 2026-07-23 | **Scope-Update:** E8 gestrichen; E1–E7, E9, E10 fest in Phasen A–F integriert; DoD/Commits/Checkliste erweitert |
 
 ---
 
