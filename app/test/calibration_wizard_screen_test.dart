@@ -9,7 +9,7 @@ import 'package:flowrep/presentation/screens/calibration/calibration_wizard_scre
 /// Bewusst schmal geschnittener Widget-Test: prueft die Verdrahtung
 /// zwischen CalibrationWizardScreen und dem ECHTEN CalibrationController
 /// (kein Fake) fuer den am klarsten spezifizierten Uebergang (Ruhe-Gate:
-/// |gyro|-Mittel < 15 °/s, Accel-Sigma < 0,05g - siehe
+/// |gyro|-Mittel < 15 °/s, Accel-Sigma < 0,12g, min 2s - siehe
 /// calibration_controller.dart _finishRest). Tiefergehende Mehrstufen-
 /// Flows (knownSet/slowSet-Sweep) haengen von Algorithmus-internen
 /// Schwellen ab, die praeziser in einem dedizierten

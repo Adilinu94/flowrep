@@ -17,6 +17,7 @@ library;
 import 'dart:math';
 
 import 'package:flowrep/domain/calibration/template_extractor.dart';
+import 'package:flowrep/domain/config/engine_constants.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart';
 import 'package:flowrep/domain/workout_engine.dart' show SensorSample;
 
@@ -212,6 +213,21 @@ class CalibrationController {
 
   /// Diagnose: Anzahl bisher registrierter Taps in Stufe C (Tap-to-Tag).
   int get tapCountC => _tapsC.length;
+
+  /// Live rest-gate metrics for the wizard UI (null outside rest / empty).
+  RestGateSnapshot? get liveRestGate {
+    if (_stage != CalibrationStage.rest || _bufRest.isEmpty) return null;
+    final stats = _restStats(_bufRest);
+    final seconds = _bufRest.length / sampleRateHz;
+    return RestGateSnapshot(
+      seconds: seconds,
+      n: stats.n,
+      gyroMagMean: stats.gyroMagMean,
+      sigmaAccel: stats.sigmaAccel,
+      gateOk: stats.gateOk,
+      minSecondsReached: seconds >= kCalibRestMinSeconds,
+    );
+  }
 
   /// Startet eine neue Kalibrierung in Stufe 0 (verwirft alle Puffer).
   void start() {
@@ -439,16 +455,39 @@ class CalibrationController {
   }
 
   void _finishRest() {
+    final seconds = _bufRest.length / sampleRateHz;
+    if (seconds < kCalibRestMinSeconds) {
+      onQualityGateFail?.call(
+        CalibrationStage.rest,
+        'Zu kurz: noch ${seconds.toStringAsFixed(1)} s von '
+        '${kCalibRestMinSeconds.toStringAsFixed(0)} s Mindest-Ruhe. '
+        'Arm still halten, dann erneut Weiter.',
+      );
+      // Keep buffer so the user can continue collecting.
+      return;
+    }
     final stats = _restStats(_bufRest);
     if (!stats.gateOk) {
+      final reasons = <String>[];
+      if (stats.gyroMagMean >= kCalibRestGyroMeanMaxDegPerSec) {
+        reasons.add(
+          '|gyro| ${stats.gyroMagMean.toStringAsFixed(1)} °/s '
+          '(max ${kCalibRestGyroMeanMaxDegPerSec.toStringAsFixed(0)})',
+        );
+      }
+      if (stats.sigmaAccel >= kCalibRestAccelSigmaMaxG) {
+        reasons.add(
+          'Accel-Rauschen ${stats.sigmaAccel.toStringAsFixed(3)} g '
+          '(max ${kCalibRestAccelSigmaMaxG.toStringAsFixed(2)})',
+        );
+      }
       _bufRest.clear();
       onQualityGateFail?.call(
         CalibrationStage.rest,
-        'Ruhe-Gate nicht bestanden: |gyro|-Mittel '
-        '${stats.gyroMagMean.toStringAsFixed(1)} °/s (Grenze 15), '
-        'Accel-Sigma ${stats.sigmaAccel.toStringAsFixed(3)} g '
-        '(Grenze 0,05), ${stats.n} Samples. Gerät stillhalten, Stufe '
-        'wird wiederholt.',
+        'Ruhe-Gate nicht bestanden: ${reasons.join('; ')}. '
+        '${stats.n} Samples. Arm in Startposition still halten '
+        '(M5 nicht wackeln), 2–3 s warten, dann Weiter — '
+        'Tipp: Sensor kurz auf dem Oberschenkel ruhen lassen.',
       );
       return;
     }
@@ -555,23 +594,33 @@ class CalibrationController {
         gateOk: false,
       );
     }
-    final accelMag = [for (final s in buf) s.accelMagnitude];
+    // Trim start settle + end tap motion: first ~15% and last ~0.4 s.
+    // The phone-tap that ends rest often sits on the same arm as the M5
+    // and would otherwise fail a handheld rest gate.
+    final dropEnd = min(n ~/ 4, max(1, (0.4 * sampleRateHz).round()));
+    final dropStart = min(n ~/ 6, max(0, n - dropEnd - 10));
+    final end = max(dropStart + 1, n - dropEnd);
+    final window = buf.sublist(dropStart, end);
+    final w = window.length;
+
+    final accelMag = [for (final s in window) s.accelMagnitude];
     final bias = [
-      _mean([for (final s in buf) s.gx]),
-      _mean([for (final s in buf) s.gy]),
-      _mean([for (final s in buf) s.gz]),
+      _mean([for (final s in window) s.gx]),
+      _mean([for (final s in window) s.gy]),
+      _mean([for (final s in window) s.gz]),
     ];
     final gyroMag = [
-      for (final s in buf)
+      for (final s in window)
         sqrt((s.gx - bias[0]) * (s.gx - bias[0]) +
             (s.gy - bias[1]) * (s.gy - bias[1]) +
             (s.gz - bias[2]) * (s.gz - bias[2]))
     ];
     final sigmaAccel = _std(accelMag);
     final gyroMagMean = _mean(gyroMag);
-    final gateOk = gyroMagMean < 15.0 && sigmaAccel < 0.05;
+    final gateOk = gyroMagMean < kCalibRestGyroMeanMaxDegPerSec &&
+        sigmaAccel < kCalibRestAccelSigmaMaxG;
     return _RestStats(
-      n: n,
+      n: w,
       baseline: _mean(accelMag),
       sigmaAccel: sigmaAccel,
       gyroBias: bias,
@@ -1003,8 +1052,30 @@ class CalibrationController {
 }
 
 // -----------------------------------------------------------------------
-// Interne Ergebnis-Typen + numerische Helfer (rein, ohne Controller-State)
+// Öffentliche Live-Diagnose + interne Ergebnis-Typen
 // -----------------------------------------------------------------------
+
+/// Live rest-gate snapshot for the calibration wizard UI.
+class RestGateSnapshot {
+  final double seconds;
+  final int n;
+  final double gyroMagMean;
+  final double sigmaAccel;
+  final bool gateOk;
+  final bool minSecondsReached;
+
+  const RestGateSnapshot({
+    required this.seconds,
+    required this.n,
+    required this.gyroMagMean,
+    required this.sigmaAccel,
+    required this.gateOk,
+    required this.minSecondsReached,
+  });
+
+  /// Ready to tap Weiter with a high chance of passing.
+  bool get ready => gateOk && minSecondsReached;
+}
 
 class _RestStats {
   final int n;

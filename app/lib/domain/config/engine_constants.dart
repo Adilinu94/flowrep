@@ -18,6 +18,21 @@ const int kSettledSamples = 250;
 /// Gyro-gate: |gyro| below this (°/s) → rest (baseline update allowed).
 const double kGyroRestThresholdDegPerSec = 15.0;
 
+/// Calibration rest gate: max mean bias-corrected |gyro| (°/s).
+/// Matches concept docs; residual noise on M5 at true rest is ~0.1–2 °/s.
+const double kCalibRestGyroMeanMaxDegPerSec = 15.0;
+
+/// Calibration rest gate: max accel-magnitude σ (g).
+///
+/// Concept originally used 0.05 g (table-still lab). Hand-held M5 on the
+/// arm often sits at 0.04–0.10 g from micro-tremor + the phone-tap at the
+/// end of the phase — so 0.05 falsely fails "still" users. 0.12 g still
+/// rejects real curls/swings while tolerating handheld rest.
+const double kCalibRestAccelSigmaMaxG = 0.12;
+
+/// Minimum rest recording before finishStage accepts rest (seconds).
+const double kCalibRestMinSeconds = 2.0;
+
 /// Minimum delta above baseline for peak detection.
 const double kMinThresholdAboveBaseline = 0.10;
 

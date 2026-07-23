@@ -73,12 +73,52 @@ void main() {
       final advances = <CalibrationStage>[];
       final c = CalibrationController(onStageAdvanced: advances.add);
       c.start();
-      for (final s in _rest(100, t0)) {
+      // ≥2 s at 50 Hz → 100+ samples.
+      for (final s in _rest(120, t0)) {
         c.onSample(s);
       }
       c.finishStage();
       expect(c.stage, CalibrationStage.singleRep);
       expect(advances, contains(CalibrationStage.singleRep));
+    });
+
+    test('zu kurze Ruhephase wird abgelehnt ohne Puffer zu loeschen', () {
+      String? reason;
+      final c = CalibrationController(
+        onQualityGateFail: (stage, r) => reason = r,
+      );
+      c.start();
+      for (final s in _rest(20, t0)) {
+        // 20 * 20ms = 0.4 s < 2 s min
+        c.onSample(s);
+      }
+      c.finishStage();
+      expect(c.stage, CalibrationStage.rest);
+      expect(reason, contains('Zu kurz'));
+      expect(c.bufferedSampleCount, 20,
+          reason: 'Kurz-Puffer behalten, damit der Nutzer weitersammeln kann');
+    });
+
+    test('leichte Hand-Tremor unter 0.12 g Sigma besteht das Ruhe-Gate', () {
+      final c = CalibrationController();
+      c.start();
+      // Realistic handheld rest: small accel jitter + tiny gyro noise.
+      final rnd = math.Random(1);
+      for (var i = 0; i < 150; i++) {
+        c.onSample(SensorSample(
+          timestamp: t0.add(Duration(milliseconds: i * 20)),
+          ax: rnd.nextDouble() * 0.04 - 0.02,
+          ay: 1.0 + rnd.nextDouble() * 0.06 - 0.03,
+          az: rnd.nextDouble() * 0.04 - 0.02,
+          gx: rnd.nextDouble() * 4 - 2,
+          gy: rnd.nextDouble() * 4 - 2,
+          gz: rnd.nextDouble() * 4 - 2,
+        ));
+      }
+      c.finishStage();
+      expect(c.stage, CalibrationStage.singleRep,
+          reason: 'Handgehaltene Ruhe mit Tremor muss durchkommen '
+              '(Gate 0.12 g, vorher 0.05 g zu streng)');
     });
 
     test('Bewegung waehrend der Ruhephase loest das Qualitaets-Gate aus',
@@ -88,7 +128,8 @@ void main() {
         onQualityGateFail: (stage, r) => reason = r,
       );
       c.start();
-      for (final s in _rep(60, t0, offsetMs: 0, peakDeg: 200)) {
+      // Long enough for min duration, but clearly not rest.
+      for (final s in _rep(120, t0, offsetMs: 0, peakDeg: 200)) {
         c.onSample(s);
       }
       c.finishStage();

@@ -202,8 +202,9 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   String get _instruction {
     switch (_controller.stage) {
       case CalibrationStage.rest:
-        return 'Halte den Arm RUHIG in der Startposition, dann tippe auf '
-            'Weiter. Die App misst deine Ruheposition und den Rauschboden.';
+        return 'Halte den Arm RUHIG in der Startposition (mind. 2 s). '
+            'Warte bis die Anzeige grün ist, dann tippe auf Weiter. '
+            'Tipp: M5 kurz auf dem Oberschenkel ablegen, nicht wackeln.';
       case CalibrationStage.singleRep:
         return 'Mach EINE einzelne, gleichmaessige Bizeps-Curl-Wiederholung, '
             'dann tippe auf Weiter. Daraus bestimmt die App die Bewegungsachse.';
@@ -267,6 +268,10 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
                     style: Theme.of(context).textTheme.titleMedium),
                 const SizedBox(height: 8),
                 const LinearProgressIndicator(),
+                if (_controller.stage == CalibrationStage.rest) ...[
+                  const SizedBox(height: 16),
+                  _buildRestGateLive(context),
+                ],
                 if (_gateFailMessage != null) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -422,6 +427,50 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
           const SizedBox(width: 8),
           FilledButton(
               onPressed: onSubmit, child: const Text('Korrigieren')),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRestGateLive(BuildContext context) {
+    final live = _controller.liveRestGate;
+    if (live == null) {
+      return Text(
+        'Warte auf Sensor-Daten…',
+        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.error,
+            ),
+      );
+    }
+    final ok = live.ready;
+    final color = ok ? Colors.green.shade700 : Colors.orange.shade800;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ok ? 'Ruhe OK — Weiter tippen' : 'Noch nicht ruhig genug',
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '|gyro| ${live.gyroMagMean.toStringAsFixed(1)} °/s  ·  '
+            'Rauschen ${live.sigmaAccel.toStringAsFixed(3)} g  ·  '
+            '${live.seconds.toStringAsFixed(1)} s',
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+          if (!live.minSecondsReached)
+            Text(
+              'Mindestens 2 s still halten…',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
         ],
       ),
     );
