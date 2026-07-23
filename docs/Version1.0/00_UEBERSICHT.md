@@ -106,12 +106,12 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 |---|---------|---------|--------------|
 | 1 | Global Error Handler ✅ | 1h | keine |
 | 2 | App-Lifecycle ✅ | 1h | keine |
-| 3 | Settings-Screen | 2h | keine |
-| 4 | iOS-Konfiguration | 30min | keine |
-| 5 | Sound-Asset | 30min | keine |
-| 6 | App-Icon + Splash | 1h | keine |
-| 7 | Widget-Tests | 2-3h | P0-Widgets |
-| 8 | CI/CD Pipeline | 1h | keine |
+| 3 | Settings-Screen ✅ | 2h | keine |
+| 4 | iOS-Konfiguration ✅ | 30min | keine |
+| 5 | Sound-Asset ✅ | 30min | keine |
+| 6 | App-Icon + Splash ✅ | 1h | keine |
+| 7 | Widget-Tests ✅ | 2-3h | P0-Widgets |
+| 8 | CI/CD Pipeline ✅ | 1h | keine |
 
 ### Phase 3: P2 (Polish) — ~1-2 Tage
 
@@ -235,10 +235,10 @@ flutter test --coverage         # Mit Coverage-Report
 ## Definition of Done (1.0 Release)
 
 - [x] Alle P0-Features implementiert und getestet (P0-1..5 ✅)
-- [ ] Alle P1-Features implementiert
-- [ ] Mindestens 10 Widget-Tests (P0 liefert Korrektur/Rest/Session/FGS-Widget-Tests; Ziel 15+ in P1)
-- [ ] `flutter analyze` → 0 Errors, 0 Warnings (P0-Pfade: keine neuen Errors; pre-existing infos bleiben)
-- [x] `flutter test` → alle grün (275+ inkl. P0)
+- [x] Alle P1-Features implementiert (P1-1..8 ✅)
+- [x] Mindestens 10 Widget-Tests (P0 + P1 Widgets)
+- [ ] `flutter analyze` → 0 Errors, 0 Warnings (keine neuen Errors; pre-existing infos bleiben)
+- [x] `flutter test` → alle grün (P0+P1)
 - [ ] `flutter build apk --release` → kompiliert
 - [ ] Manueller Test auf echtem M5StickC Plus2:
   - [ ] Verbinden → Kalibrieren → Zählen → Korrigieren → Beenden

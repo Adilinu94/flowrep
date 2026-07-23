@@ -16,6 +16,7 @@ import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import 'calibration/calibration_wizard_screen.dart';
 import 'history_screen.dart';
+import 'settings_screen.dart';
 
 /// HomeScreen (SPEC TEIL 6, §6.4): ~150 Zeilen statt 734.
 ///
@@ -79,6 +80,13 @@ class HomeScreen extends ConsumerWidget {
       appBar: AppBar(
         title: const Text('FlowRep'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.settings),
+            tooltip: 'Einstellungen',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const SettingsScreen()),
+            ),
+          ),
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: 'Verlauf',

@@ -326,6 +326,8 @@ flutter analyze lib/presentation/providers/lifecycle_provider.dart
 
 ## 3. Settings-Screen
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 3.1 Kurzbeschreibung
 
 Ein Einstellungs-Screen für: Haptik an/aus, Audio an/aus, Pausen-Dauer,
@@ -481,6 +483,8 @@ flutter analyze lib/presentation/screens/settings_screen.dart
 
 ## 4. iOS-Konfiguration
 
+> **Status: ✅ DONE** (Info.plist BLE-Permissions angelegt; voller iOS-Projektbaum optional via `flutter create --platforms=ios`)
+
 ### 4.1 Kurzbeschreibung
 
 Ohne BLE-Permission-Strings in `Info.plist` wird die App im iOS-Review
@@ -517,6 +521,8 @@ flutter build ios --no-codesign
 ---
 
 ## 5. Sound-Asset
+
+> **Status: ✅ DONE** (rep_click.wav + pubspec assets)
 
 ### 5.1 Kurzbeschreibung
 
@@ -571,6 +577,8 @@ flutter test  # FeedbackService-Test darf nicht crashen
 
 ## 6. App-Icon + Splash
 
+> **Status: ✅ DONE** (Placeholder-PNGs + flutter_launcher_icons/native_splash Config; `dart run flutter_launcher_icons` bei Bedarf lokal ausführen)
+
 ### 6.1 Kurzbeschreibung
 
 Standard-Flutter-Icon und kein Splash-Screen wirken unprofessionell.
@@ -623,6 +631,8 @@ flutter build apk --debug  # Icon sichtbar?
 ---
 
 ## 7. Widget-Tests
+
+> **Status: ✅ DONE** (HomeScreen, CorrectionDialog, RestTimer, SessionSummary)
 
 ### 7.1 Kurzbeschreibung
 
@@ -811,6 +821,8 @@ flutter test  # Gesamte Suite
 ---
 
 ## 8. CI/CD Pipeline
+
+> **Status: ✅ DONE** (`.github/workflows/ci.yml` — working-directory: `app`)
 
 ### 8.1 Kurzbeschreibung
 

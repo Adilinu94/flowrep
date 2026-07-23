@@ -240,6 +240,34 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Rest duration used for UI progress (default 90s).
   int get restDurationSeconds => _restDurationSeconds;
 
+  /// Settings (P1-3): change default rest duration between sets.
+  void setRestDurationSeconds(int seconds) {
+    if (seconds < 1) return;
+    _restDurationSeconds = seconds;
+  }
+
+  bool get hapticEnabled => _feedbackService.enableHaptic;
+  bool get audioEnabled => _feedbackService.enableAudio;
+
+  void setFeedback({bool? haptic, bool? audio}) {
+    if (haptic != null) _feedbackService.enableHaptic = haptic;
+    if (audio != null) _feedbackService.enableAudio = audio;
+  }
+
+  /// DSGVO: clear workout DB + calibration profiles (P1-3).
+  Future<void> deleteAllUserData() async {
+    try {
+      await _repository?.deleteAllUserData();
+    } catch (_) {}
+    try {
+      await _calibrationStore.deleteAll();
+    } catch (_) {}
+    state = state.copyWith(
+      hasCalibration: false,
+      calibratedThreshold: null,
+    );
+  }
+
   // === App-Lifecycle (P1-2) ===
 
   void _initLifecycleObserver() {
