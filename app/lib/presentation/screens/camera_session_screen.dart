@@ -59,21 +59,21 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
 
   void _onPoseFrame(PoseFrame frame) {
     final engine = ref.read(engineProvider.notifier);
-    final angle = PoseFrameMapper.elbowAngle(frame, rightArm: true) ??
-        PoseFrameMapper.elbowAngle(frame, rightArm: false);
-    if (angle == null) return;
+    // Real landmark visibility → fusion confidence (D2); no fixed placeholder.
+    final primary = PoseFrameMapper.primaryElbow(frame);
+    if (primary == null) return;
 
     engine.processCameraAngle(
-      elbowAngleDegrees: angle,
+      elbowAngleDegrees: primary.angle,
       timestampMs: frame.timestampMs,
-      confidence: 0.8,
+      confidence: primary.confidence,
     );
     final decision = engine.fusionEngine.getDecision(
       currentTimestampMs: frame.timestampMs + 1,
     );
     if (!mounted) return;
     setState(() {
-      _lastElbowAngle = angle;
+      _lastElbowAngle = primary.angle;
       _lastDiagnostic = decision.diagnostic;
     });
   }

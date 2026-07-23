@@ -529,10 +529,14 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   PoseRepCounter get poseRepCounter => _poseRepCounter;
 
   /// Feed elbow angle from CameraPoseProvider into pose counter + fusion.
+  ///
+  /// [confidence] must be real landmark/pose visibility for live frames
+  /// (see [PoseFrameMapper.armConfidence]). Default 1.0 is only for
+  /// synthetic unit paths that intentionally omit confidence.
   void processCameraAngle({
     required double elbowAngleDegrees,
     required int timestampMs,
-    double confidence = 0.8,
+    double confidence = 1.0,
   }) {
     if (!_cameraEnabled) return;
     final result = _poseRepCounter.processAngle(

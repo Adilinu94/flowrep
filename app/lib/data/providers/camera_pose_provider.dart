@@ -96,6 +96,64 @@ class PoseFrameMapper {
       minConfidence: minConfidence,
     );
   }
+
+  /// Mean landmark confidence for the shoulder–elbow–wrist chain.
+  ///
+  /// Uses MediaPipe visibility already mapped into [FlowPoseLandmark.confidence]
+  /// by [fromPackagePose]. Returns null if the arm indices are missing.
+  /// Live camera path must pass this into fusion — never a fixed placeholder.
+  static double? armConfidence(
+    PoseFrame frame, {
+    required bool rightArm,
+  }) {
+    final shoulderIdx =
+        rightArm ? PoseLandmarkIndex.rightShoulder : PoseLandmarkIndex.leftShoulder;
+    final elbowIdx =
+        rightArm ? PoseLandmarkIndex.rightElbow : PoseLandmarkIndex.leftElbow;
+    final wristIdx =
+        rightArm ? PoseLandmarkIndex.rightWrist : PoseLandmarkIndex.leftWrist;
+    final maxIdx =
+        [shoulderIdx, elbowIdx, wristIdx].reduce((a, b) => a > b ? a : b);
+    if (frame.landmarks.length <= maxIdx) return null;
+
+    final s = frame.landmarks[shoulderIdx].confidence;
+    final e = frame.landmarks[elbowIdx].confidence;
+    final w = frame.landmarks[wristIdx].confidence;
+    return (s + e + w) / 3.0;
+  }
+
+  /// Prefer right arm when both have angles; returns angle + confidence pair.
+  ///
+  /// Confidence is the mean of the used arm's landmark visibilities (real
+  /// pose scores), not a hardcoded default.
+  static ({double angle, double confidence, bool rightArm})? primaryElbow(
+    PoseFrame frame, {
+    double minConfidence = 0.5,
+  }) {
+    final rightAngle = elbowAngle(
+      frame,
+      rightArm: true,
+      minConfidence: minConfidence,
+    );
+    if (rightAngle != null) {
+      final conf = armConfidence(frame, rightArm: true);
+      if (conf != null) {
+        return (angle: rightAngle, confidence: conf, rightArm: true);
+      }
+    }
+    final leftAngle = elbowAngle(
+      frame,
+      rightArm: false,
+      minConfidence: minConfidence,
+    );
+    if (leftAngle != null) {
+      final conf = armConfidence(frame, rightArm: false);
+      if (conf != null) {
+        return (angle: leftAngle, confidence: conf, rightArm: false);
+      }
+    }
+    return null;
+  }
 }
 
 /// Manages camera and optional live pose detection.

@@ -171,5 +171,60 @@ void main() {
       expect(decision.shouldCount, isFalse);
       expect(notifier.fusionEngine.rejectedCameraReps, 1);
     });
+
+    test('low live confidence does not confirm both with IMU (D2 gating)', () {
+      notifier.setCameraEnabled(true);
+      // One camera rep with low landmark confidence.
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 170,
+        timestampMs: 0,
+        confidence: 0.2,
+      );
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 40,
+        timestampMs: 600,
+        confidence: 0.2,
+      );
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 170,
+        timestampMs: 1300,
+        confidence: 0.2,
+      );
+      expect(notifier.poseRepCounter.repCount, 1);
+      expect(notifier.fusionEngine.totalCameraReps, 1);
+
+      notifier.fusionEngine.onImuRep(timestampMs: 1320);
+      final decision =
+          notifier.fusionEngine.getDecision(currentTimestampMs: 1400);
+      // Low conf → no "both"; IMU still counts as imuOnly.
+      expect(decision.shouldCount, isTrue);
+      expect(decision.source, RepSource.imuOnly);
+      expect(notifier.fusionEngine.fusedReps, 0);
+    });
+
+    test('high live confidence + IMU → both (real conf path)', () {
+      notifier.setCameraEnabled(true);
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 170,
+        timestampMs: 0,
+        confidence: 0.91,
+      );
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 40,
+        timestampMs: 600,
+        confidence: 0.91,
+      );
+      notifier.processCameraAngle(
+        elbowAngleDegrees: 170,
+        timestampMs: 1300,
+        confidence: 0.91,
+      );
+      notifier.fusionEngine.onImuRep(timestampMs: 1310);
+      final decision =
+          notifier.fusionEngine.getDecision(currentTimestampMs: 1400);
+      expect(decision.shouldCount, isTrue);
+      expect(decision.source, RepSource.both);
+      expect(notifier.fusionEngine.fusedReps, 1);
+    });
   });
 }

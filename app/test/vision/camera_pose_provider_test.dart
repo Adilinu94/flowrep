@@ -44,6 +44,61 @@ void main() {
       );
       expect(PoseFrameMapper.elbowAngle(frame, rightArm: false), isNull);
     });
+
+    test('armConfidence averages real shoulder/elbow/wrist visibility', () {
+      final landmarks = List.generate(
+        17,
+        (_) => const FlowPoseLandmark(x: 0, y: 0, confidence: 0.1),
+      );
+      landmarks[12] = const FlowPoseLandmark(x: 0, y: 1, confidence: 0.9);
+      landmarks[14] = const FlowPoseLandmark(x: 0, y: 0, confidence: 0.6);
+      landmarks[16] = const FlowPoseLandmark(x: 0, y: -1, confidence: 0.3);
+
+      final frame = PoseFrame(
+        timestampMs: 10,
+        landmarks: landmarks,
+        processingTimeMs: 1,
+      );
+      final conf = PoseFrameMapper.armConfidence(frame, rightArm: true);
+      expect(conf, isNotNull);
+      expect(conf!, closeTo((0.9 + 0.6 + 0.3) / 3.0, 1e-9));
+    });
+
+    test('primaryElbow returns angle with real confidence (not 0.8 placeholder)',
+        () {
+      final landmarks = List.generate(
+        17,
+        (_) => const FlowPoseLandmark(x: 0, y: 0, confidence: 0.1),
+      );
+      landmarks[12] = const FlowPoseLandmark(x: 0, y: 1, confidence: 0.72);
+      landmarks[14] = const FlowPoseLandmark(x: 0, y: 0, confidence: 0.72);
+      landmarks[16] = const FlowPoseLandmark(x: 0, y: -1, confidence: 0.72);
+
+      final frame = PoseFrame(
+        timestampMs: 20,
+        landmarks: landmarks,
+        processingTimeMs: 2,
+      );
+      final primary = PoseFrameMapper.primaryElbow(frame);
+      expect(primary, isNotNull);
+      expect(primary!.angle, closeTo(180.0, 0.5));
+      expect(primary.confidence, closeTo(0.72, 1e-9));
+      expect(primary.confidence, isNot(closeTo(0.8, 0.001)));
+      expect(primary.rightArm, isTrue);
+    });
+
+    test('primaryElbow null when all landmarks low confidence', () {
+      final landmarks = List.generate(
+        17,
+        (_) => const FlowPoseLandmark(x: 0, y: 0, confidence: 0.1),
+      );
+      final frame = PoseFrame(
+        timestampMs: 21,
+        landmarks: landmarks,
+        processingTimeMs: 1,
+      );
+      expect(PoseFrameMapper.primaryElbow(frame), isNull);
+    });
   });
 
   group('CameraPoseProvider lifecycle (CV-02)', () {

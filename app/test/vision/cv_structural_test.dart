@@ -34,5 +34,23 @@ void main() {
       final engine = File('lib/domain/workout_engine.dart').readAsStringSync();
       expect(engine.contains('bool _useNewPipeline = false'), isTrue);
     });
+
+    test('live camera session passes real armConfidence (no 0.8 placeholder)',
+        () {
+      final session =
+          File('lib/presentation/screens/camera_session_screen.dart')
+              .readAsStringSync();
+      expect(session.contains('primaryElbow'), isTrue);
+      expect(session.contains('primary.confidence'), isTrue);
+      // Hardcoded live-frame placeholder must not reappear.
+      expect(session.contains('confidence: 0.8'), isFalse);
+      expect(session.contains('confidence:0.8'), isFalse);
+
+      final mapper =
+          File('lib/data/providers/camera_pose_provider.dart').readAsStringSync();
+      expect(mapper.contains('armConfidence'), isTrue);
+      expect(mapper.contains('confidence: l.visibility'), isTrue);
+      expect(mapper.contains('primaryElbow'), isTrue);
+    });
   });
 }

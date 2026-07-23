@@ -76,15 +76,15 @@ Ohne diese Schritte kein Store-/RC-„fertig“. Code+UI sind da; Evidence fehlt
 
 ## 4. Priorität D — CV-Track (optional, **nicht** 1.0-Release-Blocker)
 
-Code-Scaffold und Unit-Tests sind grün; manuelle Geräte-/Webcam-Checks bleiben offen.
+Code-Scaffold und Unit-Tests sind grün; manuelle Geräte-/Webcam-Checks bleiben teilweise offen.
 
 | # | Punkt | Doc-Ref | Status |
 |---|--------|---------|--------|
-| D1 | Live-Kamera-Anbindung Pose Detector (NPU) auf Gerät | 05/06 TODO(cv-06), 00 CV-03 | **[~]** optional |
-| D2 | Echte Pose-Confidence (statt Placeholder) | 07 TODO | **[~]** optional |
+| D1 | Live-Kamera-Anbindung Pose Detector (NPU) auf Gerät | 05/06, soft-fail | **[x]** Code: `NpuPoseDetector` + Image-Stream + soft-fail; **[~]** physische NPU-Session am Gerät optional |
+| D2 | Echte Pose-Confidence (statt Placeholder) | 07, mapper | **[x]** `PoseFrameMapper.armConfidence` / `primaryElbow` aus Landmark-Visibility; Live-UI ohne `0.8`-Placeholder; Unit + structural |
 | D3 | Manuelle Webcam-Session (Python-Tool) | 08 Checkliste | **[ ]** optional |
 | D4 | Android-Emulator Kamera-Checkliste (Doc 09) | 09 | **[ ]** optional Setup |
-| D5 | Native YUV→RGB Performance | 06 TODO(cv-opt) | **[ ]** later |
+| D5 | Native YUV→RGB Performance | 06 TODO(cv-opt) | **[~]** deferred: Dart-Pfad sendet bereits `yuv420`-Planes an Detector (kein RGB-Zwischenweg); native Opt nur bei FPS-Mangel |
 
 ---
 
@@ -138,4 +138,5 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | D2: echte Landmark-Confidence live; D1 Code soft-fail [x]; D5 yuv420-Pfad / deferred native |
 | 2026-07-23 | Erste Konsolidierung aus 00/10/11/12/HW + CV-Docs; Git-Parity bestätigt |

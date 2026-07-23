@@ -88,6 +88,9 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 | ID | Status |
 |----|--------|
 | CV-01 … CV-06 + UI | [x] Code/Docs; Geräte-Webcam/Emulator manuell optional |
+| D2 Pose-Confidence | [x] `armConfidence`/`primaryElbow` → fusion; kein Live-Placeholder `0.8` |
+| D1 NPU soft-fail | [x] Code; physische Live-Session [~] |
+| D5 YUV path | [~] yuv420 an Detector; native RGB-Opt deferred |
 
 ---
 
@@ -118,5 +121,6 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | D2 echte Confidence + Tests; D1/D5 Status |
 | 2026-07-23 | Tracker angelegt aus 00 + HW_VALIDATION + Product-Fixes (manual end, learn, gP harden) |
 | 2026-07-23 | gP-Härtung: floor 50, 0.70×θ, minSamples 15, peak≥1.2×θ; Tests `tool_count_sim` + `product_path_structural`; Suite 369 grün (`08f98c6`) |
