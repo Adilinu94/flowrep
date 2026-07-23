@@ -55,6 +55,9 @@ class WorkoutUiState {
   final bool isReconnecting;
   final int reconnectAttempt;
 
+  // Optional CV camera validator (CV-04 UI)
+  final bool cameraEnabled;
+
   const WorkoutUiState({
     this.workoutState = WorkoutState.idle,
     this.repsInCurrentSet = 0,
@@ -90,6 +93,7 @@ class WorkoutUiState {
     this.sessionDuration,
     this.isReconnecting = false,
     this.reconnectAttempt = 0,
+    this.cameraEnabled = false,
   });
 
   WorkoutUiState copyWith({
@@ -127,6 +131,7 @@ class WorkoutUiState {
     Duration? sessionDuration,
     bool? isReconnecting,
     int? reconnectAttempt,
+    bool? cameraEnabled,
   }) {
     return WorkoutUiState(
       workoutState: workoutState ?? this.workoutState,
@@ -167,6 +172,7 @@ class WorkoutUiState {
       sessionDuration: sessionDuration ?? this.sessionDuration,
       isReconnecting: isReconnecting ?? this.isReconnecting,
       reconnectAttempt: reconnectAttempt ?? this.reconnectAttempt,
+      cameraEnabled: cameraEnabled ?? this.cameraEnabled,
     );
   }
 }

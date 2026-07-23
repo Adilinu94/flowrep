@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/engine_provider.dart';
+import 'camera_session_screen.dart';
 
 /// Einstellungs-Screen (P1-3): Feedback, Pausen-Timer, Datenschutz, Info.
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -53,23 +54,38 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           const Divider(),
           Text('Pausen-Timer', style: Theme.of(context).textTheme.titleSmall),
-          RadioListTile<int>(
-            title: const Text('60 Sekunden'),
-            value: 60,
-            groupValue: _restDurationSeconds,
-            onChanged: (v) => _setRest(notifier, v!),
+          const SizedBox(height: 8),
+          SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 60, label: Text('60s')),
+              ButtonSegment(value: 90, label: Text('90s')),
+              ButtonSegment(value: 120, label: Text('120s')),
+            ],
+            selected: {_restDurationSeconds},
+            onSelectionChanged: (s) => _setRest(notifier, s.first),
           ),
-          RadioListTile<int>(
-            title: const Text('90 Sekunden'),
-            value: 90,
-            groupValue: _restDurationSeconds,
-            onChanged: (v) => _setRest(notifier, v!),
+          const Divider(),
+          Text('Kamera (optional)', style: Theme.of(context).textTheme.titleSmall),
+          SwitchListTile(
+            title: const Text('Kamera-Validierung freigeben'),
+            subtitle: const Text('Öffnet den Kamera-Validator (IMU bleibt primär)'),
+            value: ref.watch(engineProvider).cameraEnabled,
+            onChanged: (v) {
+              notifier.setCameraEnabled(v);
+              setState(() {});
+            },
           ),
-          RadioListTile<int>(
-            title: const Text('120 Sekunden'),
-            value: 120,
-            groupValue: _restDurationSeconds,
-            onChanged: (v) => _setRest(notifier, v!),
+          ListTile(
+            leading: const Icon(Icons.videocam),
+            title: const Text('Kamera-Session öffnen'),
+            subtitle: const Text('Preview + Pose-Fusion-Stats'),
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const CameraSessionScreen(),
+                ),
+              );
+            },
           ),
           const Divider(),
           Text('Datenschutz', style: Theme.of(context).textTheme.titleSmall),

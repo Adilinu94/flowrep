@@ -103,7 +103,8 @@ class _StepRow extends StatelessWidget {
           radius: 12,
           backgroundColor: done
               ? Colors.green
-              : theme.colorScheme.onSecondaryContainer.withOpacity(0.2),
+              : theme.colorScheme.onSecondaryContainer
+                  .withValues(alpha: 0.2),
           child: done
               ? const Icon(Icons.check, size: 14, color: Colors.white)
               : Text(

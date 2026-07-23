@@ -14,7 +14,9 @@ import '../widgets/rest_timer_widget.dart';
 import '../widgets/session_summary_dialog.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
+import '../widgets/fusion_status_badge.dart';
 import 'calibration/calibration_wizard_screen.dart';
+import 'camera_session_screen.dart';
 import 'history_screen.dart';
 import 'settings_screen.dart';
 
@@ -81,6 +83,13 @@ class HomeScreen extends ConsumerWidget {
         title: const Text('FlowRep'),
         actions: [
           IconButton(
+            icon: const Icon(Icons.videocam_outlined),
+            tooltip: 'Kamera-Validierung',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const CameraSessionScreen()),
+            ),
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             tooltip: 'Einstellungen',
             onPressed: () => Navigator.of(context).push(
@@ -111,6 +120,17 @@ class HomeScreen extends ConsumerWidget {
                 onConnect: notifier.connect,
                 onDisconnect: notifier.disconnect,
               ),
+              // Fusion-Status (optional, wenn Kamera freigegeben)
+              if (uiState.cameraEnabled) ...[
+                const SizedBox(height: 8),
+                FusionStatusBadge(
+                  cameraEnabled: true,
+                  imuOnlyReps: notifier.fusionEngine.imuOnlyReps,
+                  cameraOnlyReps: notifier.fusionEngine.cameraOnlyReps,
+                  fusedReps: notifier.fusionEngine.fusedReps,
+                  poseReps: notifier.poseRepCounter.repCount,
+                ),
+              ],
               // Reconnect-Indikator (P0-4)
               if (uiState.isReconnecting)
                 Padding(

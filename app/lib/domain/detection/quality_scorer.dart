@@ -9,8 +9,6 @@
 /// Ergebnis: Score ∈ [0, 1]. Rep wird gezählt wenn Score >= minScore.
 library;
 
-import 'dart:math' as math;
-
 /// Ergebnis der Qualitätsbewertung.
 class QualityResult {
   /// Gesamt-Score ∈ [0, 1].

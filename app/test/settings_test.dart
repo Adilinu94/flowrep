@@ -93,9 +93,15 @@ void main() {
       expect(find.text('Einstellungen'), findsOneWidget);
       expect(find.text('Vibration bei Wiederholung'), findsOneWidget);
       expect(find.text('Sound bei Wiederholung'), findsOneWidget);
-      expect(find.text('90 Sekunden'), findsOneWidget);
+      expect(find.text('90s'), findsOneWidget);
       expect(find.text('Alle Daten löschen'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('Version 1.0.0'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('Version 1.0.0'), findsOneWidget);
+      expect(find.text('Kamera-Session öffnen'), findsOneWidget);
     });
   });
 }

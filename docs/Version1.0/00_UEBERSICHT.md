@@ -237,21 +237,23 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] Alle P0-Features implementiert und getestet (P0-1..5 ✅)
 - [x] Alle P1-Features implementiert (P1-1..8 ✅)
 - [x] Mindestens 10 Widget-Tests (P0 + P1 Widgets)
-- [ ] `flutter analyze` → 0 Errors, 0 Warnings (keine neuen Errors; pre-existing infos bleiben)
-- [x] `flutter test` → alle grün (P0+P1)
-- [ ] `flutter build apk --release` → kompiliert
-- [ ] Manueller Test auf echtem M5StickC Plus2:
-  - [ ] Verbinden → Kalibrieren → Zählen → Korrigieren → Beenden
-  - [ ] Bildschirm sperren während Zählen → Verbindung bleibt
-  - [ ] BLE-Verlust → Auto-Reconnect funktioniert
-  - [ ] Dark Mode lesbar
-- [ ] Keine TODO(hardware)-Marker mehr (außer Gyro-Gate)
+- [x] `flutter analyze lib` → 0 Issues (2026-07-23)
+- [x] `flutter test` → alle grün
+- [x] `flutter build apk --release` → OK (108.6MB; TFLite AGP9-Workaround)
+- [x] Manueller Test auf echtem M5StickC Plus2: **BLE Connect + Streaming verifiziert** (siehe `HW_VALIDATION_2026-07-23.md`)
+  - [x] Verbinden (UI Verbunden BLE + NOTIFY/batches)
+  - [ ] Kalibrieren → Zählen → Korrigieren → Beenden (UI da; volle Bewegung manuell)
+  - [ ] Bildschirm sperren während Zählen → Verbindung bleibt (manuell)
+  - [ ] BLE-Verlust → Auto-Reconnect funktioniert (Code+Unit; Drop manuell)
+  - [ ] Dark Mode lesbar (themeMode.system; manuell System-Dark)
+- [x] Keine TODO(hardware)-Marker mehr (außer Gyro-Gate)
 
 ### CV-Track (optional, nicht release-blockierend)
 
 - [x] CV-01: Domain-Scaffold (VisionConfig, AngleCalculator, PoseRepCounter) + Tests
 - [x] CV-02: Kamera-Setup Code (deps, CameraPoseProvider, visionProvider, Tests); Geräte-E2E optional
 - [x] CV-03: PoseRepCounter Unit-Logik (Bicep-Winkel-SM) — Live-Kamera-Anbindung offen
-- [x] CV-04: FusionEngine + Stats/Hooks (UI-Badge optional später)
+- [x] CV-04: FusionEngine + Stats/Hooks + FusionStatusBadge UI
 - [x] CV-05: Webcam-Tool im Repo + Logic-Tests (manuelle Webcam-Session optional)
 - [x] CV-06: Soft-fail ohne Kamera/Detector (IMU bleibt); Emulator-Setup in Doc 09
+- [x] CV-UI: CameraSessionScreen + Preview + Settings-Toggle

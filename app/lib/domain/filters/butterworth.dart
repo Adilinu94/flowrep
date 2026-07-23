@@ -1,3 +1,4 @@
+// ignore_for_file: constant_identifier_names
 /// Kausaler Butterworth-Bandpassfilter 4. Ordnung.
 ///
 /// Entfernt Frequenzen unterhalb 0.1 Hz (Drift, Gravitation)

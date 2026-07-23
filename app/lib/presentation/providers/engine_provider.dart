@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -434,6 +433,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (!enabled) {
       _poseRepCounter.reset();
     }
+    state = state.copyWith(cameraEnabled: enabled);
   }
 
   bool get isCameraEnabled => _cameraEnabled;

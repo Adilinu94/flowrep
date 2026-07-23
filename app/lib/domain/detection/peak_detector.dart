@@ -28,6 +28,8 @@ enum _DetectorState { idle, rising, falling }
 class PeakDetector {
   // === KONFIGURATION ===
   final double _sampleRateHz;
+  /// Configured sample rate (Hz), used for refractory conversion.
+  double get sampleRateHz => _sampleRateHz;
   final double _thresholdFactor; // 0.25: Anteil zwischen NPK und SPK
   final double _fallingRatio; // 0.5: unter θ*ratio → falling
   final int _fallingDebounce; // 4 Samples Debounce

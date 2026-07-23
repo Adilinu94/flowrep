@@ -141,7 +141,7 @@ class PhaseValidator {
         durationRatio: ratio,
         rejectionReason:
             'Phasen-Verhältnis zu asymmetrisch (${ratio.toStringAsFixed(2)} '
-            'ausserhalb [${minDurationRatio}, ${maxDurationRatio}])',
+            'ausserhalb [$minDurationRatio, $maxDurationRatio])',
       );
     }
 

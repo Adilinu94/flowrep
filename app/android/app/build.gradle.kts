@@ -20,7 +20,8 @@ android {
         applicationId = "com.flowrep.flowrep"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // flutter_pose_detection requires API 31+ (CV-02)
+        minSdk = maxOf(flutter.minSdkVersion, 31)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -33,6 +34,30 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        jniLibs {
+            // TFLite / pose-detection may ship duplicate native libs.
+            pickFirsts += listOf("**/*.so")
+        }
+        resources {
+            pickFirsts += listOf(
+                "META-INF/DEPENDENCIES",
+                "META-INF/LICENSE",
+                "META-INF/LICENSE.txt",
+                "META-INF/NOTICE",
+                "META-INF/NOTICE.txt",
+            )
+        }
+    }
+}
+
+// AGP 9+: tensorflow-lite / -gpu / -api all declare package namespace
+// org.tensorflow.lite → manifest merger fails. Drop redundant AARs.
+// Pose detector falls back to CPU path without -gpu (still soft-fails ok).
+configurations.configureEach {
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-api")
+    exclude(group = "org.tensorflow", module = "tensorflow-lite-gpu")
 }
 
 kotlin {

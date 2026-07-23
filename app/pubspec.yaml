@@ -85,7 +85,7 @@ flutter:
 
 flutter_launcher_icons:
   android: true
-  ios: true
+  ios: false
   image_path: "assets/icon/flowrep_icon.png"
   adaptive_icon_background: "#6A1B9A"
   adaptive_icon_foreground: "assets/icon/flowrep_foreground.png"
