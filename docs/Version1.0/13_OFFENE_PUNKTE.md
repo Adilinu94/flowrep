@@ -67,10 +67,10 @@ Ohne diese Schritte kein Store-/RC-„fertig“. Code+UI sind da; Evidence fehlt
 
 | # | Punkt | Doc-Ref | Status |
 |---|--------|---------|--------|
-| C1 | iOS Archive / Geräte-Build | 10 §3 | **[ ]** Labor ohne iOS-Gerät |
-| C2 | Play Console / Signing | 10 §3 | **[ ]** außerhalb Code |
-| C3 | Semver-Tag / Changelog-Release | 10 §7 | **[ ]** |
-| C4 | Store-Listing / Privacy-Text final | 10 §7 | **[ ]** (DSGVO-Settings im Code vorhanden) |
+| C1 | iOS Archive / Geräte-Build | 10 §3 | **[ ]** **out of scope** (dieses Ziel); Labor ohne iOS-Gerät |
+| C2 | Play Console / Signing | 10 §3 | **[ ]** **out of scope**; außerhalb Code |
+| C3 | Semver-Tag / Changelog-Release | 10 §7 | **[x]** `app` version `1.0.0-rc.1+1`; `CHANGELOG.md`; annotated tag `v1.0.0-rc.1` |
+| C4 | Store-Listing / Privacy-Text final | 10 §7 | **[ ]** **out of scope**; DSGVO-Settings im Code vorhanden |
 
 ---
 
@@ -138,5 +138,6 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | C3: Semver `1.0.0-rc.1+1`, CHANGELOG, tag `v1.0.0-rc.1`; C1/C2/C4 out of scope |
 | 2026-07-23 | D2: echte Landmark-Confidence live; D1 Code soft-fail [x]; D5 yuv420-Pfad / deferred native |
 | 2026-07-23 | Erste Konsolidierung aus 00/10/11/12/HW + CV-Docs; Git-Parity bestätigt |

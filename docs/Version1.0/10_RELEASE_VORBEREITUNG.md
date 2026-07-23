@@ -91,10 +91,10 @@ Kopiert aus Doc 11 — muss **einmal** grün sein vor Store:
 - [x] Unit-Suite grün  
 - [x] Analyze 0  
 - [x] Release-APK gebaut  
-- [ ] Changelog / Version-Tag (semver) gesetzt  
-- [ ] Store-Listing / Privacy-Text (DSGVO Settings vorhanden)  
+- [x] Changelog / Version-Tag (semver) gesetzt — `1.0.0-rc.1+1`, tag `v1.0.0-rc.1`, root `CHANGELOG.md`  
+- [ ] Store-Listing / Privacy-Text (C4 out of scope hier; DSGVO Settings vorhanden)  
 
-**Aktueller RC-Status:** **Code-ready, HW-session-path open** — kein Store-Push bis §5.3–5.4.
+**Aktueller RC-Status:** **RC tagged (`v1.0.0-rc.1`), HW-session-path open** — kein Store-Push bis §5.3–5.4.
 
 ---
 
@@ -102,4 +102,5 @@ Kopiert aus Doc 11 — muss **einmal** grün sein vor Store:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | C3: `1.0.0-rc.1+1` + CHANGELOG + tag `v1.0.0-rc.1` |
 | 2026-07-23 | Release-Tracker angelegt; Product-Flags und offener HW-Pfad dokumentiert |

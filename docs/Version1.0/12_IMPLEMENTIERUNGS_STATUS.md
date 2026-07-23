@@ -113,7 +113,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 2. **[~]** Wiggle-Resistenz am Gerät (Unit grün; User meldete Rest-Wackeln → weitere Gates gelandet, HW-Retest)  
 3. **[ ]** Phase E–H Hardware-Protokoll (Zähl-DoD G5/G6, Shadow G7) — siehe Doc 11  
 4. Optional: CSV-Export Kalibrier-Puffer, Webcam-Live-Session  
-5. Store/Admin: iOS Archive, Play Signing, Semver-Tag (Doc 10 / 13 §C)
+5. Store/Admin: iOS Archive (C1), Play Signing (C2), Store-Listing (C4) — out of scope; **C3** Semver-Tag `v1.0.0-rc.1` erledigt
 
 ---
 
