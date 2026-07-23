@@ -898,9 +898,16 @@ class WorkoutEngine {
   /// Samples spent above threshold in the current gP excursion (wiggle gate).
   int _gpSamplesAbove = 0;
 
+  /// Peak |g_p| (direction-aware value) seen during the open excursion.
+  /// Brief threshold-crossings without a real peak are rejected as wiggles.
+  double _gpPeakInExcursion = 0.0;
+
   /// Min samples continuously above gP threshold before a falling edge
-  /// can count (~160ms @ 50Hz). Short spikes from wrist flicks are rejected.
-  static const int _minGpSamplesAbove = 10;
+  /// can count (~300ms @ 50Hz). Short spikes from wrist flicks are rejected.
+  static const int _minGpSamplesAbove = 15;
+
+  /// Peak must reach this multiple of θ during the excursion (amplitude gate).
+  static const double _gpPeakOverThreshold = 1.2;
 
   bool get _gyroMagIsAuthoritative =>
       _gyroMagCountsReps && _gyroMagThreshold != null;
@@ -953,23 +960,31 @@ class WorkoutEngine {
     if (!_gpAboveThreshold && value > threshold) {
       _gpAboveThreshold = true;
       _gpSamplesAbove = 1;
+      _gpPeakInExcursion = value;
       _lastMovementAt = timestamp;
     } else if (_gpAboveThreshold) {
       if (value > threshold) {
         _gpSamplesAbove++;
+        if (value > _gpPeakInExcursion) _gpPeakInExcursion = value;
         _lastMovementAt = timestamp;
       } else if (value < threshold * 0.3) {
         final longEnough = _gpSamplesAbove >= _minGpSamplesAbove;
+        final strongEnough =
+            _gpPeakInExcursion >= threshold * _gpPeakOverThreshold;
         _gpAboveThreshold = false;
         final samplesAbove = _gpSamplesAbove;
+        final peak = _gpPeakInExcursion;
         _gpSamplesAbove = 0;
-        if (!longEnough) return; // reject short wiggle spikes
+        _gpPeakInExcursion = 0.0;
+        // Reject short flicks and weak threshold grazes (wiggle).
+        if (!longEnough || !strongEnough) return;
         _gpRepCount++;
         if (_gpIsAuthoritative) {
           _commitRep(timestamp: timestamp, peakMagnitude: gp.abs());
         }
         AppLogger.d(
-          'gP rep samplesAbove=$samplesAbove |gp|=${gp.abs().toStringAsFixed(1)}',
+          'gP rep samplesAbove=$samplesAbove peak=${peak.toStringAsFixed(1)} '
+          '|gp|=${gp.abs().toStringAsFixed(1)}',
         );
       }
     }
@@ -1384,17 +1399,18 @@ class WorkoutEngine {
     const wakeCombined = 1.5;
     switch (chosenSignal) {
       case ChosenSignal.gP:
-        // 0.65×theta + floor 40°/s: less wiggle, still under real curl peaks
+        // 0.70×theta + floor 50°/s: less wiggle, still under real curl peaks
         // (~100–200°/s on hardware). Combined sentinel kills 1.2g false path.
         // |g_p| is sign-agnostic; min refractory ≥0.7s for double-hump.
-        _gpThreshold = max(40.0, peakThreshold * 0.65);
+        // Duration + peak-over-θ gates further reject wrist flicks.
+        _gpThreshold = max(50.0, peakThreshold * 0.70);
         _gpDirection = 1;
         _gpUseAbsProjection = true;
         _gyroMagCountsReps = false;
         _peakThreshold = combinedSentinel;
         _wakeThreshold = wakeCombined;
       case ChosenSignal.gyroMag:
-        _gyroMagThreshold = max(40.0, peakThreshold * 0.65);
+        _gyroMagThreshold = max(50.0, peakThreshold * 0.70);
         _gyroMagCountsReps = true;
         _gpUseAbsProjection = false;
         _peakThreshold = combinedSentinel;
