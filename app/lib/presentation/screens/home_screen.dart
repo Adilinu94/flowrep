@@ -63,6 +63,37 @@ class HomeScreen extends ConsumerWidget {
 
               if (uiState.isConnected) ...[
                 const SizedBox(height: 24),
+
+                // Start/Stop Zähl-Gating
+                SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton.icon(
+                    onPressed: uiState.isCountingActive
+                        ? notifier.stopCounting
+                        : notifier.startCounting,
+                    icon: Icon(
+                      uiState.isCountingActive
+                          ? Icons.stop_circle_outlined
+                          : Icons.play_circle_outline,
+                      size: 28,
+                    ),
+                    label: Text(
+                      uiState.isCountingActive
+                          ? 'Zählen stoppen'
+                          : 'Zählen starten',
+                      style: const TextStyle(fontSize: 18),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: uiState.isCountingActive
+                          ? Colors.red.shade700
+                          : Colors.green.shade700,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
                 // Rep-Counter
                 RepCounterDisplay(
                   repCount: uiState.repsInCurrentSet,

@@ -79,7 +79,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   ISensorProvider get sensorProvider => _sensorProvider;
 
   void _bind() {
-    _samplesSub = _sensorProvider.samples.listen(_engine.processSample);
+    _samplesSub = _sensorProvider.samples.listen(_onSampleGated);
     _eventsSub = _engine.events.listen(_onEngineEvent);
     _recorderSamplesSub = _sensorProvider.samples.listen(_recorder.onSample);
     _connectionSub = _sensorProvider.connectionState.listen(
@@ -87,6 +87,31 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       onError: (Object error) {
         state = state.copyWith(errorText: error.toString());
       },
+    );
+  }
+
+  /// Zähl-Gating: Samples werden nur an die Engine weitergeleitet,
+  /// wenn der Benutzer das Zählen explizit gestartet hat.
+  /// Verhindert „App zählt permanent bei Alltagsbewegung“.
+  void _onSampleGated(dynamic sample) {
+    if (!state.isCountingActive) return;
+    _engine.processSample(sample);
+  }
+
+  /// Startet das Zählen (Engine erhält ab jetzt Samples).
+  void startCounting() {
+    if (state.isCountingActive) return;
+    state = state.copyWith(isCountingActive: true);
+  }
+
+  /// Stoppt das Zählen und setzt die Engine zurück auf idle.
+  void stopCounting() {
+    if (!state.isCountingActive) return;
+    _engine.pause();
+    state = state.copyWith(
+      isCountingActive: false,
+      workoutState: WorkoutState.idle,
+      repsInCurrentSet: 0,
     );
   }
 
@@ -262,6 +287,11 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         minThresholdAboveBaseline: 0.10,
         rotationAxis: profile.migratedFrom == 0 ? profile.rotationAxis : null,
         gyroBias: profile.migratedFrom == 0 ? profile.gyroBias : null,
+        chosenSignal: profile.migratedFrom == 0 ? profile.chosenSignal : null,
+        minRepIntervalSeconds: profile.minRepIntervalSeconds,
+        prominenceMin: profile.prominenceMin > 0 ? profile.prominenceMin : null,
+        repTemplate: profile.repTemplate,
+        templateCorrThreshold: profile.templateCorrThreshold,
       );
     }
   }

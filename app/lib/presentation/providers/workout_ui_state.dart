@@ -29,6 +29,9 @@ class WorkoutUiState {
   final int recordedSampleCount;
   final String? lastRecordingFileName;
 
+  // Zähl-Gating (Start-Button)
+  final bool isCountingActive;
+
   const WorkoutUiState({
     this.workoutState = WorkoutState.idle,
     this.repsInCurrentSet = 0,
@@ -50,6 +53,7 @@ class WorkoutUiState {
     this.isRecording = false,
     this.recordedSampleCount = 0,
     this.lastRecordingFileName,
+    this.isCountingActive = false,
   });
 
   WorkoutUiState copyWith({
@@ -73,6 +77,7 @@ class WorkoutUiState {
     bool? isRecording,
     int? recordedSampleCount,
     String? lastRecordingFileName,
+    bool? isCountingActive,
   }) {
     return WorkoutUiState(
       workoutState: workoutState ?? this.workoutState,
@@ -95,6 +100,7 @@ class WorkoutUiState {
       isRecording: isRecording ?? this.isRecording,
       recordedSampleCount: recordedSampleCount ?? this.recordedSampleCount,
       lastRecordingFileName: lastRecordingFileName ?? this.lastRecordingFileName,
+      isCountingActive: isCountingActive ?? this.isCountingActive,
     );
   }
 }

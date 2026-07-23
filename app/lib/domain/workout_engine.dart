@@ -580,13 +580,14 @@ class WorkoutEngine {
     if (_baselineLevel == null) {
       _baselineLevel = combinedSignal;
     } else if (!_aboveThreshold &&
-        _state != WorkoutState.guidedCalibration) {
-      // Don't adapt baseline during guided calibration. The calibration
-      // reps produce large excursions that would drag the EMA upward
-      // (observed: 1.05 → 5.7 during the 2026-07-16 E2E test). The
-      // baseline was already set by startGuidedCalibration() from the
-      // settled rest signal after the 3s+5s rest/countdown phase, so
-      // it is the correct reference point for the entire calibration.
+        _state != WorkoutState.guidedCalibration &&
+        _state != WorkoutState.paused &&
+        _state != WorkoutState.connectionLost) {
+      // P0.5 Baseline-Gate: Nicht aktualisieren in guidedCalibration
+      // (Reps ziehen EMA hoch), paused (kein sinnvolles Signal) und
+      // connectionLost (stale Daten). In idle/calibrating/active: normal.
+      // TODO(hardware): Gyro-Gate (|gyro|<15°/s) in active validieren,
+      // sobald echte CSV-Daten vorliegen (Adi-Bug: Alltagsbewegung zählt).
       _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
           combinedSignal * baselineEmaAlpha;
     }
@@ -1242,6 +1243,8 @@ class WorkoutEngine {
     ChosenSignal? chosenSignal,
     double? minRepIntervalSeconds,
     double? prominenceMin,
+    List<double>? repTemplate,
+    double? templateCorrThreshold,
   }) {
     // peakThreshold's UNIT depends on chosenSignal (ExerciseProfile.theta:
     // unit follows the chosen signal) - route it to whichever field
@@ -1312,6 +1315,10 @@ class WorkoutEngine {
       // KRITISCHER SCHRITT 3: Neue Pipeline initialisieren (Feature-Flag
       // bleibt vorerst false — Aktivierung nach Validierung gegen reale Daten).
       _initNewPipeline(rotationAxis, gyroBias);
+      // Template end-to-end: ExerciseProfile → ExerciseEngine
+      if (repTemplate != null && repTemplate.isNotEmpty) {
+        _exerciseEngine!.setTemplate(repTemplate);
+      }
     }
     // Reset transient state so the engine starts fresh with the new
     // threshold, mirroring what a freshly-constructed engine would have.
