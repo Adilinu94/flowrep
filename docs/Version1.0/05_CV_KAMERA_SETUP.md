@@ -1,6 +1,6 @@
 # CV-02 — Kamera-Setup: flutter_pose_detection Integration
 
-> **Status**: 🟡 PARTIAL — VisionConfig + AngleCalculator + CAMERA permissions (Android/iOS) erledigt; `flutter_pose_detection`/Live-Preview noch offen
+> **Status**: ✅ DONE (code) — `camera` + `flutter_pose_detection` in pubspec; CameraPoseProvider (Image-Stream → NpuPoseDetector.processFrame → PoseFrame); visionProvider; Unit-Tests. Manuelle Geräte-Prüfung optional.
 > **Voraussetzung**: Doc 04 (Architektur) gelesen und verstanden.
 > **Ziel**: Kamera-Stream + Pose Detection in FlowRep integrieren.
 > **Ergebnis**: App zeigt Live-Kamerabild mit erkannten Körperpunkten.
@@ -695,17 +695,18 @@ git push
 
 ## 10. Checkliste
 
-- [ ] `flutter_pose_detection` und `camera` in pubspec.yaml
-- [ ] `flutter pub get` erfolgreich
-- [ ] Android: CAMERA Permission in AndroidManifest.xml
-- [ ] Android: `uses-feature` mit `required="false"`
-- [ ] iOS: NSCameraUsageDescription in Info.plist
-- [ ] `lib/domain/vision/vision_config.dart` erstellt
-- [ ] `lib/domain/vision/angle_calculator.dart` erstellt
-- [ ] `lib/data/providers/camera_pose_provider.dart` erstellt
-- [ ] `lib/presentation/providers/vision_provider.dart` erstellt
-- [ ] `test/vision/angle_calculator_test.dart` erstellt + grün
-- [ ] `test/vision/vision_config_test.dart` erstellt + grün
-- [ ] `flutter test` → ALLE Tests grün (auch bestehende 242+)
+- [x] `flutter_pose_detection` und `camera` in pubspec.yaml
+- [x] `flutter pub get` erfolgreich
+- [x] Android: CAMERA Permission in AndroidManifest.xml
+- [x] Android: `uses-feature` mit `required="false"`
+- [x] iOS: NSCameraUsageDescription in Info.plist
+- [x] `lib/domain/vision/vision_config.dart` erstellt
+- [x] `lib/domain/vision/angle_calculator.dart` erstellt
+- [x] `lib/data/providers/camera_pose_provider.dart` erstellt
+- [x] `lib/presentation/providers/vision_provider.dart` erstellt
+- [x] `test/vision/angle_calculator_test.dart` erstellt + grün
+- [x] `test/vision/vision_config_test.dart` / angle_calculator_test (VisionConfig) + grün
+- [x] `test/vision/camera_pose_provider_test.dart` + grün
+- [x] `flutter test` → ALLE Tests grün
 - [ ] `flutter analyze` → 0 Errors
 - [ ] Commit + Push

@@ -169,6 +169,46 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "8.12.6"
+  camera:
+    dependency: "direct main"
+    description:
+      name: camera
+      sha256: "558230d6ce6ccea856b32d390db7e7b557adf4d9320aa614481bd3f2f608953f"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.12.0+2"
+  camera_android_camerax:
+    dependency: transitive
+    description:
+      name: camera_android_camerax
+      sha256: "4fb17b62dc25f97ec752596b749a31e80ccc9829ef95412badfdf0bc6c43a166"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.7.4+2"
+  camera_avfoundation:
+    dependency: transitive
+    description:
+      name: camera_avfoundation
+      sha256: "866e9cd8370f8055d005c0413937a52dc1d7a472687f0ee3ce02392955aababa"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.10.2"
+  camera_platform_interface:
+    dependency: transitive
+    description:
+      name: camera_platform_interface
+      sha256: "4524ca6eb4176b066864036ad4fe02c3e4863e63b77eadc21a5bf56824f43498"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.13.1"
+  camera_web:
+    dependency: transitive
+    description:
+      name: camera_web
+      sha256: "1245a480a113437f8d46d19c0fb90cea9db921436d9cf2ba5fb11854a1312693"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.5+4"
   characters:
     dependency: transitive
     description:
@@ -446,6 +486,22 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.4.8"
+  flutter_plugin_android_lifecycle:
+    dependency: transitive
+    description:
+      name: flutter_plugin_android_lifecycle
+      sha256: "3854fe5e3bff0b113c658f260b90c95dea17c92db0f2addeac2e343dd9969785"
+      url: "https://pub.dev"
+    source: hosted
+    version: "2.0.35"
+  flutter_pose_detection:
+    dependency: "direct main"
+    description:
+      name: flutter_pose_detection
+      sha256: "0ea64e9823f5fd9c2541ebcbe973e981e4551390b7be6dbc89b9f18611fade01"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.4.1"
   flutter_riverpod:
     dependency: "direct main"
     description:

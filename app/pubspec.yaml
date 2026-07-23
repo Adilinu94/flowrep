@@ -64,6 +64,8 @@ dependencies:
   vibration: ^2.0.0
   audioplayers: ^6.1.0
   flutter_foreground_task: ^10.0.0
+  camera: ^0.12.0+2
+  flutter_pose_detection: ^0.4.1
 
 dev_dependencies:
   flutter_test:

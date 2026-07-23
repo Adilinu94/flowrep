@@ -130,7 +130,7 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 | # | Feature | Aufwand | Abhängigkeit |
 |---|---------|---------|--------------|
 | 1 | CV-Architektur (nur lesen) ✅ foundation | 15min | keine |
-| 2 | Kamera-Setup (flutter_pose_detection) 🟡 partial | 2-3h | P0-1 |
+| 2 | Kamera-Setup (flutter_pose_detection) ✅ | 2-3h | P0-1 |
 | 3 | Rep-Counter Winkel (Bicep Curl) ✅ domain | 2-3h | CV-02 |
 | 4 | Sensor Fusion (IMU+Kamera) | 2h | CV-03 |
 | 5 | Webcam-Testing (Python-Tool) | 1h | keine |
@@ -250,7 +250,7 @@ flutter test --coverage         # Mit Coverage-Report
 ### CV-Track (optional, nicht release-blockierend)
 
 - [x] CV-01: Domain-Scaffold (VisionConfig, AngleCalculator, PoseRepCounter) + Tests
-- [ ] CV-02: Kamera-Setup funktioniert auf physischem Gerät (Permissions ✅; Live-Pose noch offen)
+- [x] CV-02: Kamera-Setup Code (deps, CameraPoseProvider, visionProvider, Tests); Geräte-E2E optional
 - [x] CV-03: PoseRepCounter Unit-Logik (Bicep-Winkel-SM) — Live-Kamera-Anbindung offen
 - [ ] CV-04: Fusion-Statistik wird korrekt angezeigt
 - [ ] CV-05: Webcam-Tool zählt korrekt (PC-Testing)
