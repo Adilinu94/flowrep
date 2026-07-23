@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Große Rep-Zahl mit optionalem Quality-Ring (SPEC TEIL 6, §6.3).
+/// Large rep counter with optional quality ring (SPEC §6.3 / P2-2, P2-3).
 class RepCounterDisplay extends StatelessWidget {
   const RepCounterDisplay({
     super.key,
@@ -13,40 +13,61 @@ class RepCounterDisplay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            if (qualityScore != null)
-              SizedBox(
-                width: 160,
-                height: 160,
-                child: CircularProgressIndicator(
-                  value: qualityScore!.clamp(0.0, 1.0),
-                  strokeWidth: 6,
-                  backgroundColor: Colors.grey.shade300,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    _qualityColor(qualityScore!),
+    final theme = Theme.of(context);
+
+    return Semantics(
+      label: 'Wiederholungen: $repCount',
+      value: '$repCount',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Stack(
+            alignment: Alignment.center,
+            children: [
+              if (qualityScore != null)
+                SizedBox(
+                  width: 160,
+                  height: 160,
+                  child: CircularProgressIndicator(
+                    value: qualityScore!.clamp(0.0, 1.0),
+                    strokeWidth: 6,
+                    backgroundColor: theme.colorScheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _qualityColor(qualityScore!),
+                    ),
                   ),
                 ),
+              // Glanceability (P2-3): readable from ~1–2 m
+              Text(
+                '$repCount',
+                style: theme.textTheme.displayLarge?.copyWith(
+                      fontSize: 120,
+                      fontWeight: FontWeight.w900,
+                      height: 1.0,
+                    ) ??
+                    const TextStyle(
+                      fontSize: 120,
+                      fontWeight: FontWeight.w900,
+                    ),
               ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Wiederholungen',
+            style: theme.textTheme.titleMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (qualityScore != null) ...[
+            const SizedBox(height: 8),
             Text(
-              '$repCount',
-              style: const TextStyle(
-                fontSize: 96,
-                fontWeight: FontWeight.bold,
-              ),
+              'Qualität: ${(qualityScore! * 100).round()}%',
+              style: theme.textTheme.bodySmall,
             ),
           ],
-        ),
-        const SizedBox(height: 4),
-        Text(
-          'Wiederholungen',
-          style: Theme.of(context).textTheme.bodyMedium,
-        ),
-      ],
+        ],
+      ),
     );
   }
 

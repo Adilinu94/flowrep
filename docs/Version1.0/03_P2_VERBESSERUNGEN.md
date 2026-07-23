@@ -20,6 +20,8 @@
 
 ## 1. Dark Mode
 
+> **Status: ✅ DONE** (theme + darkTheme + ThemeMode.system in main.dart)
+
 ### 1.1 Kurzbeschreibung
 
 Material3 mit `colorSchemeSeed` unterstützt Dark Mode nativ.
@@ -68,6 +70,8 @@ Es fehlt nur die explizite Theme-Konfiguration.
 ---
 
 ## 2. Accessibility
+
+> **Status: ✅ DONE** (Semantics auf RepCounter + RestTimer; Tooltips auf Korrektur-Buttons)
 
 ### 2.1 Kurzbeschreibung
 
@@ -136,6 +140,8 @@ flutter test --tags=a11y  # Falls A11y-Tests geschrieben werden
 ---
 
 ## 3. Glanceability
+
+> **Status: ✅ DONE** (Rep-Anzeige 120sp)
 
 ### 3.1 Kurzbeschreibung
 
@@ -212,6 +218,8 @@ WakelockPlus.disable();
 ---
 
 ## 4. Benutzerfreundliche Fehlermeldungen
+
+> **Status: ✅ DONE** (BleErrorMapper + connect()-Integration)
 
 ### 4.1 Kurzbeschreibung
 
@@ -291,6 +299,8 @@ class BleErrorMapper {
 
 ## 5. BLE-Paketverlustrate-Warnung
 
+> **Status: ✅ DONE** (_checkPacketLoss in EngineNotifier)
+
 ### 5.1 Kurzbeschreibung
 
 Bei >5% Paketverlust sollte der Benutzer gewarnt werden,
@@ -337,6 +347,8 @@ In `_periodicRefresh()` (wird alle 500ms aufgerufen):
 ---
 
 ## 6. Konstanten zentralisieren
+
+> **Status: ✅ DONE** (`engine_constants.dart`; EngineNotifier nutzt kDefaultRest*, kMaxReconnect*, kMinThreshold*, kPacketLoss*)
 
 ### 6.1 Kurzbeschreibung
 
@@ -407,6 +419,8 @@ import 'config/engine_constants.dart';
 ---
 
 ## 7. Logging-Struktur
+
+> **Status: ✅ DONE** (AppLogger mit e(stack/error), Debug/Release-Gating)
 
 ### 7.1 Kurzbeschreibung
 

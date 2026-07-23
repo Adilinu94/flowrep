@@ -8,11 +8,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../data/logger.dart';
+import '../../data/providers/ble_error_mapper.dart';
 import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
 import '../../data/services/foreground_service_manager.dart';
+import '../../domain/config/engine_constants.dart';
 import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
 import '../../domain/workout_engine.dart';
@@ -82,10 +84,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
-  int _restDurationSeconds = 90; // SPEC §5.2.1 / P0-2 default
+  int _restDurationSeconds = kDefaultRestDurationSeconds; // P0-2 / P2-6
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
-  static const int _maxReconnectAttempts = 10;
+  static const int _maxReconnectAttempts = kMaxReconnectAttempts;
   bool _userInitiatedDisconnect = false;
   Duration? _reconnectDelayOverride; // tests only
   String? _bleDeviceId;
@@ -513,7 +515,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   Duration _reconnectDelayForAttempt(int attempt) {
     if (_reconnectDelayOverride != null) return _reconnectDelayOverride!;
     // Exponential backoff: 1s, 2s, 4s, 8s, max 16s
-    final delaySec = (1 << (attempt - 1)).clamp(1, 16);
+    final delaySec =
+        (1 << (attempt - 1)).clamp(1, kMaxReconnectBackoffSeconds);
     return Duration(seconds: delaySec);
   }
 
@@ -528,6 +531,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void _periodicRefresh() {
     if (!isMock) {
       _updateBleDiagnostics();
+      _checkPacketLoss(); // P2-5
     }
     // Force state update for live diagnostics
     state = state.copyWith(
@@ -535,6 +539,26 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       engineThreshold: _engine.peakThreshold,
       engineBaseline: _engine.baselineLevel,
     );
+  }
+
+  /// Warns when BLE packet loss exceeds threshold while counting (P2-5).
+  void _checkPacketLoss() {
+    final provider = _sensorProvider;
+    if (provider is! BleSensorProvider) return;
+    final total =
+        provider.jitterOutputFrames + provider.jitterDroppedFrames;
+    if (total <= 0) return;
+    final underrunRate = provider.jitterDroppedFrames / total;
+    if (underrunRate > kPacketLossWarnThreshold && state.isCountingActive) {
+      if (state.errorText == null ||
+          !(state.errorText!.contains('Paketverlust'))) {
+        state = state.copyWith(
+          errorText:
+              'Hoher Paketverlust (${(underrunRate * 100).round()}%). '
+              'Zählung möglicherweise ungenau. Stick näher ans Handy halten.',
+        );
+      }
+    }
   }
 
   void _updateBleDiagnostics() {
@@ -622,7 +646,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       state = state.copyWith(
         isConnected: false,
         isConnecting: false,
-        errorText: e.toString(),
+        errorText: BleErrorMapper.toUserMessage(e),
       );
     }
   }
@@ -677,7 +701,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       final bias = profile.migratedFrom == 0 ? profile.gyroBias : null;
       _engine.applyCalibration(
         peakThreshold: profile.theta,
-        minThresholdAboveBaseline: 0.10,
+        minThresholdAboveBaseline: kMinThresholdAboveBaseline,
         rotationAxis: axis,
         gyroBias: bias,
         chosenSignal: profile.migratedFrom == 0 ? profile.chosenSignal : null,

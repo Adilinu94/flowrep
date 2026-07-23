@@ -117,13 +117,13 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 
 | # | Feature | Aufwand | Abhängigkeit |
 |---|---------|---------|--------------|
-| 1 | Dark Mode | 30min | keine |
-| 2 | Accessibility | 1-2h | P0-Widgets |
-| 3 | Glanceability | 1h | keine |
-| 4 | Error-Messages | 1h | keine |
-| 5 | Paketverlust-Warnung | 30min | keine |
-| 6 | Konstanten zentralisieren | 1h | keine |
-| 7 | Logging-Struktur | 30min | keine |
+| 1 | Dark Mode ✅ | 30min | keine |
+| 2 | Accessibility ✅ | 1-2h | P0-Widgets |
+| 3 | Glanceability ✅ | 1h | keine |
+| 4 | Error-Messages ✅ | 1h | keine |
+| 5 | Paketverlust-Warnung ✅ | 30min | keine |
+| 6 | Konstanten zentralisieren ✅ | 1h | keine |
+| 7 | Logging-Struktur ✅ | 30min | keine |
 
 ### Phase 4: CV (Computer Vision) — ~3-5 Tage (parallel zu P1/P2)
 
