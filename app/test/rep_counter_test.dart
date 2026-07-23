@@ -257,10 +257,10 @@ void main() {
     });
 
     test('Zu asymmetrisch → invalid', () {
-      // 45 positive + 5 negative → Ratio = 0.9 > 0.8
+      // 199 positive + 2 negative → Ratio = 0.995 > 0.99
       final window = <double>[
-        ...List.filled(45, 5.0),
-        ...List.filled(5, -5.0),
+        ...List.filled(199, 5.0),
+        ...List.filled(2, -5.0),
       ];
       final result = validator.validate(window);
       expect(result.valid, isFalse);
@@ -268,10 +268,10 @@ void main() {
     });
 
     test('Negative Phase zu kurz → invalid', () {
-      // 30 positive + 2 negative (< minPhaseSamples=3)
+      // 30 positive + 1 negative (< minPhaseSamples=2)
       final window = <double>[
         ...List.filled(30, 5.0),
-        ...List.filled(2, -5.0),
+        ...List.filled(1, -5.0),
       ];
       final result = validator.validate(window);
       expect(result.valid, isFalse);

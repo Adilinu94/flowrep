@@ -56,13 +56,13 @@ class PhaseValidator {
 
   /// Erstellt den PhaseValidator.
   ///
-  /// [minDurationRatio]: Min. Anteil der positiven Phase (Standard: 0.2).
-  /// [maxDurationRatio]: Max. Anteil der positiven Phase (Standard: 0.8).
-  /// [minPhaseSamples]: Min. Samples pro Phase (Standard: 3).
+  /// [minDurationRatio]: Min. Anteil der positiven Phase (Standard: 0.05).
+  /// [maxDurationRatio]: Max. Anteil der positiven Phase (Standard: 0.99).
+  /// [minPhaseSamples]: Min. Samples pro Phase (Standard: 2).
   PhaseValidator({
-    this.minDurationRatio = 0.2,
-    this.maxDurationRatio = 0.8,
-    this.minPhaseSamples = 3,
+    this.minDurationRatio = 0.05,
+    this.maxDurationRatio = 0.99,
+    this.minPhaseSamples = 2,
   });
 
   /// Validiert die Phasen-Struktur eines Peak-Windows.

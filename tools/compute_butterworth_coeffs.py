@@ -10,7 +10,7 @@ from scipy.signal import butter, sosfreqz
 
 # === PARAMETER (NICHT AENDERN) ===
 FS = 50.0        # Abtastrate in Hz (M5StickC Plus2 IMU)
-F_LOW = 0.3      # Untere Grenzfrequenz (Hz) - unterhalb: Drift/Gravitation
+F_LOW = 0.1      # Untere Grenzfrequenz (Hz) - unterhalb: Drift/Gravitation
 F_HIGH = 5.0     # Obere Grenzfrequenz (Hz) - oberhalb: Handzittern/Stoesse
 ORDER = 4        # Gesamtordnung (ergibt 4 Biquad-Sektionen)
 
@@ -41,9 +41,9 @@ idx_2hz = np.argmin(np.abs(w - 2.0))
 gain_2hz = h_db[idx_2hz]
 assert -1.0 < gain_2hz < 1.0, f"FEHLER: Verstaerkung bei 2Hz = {gain_2hz:.2f} dB (erwartet ~0 dB)"
 
-idx_005 = np.argmin(np.abs(w - 0.05))
+idx_005 = np.argmin(np.abs(w - 0.02))
 gain_005 = h_db[idx_005]
-assert gain_005 < -40.0, f"FEHLER: Verstaerkung bei 0.05Hz = {gain_005:.2f} dB (erwartet < -40 dB)"
+assert gain_005 < -40.0, f"FEHLER: Verstaerkung bei 0.02Hz = {gain_005:.2f} dB (erwartet < -40 dB)"
 
 idx_20 = np.argmin(np.abs(w - 20.0))
 gain_20 = h_db[idx_20]
@@ -51,5 +51,5 @@ assert gain_20 < -40.0, f"FEHLER: Verstaerkung bei 20Hz = {gain_20:.2f} dB (erwa
 
 print("// === VERIFIKATION BESTANDEN ===")
 print(f"// 2 Hz:    {gain_2hz:.2f} dB (erwartet: ~0 dB)")
-print(f"// 0.05 Hz: {gain_005:.2f} dB (erwartet: < -40 dB)")
+print(f"// 0.02 Hz: {gain_005:.2f} dB (erwartet: < -40 dB)")
 print(f"// 20 Hz:   {gain_20:.2f} dB (erwartet: < -40 dB)")

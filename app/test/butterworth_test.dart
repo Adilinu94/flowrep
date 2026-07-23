@@ -12,12 +12,12 @@ void main() {
 
     test('DC-Signal (0 Hz) wird vollständig unterdrückt', () {
       // Konstantes Signal = 0 Hz → sollte nach Einschwingen ~0 sein
-      // 0.3 Hz Highpass braucht ~10s zum Einschwingen (500 Samples bei 50 Hz)
+      // 0.1 Hz Highpass braucht ~50s zum Einschwingen (2500 Samples bei 50 Hz)
       double output = 0;
-      for (int i = 0; i < 500; i++) {
+      for (int i = 0; i < 2500; i++) {
         output = filter.process(5.0); // konstant 5.0
       }
-      // Nach 500 Samples (10s) muss DC komplett entfernt sein
+      // Nach 2500 Samples (50s) muss DC komplett entfernt sein
       expect(output.abs(), lessThan(0.01));
     });
 
@@ -50,22 +50,22 @@ void main() {
       expect(measuredAmplitude, lessThan(amplitude * 1.2));
     });
 
-    test('0.05-Hz-Signal wird stark gedämpft (< -40 dB)', () {
+    test('0.02-Hz-Signal wird stark gedämpft (< -40 dB)', () {
       const fs = 50.0;
-      const freq = 0.05;
+      const freq = 0.02;
       const amplitude = 10.0;
 
       // Sehr lange einschwingen (langsame Frequenz)
-      for (int i = 0; i < 500; i++) {
+      for (int i = 0; i < 2500; i++) {
         final t = i / fs;
         filter.process(amplitude * math.sin(2 * math.pi * freq * t));
       }
 
-      // Messung über 2 Perioden (40s = 2000 Samples)
+      // Messung über 2 Perioden (100s = 5000 Samples)
       double maxVal = -1e9;
       double minVal = 1e9;
-      for (int i = 0; i < 2000; i++) {
-        final t = (500 + i) / fs;
+      for (int i = 0; i < 5000; i++) {
+        final t = (2500 + i) / fs;
         final output = filter.process(amplitude * math.sin(2 * math.pi * freq * t));
         if (output > maxVal) maxVal = output;
         if (output < minVal) minVal = output;

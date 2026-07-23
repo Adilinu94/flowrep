@@ -1,6 +1,6 @@
 /// Kausaler Butterworth-Bandpassfilter 4. Ordnung.
 ///
-/// Entfernt Frequenzen unterhalb 0.3 Hz (Drift, Gravitation)
+/// Entfernt Frequenzen unterhalb 0.1 Hz (Drift, Gravitation)
 /// und oberhalb 5.0 Hz (Handzittern, Stöße).
 ///
 /// Implementierung als kaskadierte Biquad-Sektionen (Direct Form II Transposed)
@@ -50,44 +50,44 @@ class _BiquadSection {
 
 /// Butterworth-Bandpassfilter für IMU-Signalverarbeitung.
 ///
-/// Standardparameter: 0.3–5.0 Hz bei 50 Hz Abtastrate, 4. Ordnung.
+/// Standardparameter: 0.1–5.0 Hz bei 50 Hz Abtastrate, 4. Ordnung.
 /// Koeffizienten sind VORBERECHNET und gelten NUR für fs=50 Hz.
 class ButterworthBandpass {
-  // === KOEFFIZIENTEN (scipy.signal.butter, order=4, band=[0.3, 5.0], fs=50) ===
+  // === KOEFFIZIENTEN (scipy.signal.butter, order=4, band=[0.1, 5.0], fs=50) ===
   // Sektion 1 (Lowpass-Anteil):
-  static const double _b0_s1 = 3.905021720857976e-03;
-  static const double _b1_s1 = 7.810043441715952e-03;
-  static const double _b2_s1 = 3.905021720857976e-03;
-  static const double _a1_s1 = -1.133643844023120e+00;
-  static const double _a2_s1 = 3.457482367658442e-01;
+  static const double _b0_s1 = 4.503322126154910e-03;
+  static const double _b1_s1 = 9.006644252309820e-03;
+  static const double _b2_s1 = 4.503322126154910e-03;
+  static const double _a1_s1 = -1.075862874825275e+00;
+  static const double _a2_s1 = 3.114599233477081e-01;
 
   // Sektion 2 (Lowpass-Anteil):
   static const double _b0_s2 = 1.000000000000000e+00;
   static const double _b1_s2 = 2.000000000000000e+00;
   static const double _b2_s2 = 1.000000000000000e+00;
-  static const double _a1_s2 = -1.355816822785441e+00;
-  static const double _a2_s2 = 6.659952342688162e-01;
+  static const double _a1_s2 = -1.333002028842331e+00;
+  static const double _a2_s2 = 6.439576709734650e-01;
 
   // Sektion 3 (Highpass-Anteil):
   static const double _b0_s3 = 1.000000000000000e+00;
   static const double _b1_s3 = -2.000000000000000e+00;
   static const double _b2_s3 = 1.000000000000000e+00;
-  static const double _a1_s3 = -1.925516910054039e+00;
-  static const double _a2_s3 = 9.272066528326991e-01;
+  static const double _a1_s3 = -1.976249408404586e+00;
+  static const double _a2_s3 = 9.764163461850986e-01;
 
   // Sektion 4 (Highpass-Anteil):
   static const double _b0_s4 = 1.000000000000000e+00;
   static const double _b1_s4 = -2.000000000000000e+00;
   static const double _b2_s4 = 1.000000000000000e+00;
-  static const double _a1_s4 = -1.972527034823177e+00;
-  static const double _a2_s4 = 9.739695647056285e-01;
+  static const double _a1_s4 = -1.990534735931486e+00;
+  static const double _a2_s4 = 9.906935960361350e-01;
 
   final List<_BiquadSection> _sections;
   int _sampleCount = 0;
 
   /// Erstellt den Bandpassfilter.
   ///
-  /// Koeffizienten sind fest für fs=50 Hz, fc_low=0.3 Hz, fc_high=5.0 Hz.
+  /// Koeffizienten sind fest für fs=50 Hz, fc_low=0.1 Hz, fc_high=5.0 Hz.
   ButterworthBandpass()
       : _sections = [
           _BiquadSection(b0: _b0_s1, b1: _b1_s1, b2: _b2_s1, a1: _a1_s1, a2: _a2_s1),

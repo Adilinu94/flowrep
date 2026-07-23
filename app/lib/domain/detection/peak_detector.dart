@@ -45,7 +45,7 @@ class PeakDetector {
   int _fallingCount = 0;
   final List<double> _window = [];
   int _sampleIndex = 0;
-  int _lastPeakSampleIndex = -10000; // Weit in der Vergangenheit
+  int? _lastPeakSampleIndex; // null = noch kein Peak erkannt
   int _lastPeakDurationSamples = 0;
   double _lastPeakProminence = 0.0;
 
@@ -92,7 +92,7 @@ class PeakDetector {
   /// Rückgabe: PeakEvent oder null (kein Peak).
   PeakEvent? process(ProcessedFrame frame) {
     _sampleIndex++;
-    final value = frame.envelope; // Hüllkurve als Eingabe
+    final value = frame.smoothedGp; // Signiertes geglättetes g_p als Eingabe
 
     // NaN-Schutz
     if (value.isNaN) return null;
@@ -178,7 +178,9 @@ class PeakDetector {
 
   /// Refractory-Prüfung (sample-basiert, da JitterBuffer gleichmäßigen Takt liefert).
   bool _inRefractory() {
-    return (_sampleIndex - _lastPeakSampleIndex) < _refractorySamples;
+    final last = _lastPeakSampleIndex;
+    if (last == null) return false; // Noch kein Peak → keine Refractory
+    return (_sampleIndex - last) < _refractorySamples;
   }
 
   /// Setzt den Detektor-Zustand zurück (NICHT SPK/NPK!).
@@ -191,7 +193,7 @@ class PeakDetector {
     _fallingCount = 0;
     _window.clear();
     _sampleIndex = 0;
-    _lastPeakSampleIndex = -10000;
+    _lastPeakSampleIndex = null;
   }
 
   /// Aktualisiert SPK/NPK (z.B. nach Kalibrierung oder aus Profil).
