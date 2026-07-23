@@ -63,6 +63,7 @@ dependencies:
   # Phase 5 Vorbereitung: Haptic/Audio Feedback
   vibration: ^2.0.0
   audioplayers: ^6.1.0
+  flutter_foreground_task: ^10.0.0
 
 dev_dependencies:
   flutter_test:

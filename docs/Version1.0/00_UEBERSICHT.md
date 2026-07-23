@@ -96,7 +96,7 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 | 2 | Pausen-Timer (90s) ✅ | 1-2h | P0-1 (Dialog-Flow) |
 | 3 | Session-Beenden-Flow ✅ | 2h | P0-1 + P0-2 |
 | 4 | Reconnection-Strategie ✅ | 2-3h | keine |
-| 5 | Foreground Service | 2-3h | keine |
+| 5 | Foreground Service ✅ | 2-3h | keine |
 
 **Commit-Regel**: Nach JEDEM Feature einzeln committen.
 
@@ -234,7 +234,7 @@ flutter test --coverage         # Mit Coverage-Report
 
 ## Definition of Done (1.0 Release)
 
-- [ ] Alle P0-Features implementiert und getestet (P0-1..4 ✅ inkl. Reconnect)
+- [x] Alle P0-Features implementiert und getestet (P0-1..5 ✅)
 - [ ] Alle P1-Features implementiert
 - [ ] Mindestens 10 Widget-Tests
 - [ ] `flutter analyze` → 0 Errors, 0 Warnings

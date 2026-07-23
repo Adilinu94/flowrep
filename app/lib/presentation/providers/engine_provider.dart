@@ -11,6 +11,7 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
+import '../../data/services/foreground_service_manager.dart';
 import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
 import '../../domain/workout_engine.dart';
@@ -62,6 +63,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   final CalibrationStore _calibrationStore = CalibrationStore();
   final CsvSessionRecorder _recorder = CsvSessionRecorder();
   final FeedbackService _feedbackService = FeedbackService();
+  final ForegroundServiceManager _fgService = ForegroundServiceManager();
 
   // Session-Tracking (Phase 5.2)
   DateTime? _sessionStartedAt;
@@ -111,6 +113,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void startCounting() {
     if (state.isCountingActive) return;
     _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
+    // P0-5: keep BLE alive under screen lock (Android connectedDevice FGS)
+    unawaited(_fgService.start());
     state = state.copyWith(isCountingActive: true);
   }
 
@@ -118,6 +122,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void stopCounting() {
     if (!state.isCountingActive) return;
     _engine.pause();
+    unawaited(_fgService.stop());
     state = state.copyWith(
       isCountingActive: false,
       workoutState: WorkoutState.idle,
@@ -237,6 +242,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (state.isCountingActive) {
       _engine.pause();
     }
+    await _fgService.stop();
     _stopRestTimer();
     dismissCorrection(startRest: false);
 
@@ -312,6 +318,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Whether the last disconnect was user-initiated (for tests).
   @visibleForTesting
   bool get debugUserInitiatedDisconnect => _userInitiatedDisconnect;
+
+  /// Foreground service manager (P0-5) for tests.
+  @visibleForTesting
+  ForegroundServiceManager get debugFgService => _fgService;
 
   /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
   /// Lädt die Kalibrierung für die neue Übung neu.
@@ -654,6 +664,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _restTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    unawaited(_fgService.stop());
     _samplesSub?.cancel();
     _eventsSub?.cancel();
     _recorderSamplesSub?.cancel();

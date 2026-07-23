@@ -1193,6 +1193,8 @@ nach dem Verbindungsstatus:
 
 ## 5. Foreground Service (Android 15+)
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 5.1 Kurzbeschreibung
 
 Android 15+ (API 35) erfordert einen Foreground Service für BLE-Verbindungen
