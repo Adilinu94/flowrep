@@ -6,8 +6,11 @@ import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
 import 'package:flowrep/domain/exercise_engine.dart' as pipeline;
+import 'package:flowrep/domain/state/workout_state_machine.dart';
 
-enum WorkoutState { idle, calibrating, active, paused, guidedCalibration, connectionLost }
+// Kanonischer WorkoutState lebt in state/workout_state_machine.dart.
+// Re-Export für Abwärtskompatibilität (alle bestehenden Imports weiter gültig).
+export 'state/workout_state_machine.dart' show WorkoutState;
 
 class SensorSample {
   final DateTime timestamp;
@@ -86,6 +89,22 @@ class WorkoutEngine {
   // Aktivierung erst, wenn die neue Pipeline gegen reale Daten validiert ist.
   // ignore: prefer_final_fields
   bool _useNewPipeline = false;
+
+  /// Shadow-Mode: Beide Pfade laufen parallel, Legacy bleibt autoritativ.
+  ///
+  /// Aktivierung: [enableShadowMode] = true. Die neue Pipeline läuft still
+  /// mit; Rep-Unterschiede werden geloggt (AppLogger). Dient als Gate vor
+  /// der endgültigen Aktivierung (_useNewPipeline = true).
+  ///
+  /// Checklist vor Pipeline-Aktivierung:
+  /// 1. Shadow-Mode mit echten CSV/Hardware-Sätzen: Rep-Diff = 0
+  /// 2. Gleiche Events/States (idle/active/pause/set-end)
+  /// 3. Template aus ExerciseProfile tatsächlich in ExerciseEngine.setTemplate
+  /// 4. Dann: _useNewPipeline = true, Legacy schrumpfen
+  // ignore: prefer_final_fields
+  bool _shadowMode = false;
+  int _shadowRepCount = 0;
+  int _legacyRepCount = 0;
 
   /// Die neue ExerciseEngine-Pipeline (SignalChain → RepCounter → StateMachine).
   /// Wird lazy initialisiert, sobald rotationAxis/gyroBias verfügbar sind.
@@ -423,7 +442,51 @@ class WorkoutEngine {
       return;
     }
     _processSampleLegacy(s);
+
+    // Shadow-Mode: neue Pipeline parallel laufen lassen (nur Logging)
+    if (_shadowMode && _exerciseEngine != null) {
+      _processShadowSample(s);
+    }
   }
+
+  /// Shadow-Vergleich: führt die neue Pipeline still aus und loggt Diffs.
+  void _processShadowSample(SensorSample s) {
+    final result = _exerciseEngine!.processSample(
+      timestampMs: s.timestamp.millisecondsSinceEpoch,
+      gx: s.gx,
+      gy: s.gy,
+      gz: s.gz,
+    );
+    if (result.repResult.repCounted) {
+      _shadowRepCount++;
+      if (_shadowRepCount != _legacyRepCount) {
+        AppLogger.w('SHADOW-DIFF: legacy=$_legacyRepCount '
+            'new=$_shadowRepCount (Δ=${_shadowRepCount - _legacyRepCount})');
+      }
+    }
+  }
+
+  /// Aktiviert den Shadow-Mode (beide Pfade parallel, Legacy autoritativ).
+  void enableShadowMode() {
+    _shadowMode = true;
+    _shadowRepCount = 0;
+    _legacyRepCount = 0;
+    AppLogger.i('Shadow-Mode aktiviert: neue Pipeline läuft parallel.');
+  }
+
+  /// Deaktiviert den Shadow-Mode.
+  void disableShadowMode() {
+    _shadowMode = false;
+    AppLogger.i('Shadow-Mode deaktiviert. '
+        'Legacy=$_legacyRepCount, New=$_shadowRepCount');
+  }
+
+  /// Shadow-Statistik (für Diagnose/UI).
+  ({int legacyReps, int newReps, int diff}) get shadowStats => (
+    legacyReps: _legacyRepCount,
+    newReps: _shadowRepCount,
+    diff: _shadowRepCount - _legacyRepCount,
+  );
 
   /// NEUER PFAD (KRITISCHER SCHRITT 3): delegiert an ExerciseEngine.
   /// Öffentliche API bleibt identisch — gleiche Events, gleiche Zustände.
@@ -664,6 +727,11 @@ class WorkoutEngine {
       case WorkoutState.connectionLost:
         // Ignore samples until explicit reset via handleReconnect().
         break;
+
+      case WorkoutState.resting:
+        // Neuer Pipeline-State (Satzpause). Im Legacy-Pfad nicht verwendet,
+        // da _endSet() direkt zu idle zurückkehrt.
+        break;
     }
   }
 
@@ -755,6 +823,7 @@ class WorkoutEngine {
         _repsInSet.add(
           Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
         );
+        _legacyRepCount++;
         _lastCountedRepSample = diagEngineSampleCount;
         _emitStateEvent();
       }
@@ -836,6 +905,7 @@ class WorkoutEngine {
       _gpRepCount++;
       if (_gpIsAuthoritative) {
         _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: gp.abs()));
+        _legacyRepCount++;
         _lastCountedRepSample = diagEngineSampleCount;
         _emitStateEvent();
       }
@@ -859,6 +929,7 @@ class WorkoutEngine {
       _gyroMagRepCount++;
       if (_gyroMagIsAuthoritative) {
         _repsInSet.add(Rep(timestamp: s.timestamp, peakMagnitude: gyroMag));
+        _legacyRepCount++;
         _lastCountedRepSample = diagEngineSampleCount;
         _emitStateEvent();
       }

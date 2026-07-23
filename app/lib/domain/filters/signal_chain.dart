@@ -2,9 +2,14 @@
 ///
 /// Verarbeitungsreihenfolge (LD-7):
 ///   1. GpProjection: 3D-Gyro → signiertes 1D-Signal (g_p)
-///   2. Butterworth: Bandpass 0.3–5 Hz (entfernt Drift + Rauschen)
+///   2. Butterworth: Bandpass 0.1–5 Hz (entfernt Drift + Rauschen)
 ///   3. OneEuro: Adaptive Glättung (reduziert Jitter bei langsamer Bewegung)
-///   4. Envelope: Hüllkurve für PeakDetector
+///   4. Envelope: Hüllkurve aus filteredGp (für Diagnose/Qualität)
+///
+/// Peak-Eingangssignal: Der PeakDetector nutzt smoothedGp (signiert),
+/// NICHT die Envelope. Die Envelope dient als Zusatzinformation für
+/// QualityScorer und Diagnose. Begründung: Signiertes g_p erhält die
+/// Phaseninformation (pos/neg), die für PhaseValidator nötig ist.
 ///
 /// Die SignalChain ist ZUSTANDSBEHAFTET — reset() bei Session-Wechsel aufrufen.
 library;
@@ -73,13 +78,13 @@ class SignalChain {
     // Schritt 1: Projektion auf Rotationsachse
     final rawGp = _gpProjection.project(gx, gy, gz);
 
-    // Schritt 2: Butterworth-Bandpass (0.3–5 Hz)
+    // Schritt 2: Butterworth-Bandpass (0.1–5 Hz)
     final filteredGp = _butterworth.process(rawGp);
 
     // Schritt 3: One-Euro adaptive Glättung
     final smoothedGp = _oneEuro.process(filteredGp);
 
-    // Schritt 4: Hüllkurve (für PeakDetector)
+    // Schritt 4: Hüllkurve aus filteredGp (für Diagnose/QualityScorer, NICHT Peak-Eingang)
     final envelope = _envelope.process(filteredGp);
 
     // Einschwing-Status: alle Filter müssen eingeschwungen sein

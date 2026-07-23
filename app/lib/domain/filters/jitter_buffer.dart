@@ -42,6 +42,8 @@ class JitterBuffer<T> {
   Timer? _timer;
   int _droppedFrames = 0;
   int _outputFrames = 0;
+  int _underrunCount = 0;
+  int _totalTicks = 0;
 
   /// Erstellt den JitterBuffer.
   ///
@@ -93,7 +95,11 @@ class JitterBuffer<T> {
 
   /// Interner Tick: Gibt ein Element aus dem Puffer aus.
   void _tick() {
-    if (_queue.isEmpty) return;
+    _totalTicks++;
+    if (_queue.isEmpty) {
+      _underrunCount++;
+      return;
+    }
 
     final item = _queue.removeFirst();
     _outputFrames++;
@@ -112,11 +118,35 @@ class JitterBuffer<T> {
   /// Anzahl ausgegebener Frames seit Erstellung/Reset.
   int get outputFrames => _outputFrames;
 
+  /// Anzahl Underruns (Tick ohne verfügbares Sample) seit Erstellung/Reset.
+  ///
+  /// Hohe Underrun-Rate deutet auf BLE-Paketverlust oder zu kleinen Puffer.
+  /// Bei anhaltend hoher Rate (>10%) sollte ein Filter-Reset erwogen werden,
+  /// da IIR-Koeffizienten 50 Hz annehmen.
+  int get underrunCount => _underrunCount;
+
+  /// Drop-Rate als Bruchteil (0.0–1.0): drops / (drops + output).
+  ///
+  /// >0.1 = kritisch (Filter-Reset oder Sample-Hold erwägen).
+  double get dropRate {
+    final total = _droppedFrames + _outputFrames;
+    if (total == 0) return 0.0;
+    return _droppedFrames / total;
+  }
+
+  /// Underrun-Rate als Bruchteil (0.0–1.0): underruns / totalTicks.
+  double get underrunRate {
+    if (_totalTicks == 0) return 0.0;
+    return _underrunCount / _totalTicks;
+  }
+
   /// Setzt Zähler zurück und leert den Puffer.
   void reset() {
     _queue.clear();
     _droppedFrames = 0;
     _outputFrames = 0;
+    _underrunCount = 0;
+    _totalTicks = 0;
   }
 
   /// Gibt Ressourcen frei.

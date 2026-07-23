@@ -65,7 +65,7 @@ Die App wird von einem monolithischen Prototyp in eine modulare, testbare Archit
 | # | Entscheidung | Begründung | Alternativen (verworfen) |
 |---|---|---|---|
 | LD-1 | Riverpod statt BLoC | Weniger Boilerplate, bessere Testbarkeit, Provider-Composition | BLoC (zu viel Boilerplate für diese App-Größe), GetX (schlecht wartbar) |
-| LD-2 | Butterworth 4. Ordnung als IIR | Bewährt in Biomechanik, scharfe Trennung bei 0.3-5Hz, geringe Latenz | FIR (zu viele Koeffizienten bei 50Hz), EMA (zu flache Flanke) |
+| LD-2 | Butterworth 4. Ordnung als IIR | Bewährt in Biomechanik, scharfe Trennung bei 0.1-5Hz, geringe Latenz | FIR (zu viele Koeffizienten bei 50Hz), EMA (zu flache Flanke) |
 | LD-3 | One Euro Filter für adaptive Glättung | Passt sich Bewegungsgeschwindigkeit an, minimaler Lag bei langsamen Reps | Kalman (Overkill für 1D), Savitzky-Golay (nicht kausal) |
 | LD-4 | Template Matching via normalisierte Kreuzkorrelation | O(n) pro Vergleich, robust gegen Amplitudenvariation | DTW (O(n²), zu teuer für Echtzeit), LSTM (kein Training möglich) |
 | LD-5 | Pan-Tompkins adaptive Schwelle | Bewährt in EKG-Detektion, dual-envelope lernt Signal+Rauschen | Feste Schwelle (aktuell, funktioniert nicht), Percentile (zu träge) |
@@ -330,7 +330,11 @@ Jede Stufe ist eine eigenständige, testbare Klasse. Die `SignalChain` orchestri
 
 **Datei**: `app/lib/domain/filters/butterworth.dart`
 
-**Zweck**: Kausaler IIR-Bandpassfilter 4. Ordnung (zwei kaskadierte Biquad-Sektionen 2. Ordnung). Entfernt Frequenzen unterhalb 0.3 Hz (Drift, Gravitationsänderung) und oberhalb 5 Hz (Handzittern, Stöße).
+**Zweck**: Kausaler IIR-Bandpassfilter 4. Ordnung (vier kaskadierte Biquad-Sektionen). Entfernt Frequenzen unterhalb 0.1 Hz (Drift, Gravitationsänderung) und oberhalb 5 Hz (Handzittern, Stöße).
+
+> **HINWEIS (aktualisiert)**: Maßgeblich sind die Koeffizienten in `butterworth.dart`,
+> generiert von `tools/compute_butterworth_coeffs.py` (scipy, order=4, band=[0.1, 5.0], fs=50).
+> Die untenstehenden Beispielkoeffizienten (0.3 Hz) sind historisch und NICHT mehr gültig.
 
 **Mathematische Grundlage**:
 - Butterworth-Filter maximiert die Flachheit im Durchlassband
@@ -340,7 +344,7 @@ Jede Stufe ist eine eigenständige, testbare Klasse. Die `SignalChain` orchestri
 
 **Koeffizienten-Berechnung** (einmalig, nicht pro Sample):
 
-Für einen Bandpass 0.3–5.0 Hz bei 50 Hz Abtastrate:
+Für einen Bandpass 0.1–5.0 Hz bei 50 Hz Abtastrate:
 ```
 Normalisierte Frequenzen:
   f_low  = 0.3 / (50/2) = 0.012
@@ -354,7 +358,10 @@ Berechnung via Bilinear-Transformation:
     Normalisierung: alle durch a0 teilen
 ```
 
-**Feste Koeffizienten** (für fs=50Hz, fc_low=0.3Hz, fc_high=5.0Hz, Ordnung=4):
+**Feste Koeffizienten** (für fs=50Hz, fc_low=0.1Hz, fc_high=5.0Hz, Ordnung=4):
+
+> ⚠️ Die tatsächlichen Koeffizienten stehen in `butterworth.dart` (4 Sektionen).
+> Untenstehende Werte (0.3 Hz, 2 Sektionen) sind ein veraltetes Beispiel.
 
 ```
 Sektion 1 (Highpass 0.3 Hz, Q=0.5412):
@@ -699,7 +706,7 @@ class ProcessedFrame {
   final double gpRaw;  // °/s, signiert, ungefiltert
 
   // Nach Butterworth
-  final double gpBandpassed;  // °/s, 0.3-5 Hz
+  final double gpBandpassed;  // °/s, 0.1-5 Hz
 
   // Nach One Euro
   final double gpSmoothed;  // °/s, adaptiv geglättet

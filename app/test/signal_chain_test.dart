@@ -21,9 +21,9 @@ void main() {
     });
 
     test('isSettled wird true nach genügend Samples', () {
-      for (int i = 0; i < 20; i++) {
+      for (int i = 0; i < 260; i++) {
         final frame = chain.process(i * 20, 0.0, 0.0, 10.0);
-        if (i >= 17) {
+        if (i >= 251) {
           expect(frame.isSettled, isTrue);
         }
       }
@@ -69,11 +69,11 @@ void main() {
     });
 
     test('reset() setzt alle Filter zurück', () {
-      for (int i = 0; i < 50; i++) {
+      for (int i = 0; i < 260; i++) {
         chain.process(i * 20, 0.0, 0.0, 100.0);
       }
       expect(chain.isSettled, isTrue);
-      expect(chain.sampleCount, equals(50));
+      expect(chain.sampleCount, equals(260));
 
       chain.reset();
       expect(chain.isSettled, isFalse);

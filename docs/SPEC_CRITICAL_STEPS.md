@@ -8,6 +8,26 @@
 
 ---
 
+## STATUS-MATRIX (aktualisiert)
+
+> **WICHTIG**: Dieses Dokument ist teilweise historisch. Der Code ist maßgeblich.
+> Zukünftige Agents: NICHTS erneut implementieren — nur als Referenz lesen.
+
+| Schritt | Thema | Status | Abweichung |
+|---------|-------|--------|------------|
+| 1 | Butterworth Bandpass | ✅ Erledigt | 0.1–5 Hz (nicht 0.3); 4 Sektionen; Koeff. via scipy |
+| 2 | JitterBuffer | ✅ Erledigt | Generisch `JitterBuffer<T>`, 6 Samples, Underrun-Metriken ergänzt |
+| 3 | WorkoutEngine Facade | ✅ Erledigt | Feature-Flag `_useNewPipeline=false`, Shadow-Mode ergänzt |
+| 4 | RepCounter Pipeline | ✅ Erledigt | Peak auf smoothedGp (signiert), nicht Envelope |
+| 5 | ExerciseEngine Integration | ✅ Erledigt | SignalChain→RepCounter→StateMachine, isSettled=250 |
+
+**Bewusst offen** (erfordert Hardware-Validierung):
+- `_useNewPipeline = true` setzen (nach Shadow-Mode mit echten CSV-Daten)
+- Legacy-Code löschen (nach Gate)
+- Template end-to-end verdrahten (ExerciseProfile → ExerciseEngine.setTemplate)
+
+---
+
 ## KRITISCHER SCHRITT 1: Butterworth Bandpass Filter (P1-02)
 
 ### Warum kritisch?
@@ -161,7 +181,7 @@ class _BiquadSection {
 
 /// Butterworth-Bandpassfilter für IMU-Signalverarbeitung.
 ///
-/// Standardparameter: 0.3–5.0 Hz bei 50 Hz Abtastrate, 4. Ordnung.
+/// Standardparameter: 0.1–5.0 Hz bei 50 Hz Abtastrate, 4. Ordnung.
 class ButterworthBandpass {
   // === KOEFFIZIENTEN ===
   // HIER die exakten Werte aus dem Python-Script-Output einsetzen!
@@ -732,7 +752,7 @@ class SignalChain {
   ///
   /// REIHENFOLGE (KRITISCH — NICHT ÄNDERN):
   /// 1. g_p Projektion (3D → 1D, signiert)
-  /// 2. Butterworth Bandpass (0.3-5 Hz)
+  /// 2. Butterworth Bandpass (0.1-5 Hz)
   /// 3. One Euro (adaptive Glättung)
   /// 4. Envelope (Hüllkurve für Diagnose)
   ProcessedFrame process(SensorSample sample) {

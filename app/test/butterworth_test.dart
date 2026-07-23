@@ -110,10 +110,10 @@ void main() {
     });
 
     test('reset() setzt sampleCount zurück', () {
-      for (int i = 0; i < 50; i++) {
+      for (int i = 0; i < 260; i++) {
         filter.process(1.0);
       }
-      expect(filter.sampleCount, equals(50));
+      expect(filter.sampleCount, equals(260));
       expect(filter.isSettled, isTrue);
 
       filter.reset();
@@ -121,8 +121,8 @@ void main() {
       expect(filter.isSettled, isFalse);
     });
 
-    test('isSettled ist false vor 16 Samples, true danach', () {
-      for (int i = 0; i < 16; i++) {
+    test('isSettled ist false vor 250 Samples, true danach', () {
+      for (int i = 0; i < 250; i++) {
         filter.process(1.0);
         expect(filter.isSettled, isFalse);
       }

@@ -128,9 +128,12 @@ class ButterworthBandpass {
   /// Anzahl der seit dem letzten [reset] verarbeiteten Samples.
   int get sampleCount => _sampleCount;
 
-  /// true, wenn der Filter eingeschwungen ist (sampleCount > 16).
+  /// true, wenn der Filter eingeschwungen ist (sampleCount > 250).
   ///
-  /// Vor dem Einschwingen (320ms bei 50 Hz) sind die Ausgabewerte
-  /// unzuverlässig und sollten NICHT für Peak-Detection verwendet werden.
-  bool get isSettled => _sampleCount > 16;
+  /// Bei 0.1 Hz Highpass und 50 Hz Abtastrate ist die Zeitkonstante
+  /// τ = 1/(2π·0.1) ≈ 1.6 s ≈ 80 Samples. Nach 3τ (~240 Samples, ~4.8 s)
+  /// ist der Einschwingvorgang praktisch abgeschlossen.
+  /// Vorher sind die Ausgabewerte unzuverlässig und dürfen NICHT für
+  /// Peak-Detection verwendet werden (verhindert SPK/NPK-Vergiftung).
+  bool get isSettled => _sampleCount > 250;
 }
