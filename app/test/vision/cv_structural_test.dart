@@ -10,6 +10,48 @@ void main() {
           File('lib/domain/vision/angle_calculator.dart').existsSync(), isTrue);
       expect(
           File('lib/domain/vision/pose_rep_counter.dart').existsSync(), isTrue);
+      // CV-07 skeleton overlay domain
+      expect(File('lib/domain/vision/pose_skeleton.dart').existsSync(), isTrue);
+      expect(File('lib/domain/vision/vision_focus.dart').existsSync(), isTrue);
+      expect(
+          File('lib/domain/vision/tracking_quality.dart').existsSync(), isTrue);
+      expect(File('lib/domain/vision/fusion_pulse.dart').existsSync(), isTrue);
+      expect(
+        File('lib/presentation/widgets/skeleton_painter.dart').existsSync(),
+        isTrue,
+      );
+      expect(
+        File('lib/presentation/widgets/framed_guide_overlay.dart').existsSync(),
+        isTrue,
+      );
+      expect(
+        File('lib/data/repositories/landmark_session_recorder.dart')
+            .existsSync(),
+        isTrue,
+      );
+    });
+
+    test('CV-07 session wires skeleton and has no E8 privacy blur', () {
+      final session =
+          File('lib/presentation/screens/camera_session_screen.dart')
+              .readAsStringSync();
+      expect(session.contains('SkeletonPainter') ||
+          session.contains('showSkeleton') ||
+          session.contains('landmarks:'), isTrue);
+      expect(session.contains('TrackingQualityTracker'), isTrue);
+      expect(session.contains('FusionPulseController'), isTrue);
+      expect(session.contains('SkeletonDrawMode'), isTrue);
+      // E8 out of scope
+      expect(session.toLowerCase().contains('imagefilter.blur'), isFalse);
+      expect(session.contains('BackdropFilter'), isFalse);
+
+      final overlay =
+          File('lib/presentation/widgets/camera_preview_overlay.dart')
+              .readAsStringSync();
+      expect(overlay.contains('SkeletonPainter'), isTrue);
+      expect(overlay.contains('FramedGuideOverlay'), isTrue);
+      expect(overlay.contains('_TrackingBadge'), isTrue);
+      expect(overlay.contains('BackdropFilter'), isFalse);
     });
 
     test('Android CAMERA permission optional', () {

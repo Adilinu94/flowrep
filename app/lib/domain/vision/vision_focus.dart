@@ -45,13 +45,11 @@ class VisionFocus {
 
   /// Resolve focus for a known exercise id; unknown → curl default.
   static VisionFocus forExercise(String exerciseId) {
-    switch (exerciseId) {
-      case 'bicep_curl':
-      case kDefaultVisionExerciseId:
-        return bicepCurl;
-      default:
-        return bicepCurl;
+    // Extensible: add cases for new exercises; unknown → curl default (E10).
+    if (exerciseId == 'bicep_curl' || exerciseId == kDefaultVisionExerciseId) {
+      return bicepCurl;
     }
+    return bicepCurl;
   }
 
   /// Primary chain for [rightArm] (mirror of curl map).

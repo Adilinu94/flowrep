@@ -1,6 +1,6 @@
 # CV-07 — Skelett-Overlay & Pose-Sichtbarkeit (Implementierungsplan)
 
-> **Status**: 📋 PLAN (noch nicht implementiert) — **Scope: MVP + E1–E7, E9, E10**  
+> **Status**: ✅ CODE DONE (MVP + E1–E7, E9, E10; E8 out) — Geräte-QA optional  
 > **Stand**: 2026-07-23  
 > **Bezug**: Screenshot-Referenz (Fitness-App mit gelben Gelenkpunkten + grünen Knochenlinien)  
 > **Voraussetzung**: CV-01…06 Code-Scaffold (`CameraPoseProvider`, `PoseFrame`, `AngleCalculator`, Fusion)  
@@ -123,7 +123,7 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 | **ÄNDERN** | `camera_preview_overlay.dart` | Stack + Skeleton + Guide + Badge-Slot | MVP, E3, E4 |
 | **ÄNDERN** | `camera_session_screen.dart` | Frame-State, HUD, Toggle, Pulse-Trigger | C–E |
 | **ÄNDERN** | `vision_config.dart` | `drawMode`, `highlightArm`, `recordLandmarks`, … | E1, E6, E9 |
-| **ÄNDERN** | `exercise_profile.dart` / registry | optionales `visionFocus` | **E10** |
+| **ÄNDERN** | `vision_focus.dart` (statt Profil-JSON) | `VisionFocus.forExercise(id)` | **E10** |
 | **ÄNDERN** | `fusion` / session feedback hook | Pulse nur UI, keine Zähllogik | **E7** |
 | **ÄNDERN** | Docs `12` / `13` | Checkboxen nach Implementierung | — |
 
@@ -161,9 +161,9 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase A:**
 
-- [ ] Unit-Tests Bones/Modi/Mapping grün
-- [ ] `VisionFocus` für Curl definiert und getestet
-- [ ] Kein UI nötig
+- [x] Unit-Tests Bones/Modi/Mapping grün
+- [x] `VisionFocus` für Curl definiert und getestet
+- [x] Kein UI nötig
 
 ---
 
@@ -185,8 +185,8 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase B:**
 
-- [ ] Analyze 0; Widget-Test leere Landmarks
-- [ ] Unit/Widget: Highlight-Arm und DrawMode ändern sichtbare Bone-Menge (über testbare pure API)
+- [x] Analyze 0; Widget-Test leere Landmarks
+- [x] Unit/Widget: Highlight-Arm und DrawMode ändern sichtbare Bone-Menge (über testbare pure API)
 
 ---
 
@@ -212,9 +212,9 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase C:**
 
-- [ ] Person im Bild → Skelett + Badge
-- [ ] Stop cleared frame
-- [ ] Bestehende Vision/Fusion-Tests grün
+- [x] Person im Bild (Code; Geräte-QA optional) → Skelett + Badge
+- [x] Stop cleared frame
+- [x] Bestehende Vision/Fusion-Tests grün
 
 ---
 
@@ -238,9 +238,9 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase D:**
 
-- [ ] Unit-Tests Hysterese-Übergänge
-- [ ] Guide sichtbar wenn lost; weg wenn tracking
-- [ ] Manuell: weniger Flackern bei Grenz-Licht
+- [x] Unit-Tests Hysterese-Übergänge
+- [x] Guide sichtbar wenn lost; weg wenn tracking
+- [ ] Manuell: weniger Flackern (env-optional) bei Grenz-Licht
 
 ---
 
@@ -259,8 +259,8 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase E:**
 
-- [ ] Pulse nur bei bestätigter Fusion-Rep (simuliert in Test)
-- [ ] Zählstand IMU unverändert durch Pulse-Code
+- [x] Pulse nur bei bestätigter Fusion-Rep (simuliert in Test)
+- [x] Zählstand IMU unverändert durch Pulse-Code
 
 ---
 
@@ -283,9 +283,9 @@ Erweiterungen E1–E7/E9/E10 bauen darauf auf — ohne diese Schicht „sieht“
 
 **DoD Phase F:**
 
-- [ ] Recorder-Unit-Test (in-memory sink)
-- [ ] Curl-Profil hat `visionFocus`; Registry-Test
-- [ ] Default: Recording aus
+- [x] Recorder-Unit-Test (in-memory sink)
+- [x] Curl-Focus via `VisionFocus.forExercise('bicep_curl')`
+- [x] Default: Recording aus
 
 ---
 
@@ -425,15 +425,15 @@ enum SkeletonDrawMode { full, upper, armOnly }
 
 ## 10. Definition of Done (gesamter Scope dieses Plans)
 
-1. Live-Skelett über Preview (MVP A–C).  
-2. **E1** Arm-Highlight, **E3** Badge, **E2** Winkel-Farbe.  
-3. **E4** Framed-Guide bei lost, **E5** Hysterese.  
-4. **E6** drei Draw-Modi wählbar.  
-5. **E7** Fusion-Pulse UI-only.  
-6. **E9** opt-in lokaler Landmark-Log.  
-7. **E10** `VisionFocus` + Curl verdrahtet.  
-8. **E8 nicht** implementiert.  
-9. Tests + analyze grün; Docs `12`/`13` abgehakt; Changelog-Eintrag.  
+1. [x] Live-Skelett über Preview (MVP A–C).  
+2. [x] **E1** Arm-Highlight, **E3** Badge, **E2** Winkel-Farbe.  
+3. [x] **E4** Framed-Guide bei lost, **E5** Hysterese.  
+4. [x] **E6** drei Draw-Modi wählbar.  
+5. [x] **E7** Fusion-Pulse UI-only.  
+6. [x] **E9** opt-in lokaler Landmark-Log.  
+7. [x] **E10** `VisionFocus` + Curl verdrahtet.  
+8. [x] **E8 nicht** implementiert.  
+9. [x] Tests + analyze grün; Docs `12`/`13` abgehakt; Changelog-Eintrag.  
 
 ---
 
@@ -457,6 +457,7 @@ Jeder Commit: passende Tests grün.
 |-------|----------|
 | 2026-07-23 | Erster Plan: Overlay-MVP + E1–E10 als Ergänzungen |
 | 2026-07-23 | **Scope-Update:** E8 gestrichen; E1–E7, E9, E10 fest in Phasen A–F integriert; DoD/Commits/Checkliste erweitert |
+| 2026-07-23 | **Implementiert:** Phasen A–F Code + Tests; E10 via `VisionFocus.forExercise` (kein ExerciseProfile-JSON); Geräte-QA optional |
 
 ---
 

@@ -1,8 +1,11 @@
-/// Configuration for the Computer-Vision pipeline (CV-01 / CV-02).
+/// Configuration for the Computer-Vision pipeline (CV-01 / CV-02 / CV-07).
 ///
 /// All thresholds for pose estimation and angle-based rep counting.
 /// Camera is OPTIONAL — IMU remains authoritative.
 library;
+
+import 'pose_skeleton.dart';
+import 'vision_focus.dart';
 
 /// Configuration for pose estimation and rep recognition.
 class VisionConfig {
@@ -30,6 +33,18 @@ class VisionConfig {
   /// Camera lens: `'back'` or `'front'`.
   final String cameraLens;
 
+  /// Skeleton draw density (E6). Default upper for curl.
+  final SkeletonDrawMode skeletonDrawMode;
+
+  /// Preferred arm for highlight; auto uses best confidence (E1).
+  final ArmSide highlightArm;
+
+  /// Opt-in local landmark CSV/JSONL recording (E9). Default off.
+  final bool recordLandmarks;
+
+  /// Exercise id for [VisionFocus.forExercise] (E10).
+  final String exerciseId;
+
   const VisionConfig({
     this.minLandmarkConfidence = 0.5,
     this.angleDownThreshold = 160.0,
@@ -39,6 +54,10 @@ class VisionConfig {
     this.enabled = false,
     this.showSkeletonOverlay = true,
     this.cameraLens = 'back',
+    this.skeletonDrawMode = SkeletonDrawMode.upper,
+    this.highlightArm = ArmSide.auto,
+    this.recordLandmarks = false,
+    this.exerciseId = kDefaultVisionExerciseId,
   });
 
   /// Default disabled config (IMU-only path).
@@ -46,6 +65,10 @@ class VisionConfig {
 
   /// Default enabled config for bicep-curl validation.
   static const VisionConfig bicepCurl = VisionConfig(enabled: true);
+
+  VisionFocus get visionFocus => VisionFocus.forExercise(exerciseId);
+
+  bool get mirrorPreview => cameraLens == 'front';
 
   VisionConfig copyWith({
     double? minLandmarkConfidence,
@@ -56,6 +79,10 @@ class VisionConfig {
     bool? enabled,
     bool? showSkeletonOverlay,
     String? cameraLens,
+    SkeletonDrawMode? skeletonDrawMode,
+    ArmSide? highlightArm,
+    bool? recordLandmarks,
+    String? exerciseId,
   }) {
     return VisionConfig(
       minLandmarkConfidence:
@@ -69,6 +96,10 @@ class VisionConfig {
       enabled: enabled ?? this.enabled,
       showSkeletonOverlay: showSkeletonOverlay ?? this.showSkeletonOverlay,
       cameraLens: cameraLens ?? this.cameraLens,
+      skeletonDrawMode: skeletonDrawMode ?? this.skeletonDrawMode,
+      highlightArm: highlightArm ?? this.highlightArm,
+      recordLandmarks: recordLandmarks ?? this.recordLandmarks,
+      exerciseId: exerciseId ?? this.exerciseId,
     );
   }
 
@@ -83,7 +114,11 @@ class VisionConfig {
           maxRepDurationSeconds == other.maxRepDurationSeconds &&
           enabled == other.enabled &&
           showSkeletonOverlay == other.showSkeletonOverlay &&
-          cameraLens == other.cameraLens;
+          cameraLens == other.cameraLens &&
+          skeletonDrawMode == other.skeletonDrawMode &&
+          highlightArm == other.highlightArm &&
+          recordLandmarks == other.recordLandmarks &&
+          exerciseId == other.exerciseId;
 
   @override
   int get hashCode => Object.hash(
@@ -95,5 +130,9 @@ class VisionConfig {
         enabled,
         showSkeletonOverlay,
         cameraLens,
+        skeletonDrawMode,
+        highlightArm,
+        recordLandmarks,
+        exerciseId,
       );
 }

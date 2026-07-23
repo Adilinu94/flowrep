@@ -268,5 +268,5 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] CV-04: FusionEngine + Stats/Hooks + FusionStatusBadge UI
 - [x] CV-05: Webcam-Tool im Repo + Logic-Tests (manuelle Webcam-Session optional)
 - [x] CV-06: Soft-fail ohne Kamera/Detector (IMU bleibt); Emulator-Setup in Doc 09
-- [ ] CV-07: Skelett-Overlay (Plan: `14_CV_SKELETT_OVERLAY_PLAN.md`; Code Phasen A–C offen)
+- [x] CV-07: Skelett-Overlay Code A–F (`14_…`; E1–E7/E9/E10; E8 out; Geräte-QA optional)
 - [x] CV-UI: CameraSessionScreen + Preview + Settings-Toggle
