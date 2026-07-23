@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../data/logger.dart';
 import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
@@ -296,20 +297,36 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       deviceId: deviceId,
     );
     if (profile != null) {
+      // theta unit follows chosenSignal (gP °/s vs combined). Hardware
+      // 2026-07-23: missing chosenSignal put gP-scale theta into combined
+      // _peakThreshold → counting dead. origin/main + this path pass
+      // chosenSignal for non-migrated profiles.
       state = state.copyWith(
         calibratedThreshold: profile.theta,
         hasCalibration: true,
       );
+      final axis = profile.migratedFrom == 0 ? profile.rotationAxis : null;
+      final bias = profile.migratedFrom == 0 ? profile.gyroBias : null;
       _engine.applyCalibration(
         peakThreshold: profile.theta,
         minThresholdAboveBaseline: 0.10,
-        rotationAxis: profile.migratedFrom == 0 ? profile.rotationAxis : null,
-        gyroBias: profile.migratedFrom == 0 ? profile.gyroBias : null,
+        rotationAxis: axis,
+        gyroBias: bias,
         chosenSignal: profile.migratedFrom == 0 ? profile.chosenSignal : null,
         minRepIntervalSeconds: profile.minRepIntervalSeconds,
         prominenceMin: profile.prominenceMin > 0 ? profile.prominenceMin : null,
         repTemplate: profile.repTemplate,
         templateCorrThreshold: profile.templateCorrThreshold,
+      );
+      // Shadow new pipeline once axis exists (_useNewPipeline stays false).
+      if (axis != null && bias != null) {
+        _engine.enableShadowMode();
+      }
+      AppLogger.i(
+        'Loaded profile: signal=${profile.chosenSignal.name} '
+        'theta=${profile.theta.toStringAsFixed(3)} '
+        'q=${profile.qualityScore.toStringAsFixed(2)} '
+        'axis=${axis != null}',
       );
     }
   }

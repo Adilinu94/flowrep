@@ -566,12 +566,21 @@ class WorkoutEngine {
     final bool shouldLog = _diagEngineSampleCount % 50 == 0 ||
         (_state == WorkoutState.calibrating && _diagEngineSampleCount % 10 == 0);
     if (shouldLog) {
+      final effThresh = _primarySignal == ChosenSignal.gP
+          ? _gpThreshold
+          : _primarySignal == ChosenSignal.gyroMag
+              ? _gyroMagThreshold
+              : _peakThreshold;
       AppLogger.d('ENGINE #$_diagEngineSampleCount '
           'state=${_state.name} '
           'combined=${combinedSignal.toStringAsFixed(3)} '
           'accelMag=${s.accelMagnitude.toStringAsFixed(3)} '
           'gyroMag=${s.gyroMagnitude.toStringAsFixed(1)} '
-          'threshold=$_peakThreshold baseline=${baselineLevel.toStringAsFixed(3)} '
+          'threshold=${effThresh ?? _peakThreshold} '
+          'sig=${_primarySignal?.name ?? "combined"} '
+          'gpT=${_gpThreshold?.toStringAsFixed(1)} '
+          'reps=$_legacyRepCount gpReps=$_gpRepCount '
+          'baseline=${baselineLevel.toStringAsFixed(3)} '
           'above=$_aboveThreshold');
     }
 

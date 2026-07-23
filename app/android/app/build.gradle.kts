@@ -6,7 +6,8 @@ plugins {
 
 android {
     namespace = "com.flowrep.flowrep"
-    compileSdk = flutter.compileSdkVersion
+    // flutter_blue_plus / share_plus / audioplayers require compileSdk >= 36
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
