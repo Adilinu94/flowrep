@@ -10,6 +10,7 @@ import '../widgets/rep_counter_display.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import 'calibration/calibration_wizard_screen.dart';
+import 'history_screen.dart';
 
 /// HomeScreen (SPEC TEIL 6, §6.4): ~150 Zeilen statt 734.
 ///
@@ -24,7 +25,18 @@ class HomeScreen extends ConsumerWidget {
     final notifier = ref.read(engineProvider.notifier);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('FlowRep')),
+      appBar: AppBar(
+        title: const Text('FlowRep'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: 'Verlauf',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const HistoryScreen()),
+            ),
+          ),
+        ],
+      ),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(16),

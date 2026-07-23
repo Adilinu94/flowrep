@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/providers/ble_sensor_provider.dart';
+import 'data/repositories/drift_database.dart';
 import 'domain/workout_engine.dart';
 import 'presentation/providers/engine_provider.dart';
 import 'presentation/screens/home_screen.dart';
@@ -18,6 +19,8 @@ void main() {
     exerciseId: 'bicep_curl',
     useSignedProjectionCounting: true,
   );
+  final db = AppDatabase();
+  final repository = DriftWorkoutRepository(db);
 
   runApp(
     ProviderScope(
@@ -26,6 +29,7 @@ void main() {
           (_) => EngineNotifier.create(
             sensorProvider: sensorProvider,
             engine: engine,
+            repository: repository,
           ),
         ),
       ],

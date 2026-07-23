@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -8,7 +9,10 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
+import '../../domain/models/workout_models.dart';
+import '../../domain/repositories/i_workout_repository.dart';
 import '../../domain/workout_engine.dart';
+import '../services/feedback_service.dart';
 import 'workout_ui_state.dart';
 
 /// Riverpod-Provider für den Engine-State (SPEC TEIL 6, §6.2).
@@ -28,27 +32,38 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   EngineNotifier._({
     required ISensorProvider sensorProvider,
     required WorkoutEngine engine,
+    IWorkoutRepository? repository,
   })  : _sensorProvider = sensorProvider,
         _engine = engine,
+        _repository = repository,
         super(const WorkoutUiState());
 
   /// Factory: erstellt den Notifier und bindet alle Streams.
   static EngineNotifier create({
     required ISensorProvider sensorProvider,
     required WorkoutEngine engine,
+    IWorkoutRepository? repository,
   }) {
     final notifier = EngineNotifier._(
       sensorProvider: sensorProvider,
       engine: engine,
+      repository: repository,
     );
     notifier._bind();
+    notifier._feedbackService.init();
     return notifier;
   }
 
   final ISensorProvider _sensorProvider;
   final WorkoutEngine _engine;
+  final IWorkoutRepository? _repository;
   final CalibrationStore _calibrationStore = CalibrationStore();
   final CsvSessionRecorder _recorder = CsvSessionRecorder();
+  final FeedbackService _feedbackService = FeedbackService();
+
+  // Session-Tracking (Phase 5.2)
+  DateTime? _sessionStartedAt;
+  final List<ExerciseSet> _completedSets = [];
 
   StreamSubscription<dynamic>? _samplesSub;
   StreamSubscription<dynamic>? _eventsSub;
@@ -132,6 +147,24 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   void _onEngineEvent(WorkoutEngineEvent event) {
     _recorder.onEngineStateChanged(event.state);
+
+    // Session-Start tracken
+    if (event.state == WorkoutState.active && _sessionStartedAt == null) {
+      _sessionStartedAt = DateTime.now();
+    }
+
+    // Rep-Feedback (Phase 5.1)
+    if (event.repsInCurrentSet > state.repsInCurrentSet) {
+      _feedbackService.onRepCounted(qualityScore: state.lastQualityScore);
+    }
+
+    // Satz abgeschlossen → Feedback + Persistence
+    if (event.completedSet != null) {
+      _feedbackService.onSetCompleted(
+          repCount: event.completedSet!.countedReps);
+      _onSetCompleted(event.completedSet!);
+    }
+
     state = state.copyWith(
       workoutState: event.state,
       repsInCurrentSet: event.repsInCurrentSet,
@@ -144,6 +177,34 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (event.calibratedThreshold != null) {
       _saveCalibration();
     }
+  }
+
+  /// Satz abgeschlossen: persistieren (Phase 5.2).
+  void _onSetCompleted(ExerciseSet completedSet) {
+    _completedSets.add(completedSet);
+    _saveSession();
+  }
+
+  /// Aktuelle Session in DB speichern.
+  Future<void> _saveSession() async {
+    final repo = _repository;
+    if (repo == null || _sessionStartedAt == null) return;
+    final session = WorkoutSession(
+      id: _generateId(),
+      startedAt: _sessionStartedAt!,
+      endedAt: DateTime.now(),
+      sets: List.unmodifiable(_completedSets),
+    );
+    try {
+      await repo.saveSession(session);
+    } catch (_) {
+      // DB-Fehler nicht fatal — Logging wäre hier sinnvoll.
+    }
+  }
+
+  String _generateId() {
+    final r = Random();
+    return '${DateTime.now().millisecondsSinceEpoch}-${r.nextInt(99999)}';
   }
 
   Future<void> connect() async {
@@ -256,6 +317,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   bool get hasLastRecording => _lastRecordingFile != null;
+
   @override
   void dispose() {
     _refreshTimer?.cancel();
@@ -265,6 +327,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _recorderSamplesSub?.cancel();
     _connectionSub?.cancel();
     _recorder.dispose();
+    _feedbackService.dispose();
     _engine.dispose();
     final provider = _sensorProvider;
     if (provider is BleSensorProvider) {
