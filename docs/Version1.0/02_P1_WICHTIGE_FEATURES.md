@@ -20,6 +20,8 @@
 
 ## 1. Globaler Error Handler
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 1.1 Kurzbeschreibung
 
 Aktuell gibt es keinen globalen Error Handler. Unbehandelte Exceptions
@@ -180,6 +182,8 @@ flutter analyze lib/main.dart
 ---
 
 ## 2. App-Lifecycle-Handling
+
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
 
 ### 2.1 Kurzbeschreibung
 

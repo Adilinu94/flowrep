@@ -104,8 +104,8 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 
 | # | Feature | Aufwand | Abhängigkeit |
 |---|---------|---------|--------------|
-| 1 | Global Error Handler | 1h | keine |
-| 2 | App-Lifecycle | 1h | keine |
+| 1 | Global Error Handler ✅ | 1h | keine |
+| 2 | App-Lifecycle ✅ | 1h | keine |
 | 3 | Settings-Screen | 2h | keine |
 | 4 | iOS-Konfiguration | 30min | keine |
 | 5 | Sound-Asset | 30min | keine |
