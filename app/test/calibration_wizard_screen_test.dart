@@ -26,9 +26,13 @@ void main() {
         samples: samplesController.stream,
         exerciseId: 'bicep_curl',
         deviceId: 'test-device',
+        // Skip 5s prepare countdown in tests.
+        prepareCountdownSeconds: 0,
       ),
     ));
     await tester.pump();
+    // Allow async _beginRecording (haptic) to complete.
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('Ruhephase'), findsOneWidget);
 
@@ -49,8 +53,58 @@ void main() {
 
     await tester.tap(find.text('Weiter'));
     await tester.pump();
+    // Next stage starts prepare with seconds=0 → recording immediately.
+    await tester.pump(const Duration(milliseconds: 50));
 
     expect(find.text('Eine Wiederholung'), findsOneWidget);
+  });
+
+  testWidgets('Vorbereitungs-Countdown blockiert Samples und Weiter',
+      (tester) async {
+    final samplesController = StreamController<SensorSample>();
+    addTearDown(samplesController.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: CalibrationWizardScreen(
+        samples: samplesController.stream,
+        exerciseId: 'bicep_curl',
+        deviceId: 'test-device',
+        prepareCountdownSeconds: 5,
+      ),
+    ));
+    await tester.pump();
+
+    expect(find.textContaining('Aufzeichnung startet in'), findsOneWidget);
+    // Weiter disabled during prepare.
+    final weiter = tester.widget<FilledButton>(
+      find.widgetWithText(FilledButton, 'Warte… (5)'),
+    );
+    expect(weiter.onPressed, isNull);
+
+    // Samples during prepare must be ignored.
+    final now = DateTime.now();
+    for (var i = 0; i < 50; i++) {
+      samplesController.add(SensorSample(
+        timestamp: now.add(Duration(milliseconds: i * 20)),
+        ax: 0,
+        ay: 1.0,
+        az: 0,
+        gx: 0,
+        gy: 0,
+        gz: 0,
+      ));
+    }
+    await tester.pump();
+    expect(find.textContaining('0.0 s aufgezeichnet'), findsNothing);
+
+    // Advance 5 seconds of prepare timers.
+    for (var i = 0; i < 5; i++) {
+      await tester.pump(const Duration(seconds: 1));
+    }
+    await tester.pump(const Duration(milliseconds: 50));
+
+    expect(find.textContaining('s aufgezeichnet'), findsOneWidget);
+    expect(find.text('Weiter'), findsOneWidget);
   });
 
   testWidgets('Abbrechen schliesst den Wizard mit Ergebnis false',
@@ -69,6 +123,7 @@ void main() {
                   samples: samplesController.stream,
                   exerciseId: 'bicep_curl',
                   deviceId: 'test-device',
+                  prepareCountdownSeconds: 0,
                 ),
               ),
             );
