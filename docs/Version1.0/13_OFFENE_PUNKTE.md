@@ -1,9 +1,10 @@
 # FlowRep 1.0 — Offene Punkte (konsolidiert)
 
-> **Stand**: 2026-07-23  
-> **Git**: `main` = `origin/main` (siehe `git rev-parse HEAD origin/main`)  
+> **Stand**: 2026-07-23 (optional-goal final)  
+> **Git**: `main` = `origin/main`; RC-Tag `v1.0.0-rc.1`  
 > **Zweck**: eine Seite für „was ist fertig / was steht noch aus“ aus dem gesamten Ordner `docs/Version1.0/`.  
-> **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09 (Implementierungspläne), Product-Code-Stand.
+> **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09 (Implementierungspläne), Product-Code-Stand.  
+> **Dieses Ziel**: alle Optionals außer C1/C2/C4; B5 bleibt off; Motion-B* ehrlich env-deferred.
 
 ---
 

@@ -98,8 +98,8 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Check | Status | Stand |
 |-------|--------|-------|
-| `flutter analyze lib` | [x] | 0 issues (2026-07-23) |
-| `flutter test` | [x] | grün (siehe CI / lokale Runs) |
+| `flutter analyze lib` | [x] | 0 issues (2026-07-23, optional-goal final) |
+| `flutter test` | [x] | 375 green (D2 confidence + suite) |
 | `flutter build apk --release` | [x] | ~108 MB; TFLite AGP9-Workaround |
 | Force-Push / Test-Abschwächung | verboten | siehe 00_UEBERSICHT |
 
@@ -121,6 +121,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | Optional-goal final: 375 tests, C3 tag, B*/D* living status |
 | 2026-07-23 | D2 echte Confidence + Tests; D1/D5 Status |
 | 2026-07-23 | Tracker angelegt aus 00 + HW_VALIDATION + Product-Fixes (manual end, learn, gP harden) |
 | 2026-07-23 | gP-Härtung: floor 50, 0.70×θ, minSamples 15, peak≥1.2×θ; Tests `tool_count_sim` + `product_path_structural`; Suite 369 grün (`08f98c6`) |
