@@ -621,12 +621,12 @@ git push
 
 ## 6. Checkliste
 
-- [ ] `lib/domain/vision/pose_rep_counter.dart` erstellt
-- [ ] `camera_pose_provider.dart` erweitert (Pose Detector + Image Stream)
-- [ ] `test/vision/pose_rep_counter_test.dart` erstellt + grün
-- [ ] `flutter test` → ALLE Tests grün
-- [ ] `flutter analyze` → 0 Errors
-- [ ] Commit + Push
+- [x] `lib/domain/vision/pose_rep_counter.dart` erstellt
+- [x] `camera_pose_provider.dart` erweitert (Pose Detector + Image Stream)
+- [x] `test/vision/pose_rep_counter_test.dart` erstellt + grün
+- [x] `flutter test` → ALLE Tests grün
+- [x] `flutter analyze` → 0 Errors
+- [x] Commit + Push
 
 ---
 

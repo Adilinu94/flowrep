@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flowrep/data/logger.dart';
+import 'package:flowrep/domain/config/engine_constants.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
@@ -592,13 +593,16 @@ class WorkoutEngine {
         _state != WorkoutState.guidedCalibration &&
         _state != WorkoutState.paused &&
         _state != WorkoutState.connectionLost) {
-      // P0.5 Baseline-Gate: Nicht aktualisieren in guidedCalibration
-      // (Reps ziehen EMA hoch), paused (kein sinnvolles Signal) und
-      // connectionLost (stale Daten). In idle/calibrating/active: normal.
-      // TODO(hardware): Gyro-Gate (|gyro|<15°/s) in active validieren,
-      // sobald echte CSV-Daten vorliegen (Adi-Bug: Alltagsbewegung zählt).
-      _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
-          combinedSignal * baselineEmaAlpha;
+      // P0.5 Baseline-Gate: freeze in guidedCalibration / paused /
+      // connectionLost. In active, only update at true rest
+      // (|gyro| < kGyroRestThresholdDegPerSec) so everyday motion cannot
+      // drift the baseline upward (Adi-Bug).
+      final atRest =
+          s.gyroMagnitude < kGyroRestThresholdDegPerSec;
+      if (_state != WorkoutState.active || atRest) {
+        _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
+            combinedSignal * baselineEmaAlpha;
+      }
     }
 
     switch (_state) {

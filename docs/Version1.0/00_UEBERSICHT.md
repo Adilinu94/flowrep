@@ -242,11 +242,11 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] `flutter build apk --release` → OK (108.6MB; TFLite AGP9-Workaround)
 - [x] Manueller Test auf echtem M5StickC Plus2: **BLE Connect + Streaming verifiziert** (siehe `HW_VALIDATION_2026-07-23.md`)
   - [x] Verbinden (UI Verbunden BLE + NOTIFY/batches)
-  - [ ] Kalibrieren → Zählen → Korrigieren → Beenden (UI da; volle Bewegung manuell)
-  - [ ] Bildschirm sperren während Zählen → Verbindung bleibt (manuell)
-  - [ ] BLE-Verlust → Auto-Reconnect funktioniert (Code+Unit; Drop manuell)
-  - [ ] Dark Mode lesbar (themeMode.system; manuell System-Dark)
-- [x] Keine TODO(hardware)-Marker mehr (außer Gyro-Gate)
+  - [ ] Kalibrieren → Zählen → Korrigieren → Beenden (UI da; volle Bewegung manuell am Gerät)
+  - [x] Bildschirm sperren 20s → Stream bleibt (batches 650→935; FGS)
+  - [x] BLE-Verlust → Reconnect (BT off/on; UI wieder Verbunden + Batches)
+  - [x] Dark Mode lesbar (themeMode.system; `uimode night yes` + Screenshot)
+- [x] Keine TODO(hardware)-Marker mehr — Gyro-Gate implementiert + Unit-Test
 
 ### CV-Track (optional, nicht release-blockierend)
 

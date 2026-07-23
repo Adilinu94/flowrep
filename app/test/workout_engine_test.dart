@@ -411,14 +411,16 @@ void main() {
       final countedOff = await run(useSignedProjectionCounting: false);
       final countedOn = await run(useSignedProjectionCounting: true);
 
-      expect(countedOff, equals(19),
-          reason: 'OFF must match the pre-Schritt-B combined-signal '
-              'baseline for this exact signal shape (empirically 19, not '
-              '~10 - this generator is gyro-only and produces a busier '
-              'combined-magnitude trace than a real single-hump curl '
-              'would, unrelated to g_p entirely) - the actual number here '
-              'matters far less than it staying IDENTICAL to whatever it '
-              'was before this fix, since OFF must be a complete no-op.');
+      // 2026-07-23: Gyro-Gate freezes baseline EMA in active while
+      // |gyro| >= 15°/s. That slightly changes how many combined-signal
+      // edges this busy gyro-only synthetic traces (was 19 → now 17).
+      // OFF must still be a complete no-op w.r.t. g_p machinery.
+      expect(countedOff, equals(17),
+          reason: 'OFF must match the post-gyro-gate combined-signal '
+              'baseline for this exact signal shape (empirically 17 after '
+              'gyro-gate; generator is gyro-only and busier than a real '
+              'curl). The number matters less than staying IDENTICAL '
+              'across no-op changes to g_p machinery.');
       expect(countedOn, isNotNull);
       expect(countedOn, isNot(equals(countedOff)),
           reason: 'This is now the INTENDED difference, not a bug: once '
@@ -1038,6 +1040,70 @@ void main() {
               'Before the fix it rose from ~1.0 to ~5.7 because the EMA '
               'tracked movement spikes. After the fix, the baseline is '
               'frozen for the duration of guided calibration.');
+      engine.dispose();
+    });
+
+    test(
+        'gyro-gate: baseline must NOT drift in active while |gyro| >= 15°/s '
+        '(Adi-Bug: everyday motion must not raise baseline)', () {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      var t = DateTime(2026, 1, 1);
+      const step = Duration(milliseconds: 20);
+
+      // Settle baseline at rest (gyro=0).
+      for (var i = 0; i < 30; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+      engine.applyCalibration(
+        peakThreshold: 2.5,
+        minThresholdAboveBaseline: 0.10,
+      );
+      // Wake into active with one clear peak, then rest.
+      for (var i = 0; i < 5; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 2.5, az: 0, gx: 0, gy: 80, gz: 0,
+        ));
+        t = t.add(step);
+      }
+      for (var i = 0; i < 20; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+      expect(engine.state, WorkoutState.active);
+      final baselineBefore = engine.baselineLevel;
+
+      // Everyday motion: moderate accel + gyro above rest gate, but not
+      // enough to trip peak detection (stays below threshold).
+      for (var i = 0; i < 80; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t,
+          ax: 0,
+          ay: 1.15,
+          az: 0,
+          gx: 0,
+          gy: 25, // > kGyroRestThresholdDegPerSec (15)
+          gz: 0,
+        ));
+        t = t.add(step);
+      }
+
+      expect(engine.baselineLevel, equals(baselineBefore),
+          reason: 'Baseline must freeze in active while |gyro| >= 15°/s');
+
+      // True rest: gyro back under gate → baseline may update again.
+      for (var i = 0; i < 50; i++) {
+        engine.processSample(SensorSample(
+          timestamp: t, ax: 0, ay: 1.0, az: 0, gx: 0, gy: 0, gz: 0,
+        ));
+        t = t.add(step);
+      }
+      // At rest the EMA is free again; we only assert no hard freeze error.
+      expect(engine.state, WorkoutState.active);
       engine.dispose();
     });
 

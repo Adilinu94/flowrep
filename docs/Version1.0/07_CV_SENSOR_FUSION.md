@@ -485,13 +485,13 @@ git push
 
 ## 6. Checkliste
 
-- [ ] `lib/domain/vision/fusion_engine.dart` erstellt
-- [ ] `engine_provider.dart` erweitert (Fusion + PoseRepCounter)
-- [ ] Bestehende Tests weiterhin grün (242+)
-- [ ] `test/vision/fusion_engine_test.dart` erstellt + grün
-- [ ] `flutter test` → ALLE Tests grün
-- [ ] `flutter analyze` → 0 Errors
-- [ ] Commit + Push
+- [x] `lib/domain/vision/fusion_engine.dart` erstellt
+- [x] `engine_provider.dart` erweitert (Fusion + PoseRepCounter)
+- [x] Bestehende Tests weiterhin grün (350+)
+- [x] `test/vision/fusion_engine_test.dart` erstellt + grün
+- [x] `flutter test` → ALLE Tests grün
+- [x] `flutter analyze` → 0 Errors
+- [x] Commit + Push
 
 ---
 

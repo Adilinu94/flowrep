@@ -708,5 +708,5 @@ git push
 - [x] `test/vision/vision_config_test.dart` / angle_calculator_test (VisionConfig) + grün
 - [x] `test/vision/camera_pose_provider_test.dart` + grün
 - [x] `flutter test` → ALLE Tests grün
-- [ ] `flutter analyze` → 0 Errors
-- [ ] Commit + Push
+- [x] `flutter analyze` → 0 Errors
+- [x] Commit + Push
