@@ -467,6 +467,8 @@ flutter analyze lib/presentation/providers/engine_provider.dart
 
 ## 2. Pausen-Timer
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 2.1 Kurzbeschreibung
 
 Nach Satzende läuft ein 90-Sekunden-Countdown. Der Benutzer sieht die verbleibende

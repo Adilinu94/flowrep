@@ -10,6 +10,7 @@ import '../widgets/correction_dialog.dart';
 import '../widgets/exercise_selector_card.dart';
 import '../widgets/onboarding_banner.dart';
 import '../widgets/rep_counter_display.dart';
+import '../widgets/rest_timer_widget.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import 'calibration/calibration_wizard_screen.dart';
@@ -155,6 +156,15 @@ class HomeScreen extends ConsumerWidget {
                 ),
                 const SizedBox(height: 8),
                 Text('Zustand: ${uiState.workoutState.name}'),
+                // Pausen-Timer (P0-2, nur wenn aktiv)
+                if (uiState.isRestTimerActive) ...[
+                  const SizedBox(height: 16),
+                  RestTimerWidget(
+                    secondsRemaining: uiState.restTimerSecondsRemaining,
+                    totalSeconds: notifier.restDurationSeconds,
+                    onSkip: notifier.skipRest,
+                  ),
+                ],
                 const SizedBox(height: 8),
                 // Letzter Satz
                 SetHistoryCard(lastSetCount: uiState.lastCompletedSetCount),

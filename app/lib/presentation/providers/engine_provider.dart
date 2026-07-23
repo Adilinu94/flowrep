@@ -73,6 +73,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   StreamSubscription<dynamic>? _connectionSub;
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
+  Timer? _restTimer;
+  int _restDurationSeconds = 90; // SPEC §5.2.1 / P0-2 default
   String? _bleDeviceId;
   File? _lastRecordingFile;
 
@@ -103,6 +105,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Startet das Zählen (Engine erhält ab jetzt Samples).
   void startCounting() {
     if (state.isCountingActive) return;
+    _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
     state = state.copyWith(isCountingActive: true);
   }
 
@@ -176,9 +179,50 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   /// Schließt den Korrektur-Dialog ohne zu speichern.
-  void dismissCorrection() {
-    state = state.copyWith(showCorrectionDialog: false);
+  /// Startet danach den Pausen-Timer (P0-2), außer [startRest] ist false
+  /// (z.B. bei Session-Ende).
+  void dismissCorrection({bool startRest = true}) {
+    if (state.showCorrectionDialog) {
+      state = state.copyWith(showCorrectionDialog: false);
+    }
+    if (startRest) {
+      _startRestTimer();
+    }
   }
+
+  // === Pausen-Timer (SPEC Phase 2, §5.2.1 / P0-2) ===
+
+  /// Startet den Pausen-Timer nach Satzende / Korrektur-Dialog.
+  void _startRestTimer() {
+    _restTimer?.cancel();
+    state = state.copyWith(
+      isRestTimerActive: true,
+      restTimerSecondsRemaining: _restDurationSeconds,
+    );
+    _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final remaining = state.restTimerSecondsRemaining - 1;
+      if (remaining <= 0) {
+        _stopRestTimer();
+      } else {
+        state = state.copyWith(restTimerSecondsRemaining: remaining);
+      }
+    });
+  }
+
+  /// Stoppt den Pausen-Timer (manuell, bei Start, dispose, Session-Ende).
+  void _stopRestTimer() {
+    _restTimer?.cancel();
+    _restTimer = null;
+    if (state.isRestTimerActive) {
+      state = state.copyWith(isRestTimerActive: false);
+    }
+  }
+
+  /// Öffentlicher Zugriff: Timer manuell stoppen („Pause überspringen").
+  void skipRest() => _stopRestTimer();
+
+  /// Rest duration used for UI progress (default 90s).
+  int get restDurationSeconds => _restDurationSeconds;
 
   /// Exposes completed sets for tests (read-only view of last set correction).
   @visibleForTesting
@@ -190,6 +234,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void debugAddCompletedSet(ExerciseSet set) {
     _completedSets.add(set);
     _sessionStartedAt ??= DateTime.now();
+  }
+
+  /// Override rest duration for faster unit tests.
+  @visibleForTesting
+  void debugSetRestDurationSeconds(int seconds) {
+    _restDurationSeconds = seconds;
   }
 
   /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
@@ -465,6 +515,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void dispose() {
     _refreshTimer?.cancel();
     _recordingSampleCountTimer?.cancel();
+    _restTimer?.cancel();
+    _restTimer = null;
     _samplesSub?.cancel();
     _eventsSub?.cancel();
     _recorderSamplesSub?.cancel();
