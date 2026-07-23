@@ -1,4 +1,5 @@
 # Optional CV-05 webcam testing stack (not required for Flutter app).
-mediapipe>=0.10.0
+# Uses MediaPipe Tasks PoseLandmarker (mp.solutions removed in recent MP).
+mediapipe>=0.10.14
 opencv-python>=4.8.0
 numpy>=1.24.0

@@ -1,0 +1,11 @@
+INFO: Created TensorFlow Lite XNNPACK delegate for CPU.
+W0000 00:00:1784826779.572715   27576 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+W0000 00:00:1784826779.612289    5516 inference_feedback_manager.cc:121] Feedback manager requires a model with a single signature inference. Disabling support for feedback tensors.
+============================================================
+FlowRep Webcam Rep-Counter (CV-05)
+============================================================
+Thresholds: DOWN > 160.0┬░, UP < 90.0┬░
+Mode: headless max_frames=25
+============================================================
+Reached max-frames=25
+Session done. frames=25 pose_frames=0 reps=0

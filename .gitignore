@@ -36,3 +36,7 @@ __pycache__/
 flutter_test_verify_claude.txt
 screen_calib.png
 flowrep_device_dump.bin
+
+# CV-05 local artifacts (downloaded models / session CSVs)
+tools/models/
+tools/logs/

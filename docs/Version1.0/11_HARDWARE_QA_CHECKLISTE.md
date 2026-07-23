@@ -26,7 +26,7 @@ Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
 
 - [x] Ruhe: mag ≈ 1 g, gyro niedrig (~2 °/s in Calib-DIAG)
 - [~] Gezielte Curl-Peaks 50–200 °/s (in Calib-Session gesehen)
-- [ ] Optionale Dreh-/Dummy-Tests (C2/C3 Protokoll)
+- [~] Optionale Dreh-/Dummy-Tests (C2/C3) — env-defer 2026-07-23 (kein M5/Motion im Agent-Lauf; siehe OPTIONAL_HW_ENV_PROBE.md)
 
 ## D — Kalibrierung (Guided 2.0)
 
@@ -34,7 +34,7 @@ Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
 - [x] Rest-Gate handheld still (Code + Unit)
 - [x] Profil gespeichert: signal=**gP**, theta≈**87.2**, q≈**0.95**, Achse true  
   Evidence: `CALIB_SESSION_ANALYSIS.md` / logcat Loaded profile
-- [ ] Re-Calib nach Clean-Install nochmals dokumentiert (optional)
+- [~] Re-Calib nach Clean-Install — env-defer (interaktiv; OPTIONAL_HW_ENV_PROBE.md)
 
 ## E — Zählung (Legacy / Product-Pfad)
 
@@ -52,23 +52,23 @@ Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
 
 - [x] Screen-Lock ≥20 s → Stream bleibt (FGS; Batches 650→935)
 - [x] BLE Drop (BT off) → Reconnect
-- [~] App-Hintergrund / Lifecycle (Code P1-2; langes HW optional)
+- [~] App-Hintergrund / Lifecycle (Code P1-2; Kurz-Smoke HOME/Resume 2026-07-23 ohne FATAL; Langzeit optional)
 - [x] Gyro-Gate: Baseline friert bei Bewegung in `active` (Unit)
 
 ## G — Shadow / Pipeline-Gate
 
 - [x] Shadow aktivierbar wenn Achse im Profil (`enableShadowMode`)
-- [ ] G5/G6: Curl-DoD vs. Wiggle-DoD am Gerät (physisch)
+- [~] G5/G6: Curl-DoD vs. Wiggle-DoD am Gerät — env-defer (Motion/M5)
 - [ ] G7: `_useNewPipeline = true` **nur** nach Shadow-DoD — aktuell **false**, nicht freigeben
-- [ ] G8: Langzeit-Session / Drift
+- [~] G8: Langzeit-Session / Drift — env-defer
 
 ## H — Release-HW-Smoke (vor Store)
 
 - [x] Debug-APK installierbar
 - [x] Release-APK buildbar
 - [x] Dark Mode lesbar (`uimode night`)
-- [ ] Volle Gym-Session einmal ohne Tool-Hilfe (Adi)
-- [ ] Keine Crash-Logs in 15‑min Session
+- [~] Volle Gym-Session einmal ohne Tool-Hilfe — env-defer (menschlich)
+- [~] Keine Crash-Logs in 15‑min Session — nur Kurz-Launch-Smoke; 15‑min offen
 
 ---
 
@@ -86,4 +86,5 @@ Code+UI für alle Schritte vorhanden; **Bewegungs-E2E am Arm** ist der verbleibe
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | Optional-B Env-Probe: Phone/App OK, M5/Motion fehlen → ehrliche [~] |
 | 2026-07-23 | Checkliste aus HW_VALIDATION + Protocol + Calib-Analyse + Product-Manual-End |

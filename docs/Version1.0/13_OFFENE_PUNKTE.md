@@ -49,17 +49,19 @@ Ohne diese Schritte kein Store-/RC-„fertig“. Code+UI sind da; Evidence fehlt
 
 ## 2. Priorität B — Hardware-QA Rest (nicht immer Store-Blocker)
 
+> Env-Probe 2026-07-23: Phone online (`55j7xkiffixsyhxg`), App installiert, kurzer Launch/HOME ohne FATAL; **kein M5/Serial**, **keine Operator-Körperbewegung**. Evidence: `docs/hardware/sessions/2026-07-23/OPTIONAL_HW_ENV_PROBE.md`.
+
 | # | Punkt | Doc-Ref | Status |
 |---|--------|---------|--------|
-| B1 | C2/C3 optionale Signal-Tests (Drehen/Dummy) | 11 C | **[ ]** optional |
-| B2 | Re-Calib nach Clean-Install dokumentieren | 11 D | **[ ]** optional |
-| B3 | App-Hintergrund lang / Lifecycle HW | 11 F | **[~]** Code da |
-| B4 | G5/G6 Curl- vs. Wiggle-DoD am Gerät | 11 G | **[ ]** |
-| B5 | G7: `_useNewPipeline = true` freigeben | 11 G, 00 Verbote | **[ ]** — **nicht** ohne Shadow-DoD |
-| B6 | G8 Langzeit-Session / Drift | 11 G | **[ ]** |
-| B7 | 15‑min Session ohne Crash-Logs | 11 H | **[ ]** |
-| B8 | Volle Gym-Session ohne Tool-Hilfe | 11 H | **[ ]** |
-| B9 | Guided Calib 5-Reps physisch vollständig (Wizard UI ok) | HW_VALIDATION | **[~]** partial |
+| B1 | C2/C3 optionale Signal-Tests (Drehen/Dummy) | 11 C | **[~]** env-defer: braucht Stream + Handbewegung (Probe: kein M5) |
+| B2 | Re-Calib nach Clean-Install dokumentieren | 11 D | **[~]** env-defer: interaktiver Clean-Install + Wizard |
+| B3 | App-Hintergrund lang / Lifecycle HW | 11 F | **[~]** Code+Unit; kurzer HOME/Resume-Smoke ohne Crash; Langzeit-HW offen |
+| B4 | G5/G6 Curl- vs. Wiggle-DoD am Gerät | 11 G | **[~]** env-defer: Armbewegung + M5 fehlen |
+| B5 | G7: `_useNewPipeline = true` freigeben | 11 G, 00 Verbote | **[ ]** — **nicht** ohne Shadow-DoD (bleibt `false`) |
+| B6 | G8 Langzeit-Session / Drift | 11 G | **[~]** env-defer: lange Session + Motion |
+| B7 | 15‑min Session ohne Crash-Logs | 11 H | **[~]** nur Kurz-Launch-Smoke; 15‑min nicht gelaufen |
+| B8 | Volle Gym-Session ohne Tool-Hilfe | 11 H | **[~]** env-defer: menschliche Gym-Session |
+| B9 | Guided Calib 5-Reps physisch vollständig (Wizard UI ok) | HW_VALIDATION | **[~]** Wizard Code [x]; physische 5-Reps env-defer |
 
 ---
 
@@ -82,8 +84,8 @@ Code-Scaffold und Unit-Tests sind grün; manuelle Geräte-/Webcam-Checks bleiben
 |---|--------|---------|--------|
 | D1 | Live-Kamera-Anbindung Pose Detector (NPU) auf Gerät | 05/06, soft-fail | **[x]** Code: `NpuPoseDetector` + Image-Stream + soft-fail; **[~]** physische NPU-Session am Gerät optional |
 | D2 | Echte Pose-Confidence (statt Placeholder) | 07, mapper | **[x]** `PoseFrameMapper.armConfidence` / `primaryElbow` aus Landmark-Visibility; Live-UI ohne `0.8`-Placeholder; Unit + structural |
-| D3 | Manuelle Webcam-Session (Python-Tool) | 08 Checkliste | **[ ]** optional |
-| D4 | Android-Emulator Kamera-Checkliste (Doc 09) | 09 | **[ ]** optional Setup |
+| D3 | Manuelle Webcam-Session (Python-Tool) | 08 Checkliste | **[x]** headless 25 Frames (Pipeline OK, pose_frames=0 ohne Person); pure logic 4/4; MediaPipe Tasks + `--headless/--max-frames` |
+| D4 | Android-Emulator Kamera-Checkliste (Doc 09) | 09 | **[~]** env-defer: kein AVD konfiguriert; Soft-fail 0-Kamera Unit grün |
 | D5 | Native YUV→RGB Performance | 06 TODO(cv-opt) | **[~]** deferred: Dart-Pfad sendet bereits `yuv420`-Planes an Detector (kein RGB-Zwischenweg); native Opt nur bei FPS-Mangel |
 
 ---
@@ -138,6 +140,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-23 | B* env-probe + ehrliche Deferrals; D3 headless Webcam; D4 kein AVD |
 | 2026-07-23 | C3: Semver `1.0.0-rc.1+1`, CHANGELOG, tag `v1.0.0-rc.1`; C1/C2/C4 out of scope |
 | 2026-07-23 | D2: echte Landmark-Confidence live; D1 Code soft-fail [x]; D5 yuv420-Pfad / deferred native |
 | 2026-07-23 | Erste Konsolidierung aus 00/10/11/12/HW + CV-Docs; Git-Parity bestätigt |

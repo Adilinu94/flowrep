@@ -22,6 +22,11 @@ void main() {
       expect(text.contains('MIN_REP_INTERVAL = 0.5'), isTrue);
       expect(text.contains('def calculate_angle'), isTrue);
       expect(text.contains('class RepCounter'), isTrue);
+      // Headless probe + MediaPipe Tasks landmarker (D3 automation path).
+      expect(text.contains('--headless'), isTrue);
+      expect(text.contains('--max-frames'), isTrue);
+      expect(text.contains('PoseLandmarker'), isTrue);
+      expect(text.contains('elbow_angle_from_landmarks'), isTrue);
     });
 
     test('tools/requirements-cv.txt lists mediapipe and opencv', () {

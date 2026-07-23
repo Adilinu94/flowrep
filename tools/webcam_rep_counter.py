@@ -8,8 +8,9 @@ thresholds as the Flutter PoseRepCounter / VisionConfig.
 Usage:
     pip install -r tools/requirements-cv.txt
     python tools/webcam_rep_counter.py
+    python tools/webcam_rep_counter.py --headless --max-frames 30 --no-csv
 
-Keys:
+Keys (interactive):
     q = quit
     r = reset counter
     s = skeleton overlay on/off
@@ -20,6 +21,7 @@ from __future__ import annotations
 import argparse
 import csv
 import time
+import urllib.request
 from datetime import datetime
 from pathlib import Path
 
@@ -33,6 +35,17 @@ MAX_REP_DURATION = 5.0
 MIN_CONFIDENCE = 0.5
 CAMERA_INDEX = 0
 CSV_LOG = True
+
+# MediaPipe Pose landmark indices (same as Flutter PoseLandmarkIndex)
+RIGHT_SHOULDER = 12
+RIGHT_ELBOW = 14
+RIGHT_WRIST = 16
+
+MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+    "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
+)
+MODEL_NAME = "pose_landmarker_lite.task"
 
 
 def calculate_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
@@ -104,15 +117,59 @@ class RepCounter:
         self.history.clear()
 
 
+def ensure_pose_model(model_dir: Path) -> Path:
+    """Return path to pose_landmarker_lite.task, downloading if needed."""
+    model_dir.mkdir(parents=True, exist_ok=True)
+    path = model_dir / MODEL_NAME
+    if path.is_file() and path.stat().st_size > 1000:
+        return path
+    print(f"Downloading pose model → {path}")
+    urllib.request.urlretrieve(MODEL_URL, path)
+    return path
+
+
+def elbow_angle_from_landmarks(landmarks) -> float | None:
+    """Right-arm elbow angle if shoulder/elbow/wrist visibility is enough."""
+    if landmarks is None or len(landmarks) <= RIGHT_WRIST:
+        return None
+    shoulder = landmarks[RIGHT_SHOULDER]
+    elbow = landmarks[RIGHT_ELBOW]
+    wrist = landmarks[RIGHT_WRIST]
+    # Tasks API: visibility; solutions-compat may use same attr.
+    s_vis = getattr(shoulder, "visibility", 1.0) or 0.0
+    e_vis = getattr(elbow, "visibility", 1.0) or 0.0
+    w_vis = getattr(wrist, "visibility", 1.0) or 0.0
+    if min(s_vis, e_vis, w_vis) < MIN_CONFIDENCE:
+        return None
+    a = np.array([shoulder.x, shoulder.y])
+    b = np.array([elbow.x, elbow.y])
+    c = np.array([wrist.x, wrist.y])
+    return calculate_angle(a, b, c)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="FlowRep webcam rep counter")
     parser.add_argument("--camera", type=int, default=CAMERA_INDEX)
     parser.add_argument("--no-csv", action="store_true")
+    parser.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        help="Stop after N frames (0 = unlimited interactive).",
+    )
+    parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="No imshow/waitKey window (CI / automated probe).",
+    )
     args = parser.parse_args()
 
     try:
         import cv2
-        import mediapipe as mp
+        from mediapipe.tasks import python as mp_python
+        from mediapipe.tasks.python import vision as mp_vision
+        from mediapipe import Image as MpImage
+        from mediapipe import ImageFormat
     except ImportError as e:
         print("Missing dependency:", e)
         print("Install with: pip install -r tools/requirements-cv.txt")
@@ -125,20 +182,22 @@ def main() -> None:
         f"Thresholds: DOWN > {ANGLE_DOWN_THRESHOLD}°, "
         f"UP < {ANGLE_UP_THRESHOLD}°"
     )
-    print("Keys: q=quit, r=reset, s=skeleton toggle")
+    if args.headless:
+        print(f"Mode: headless max_frames={args.max_frames or 'inf'}")
+    else:
+        print("Keys: q=quit, r=reset, s=skeleton toggle")
     print("=" * 60)
 
-    mp_pose = mp.solutions.pose
-    mp_drawing = mp.solutions.drawing_utils
-    mp_drawing_styles = mp.solutions.drawing_styles
-
-    pose = mp_pose.Pose(
-        static_image_mode=False,
-        model_complexity=1,
-        smooth_landmarks=True,
-        min_detection_confidence=MIN_CONFIDENCE,
+    model_path = ensure_pose_model(Path(__file__).resolve().parent / "models")
+    options = mp_vision.PoseLandmarkerOptions(
+        base_options=mp_python.BaseOptions(model_asset_path=str(model_path)),
+        running_mode=mp_vision.RunningMode.VIDEO,
+        num_poses=1,
+        min_pose_detection_confidence=MIN_CONFIDENCE,
+        min_pose_presence_confidence=MIN_CONFIDENCE,
         min_tracking_confidence=MIN_CONFIDENCE,
     )
+    landmarker = mp_vision.PoseLandmarker.create_from_options(options)
 
     cap = cv2.VideoCapture(args.camera)
     if not cap.isOpened():
@@ -163,6 +222,8 @@ def main() -> None:
         csv_writer.writerow(["timestamp_ms", "angle", "state", "rep_count"])
         print(f"CSV log: {log_name}")
 
+    frames = 0
+    frames_with_pose = 0
     try:
         while True:
             ret, frame = cap.read()
@@ -170,39 +231,24 @@ def main() -> None:
                 print("ERROR: no frame from camera")
                 break
 
+            frames += 1
             timestamp = time.time() - start_time
             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            frame_rgb.flags.writeable = False
-            results = pose.process(frame_rgb)
-            frame_rgb.flags.writeable = True
+            mp_image = MpImage(image_format=ImageFormat.SRGB, data=frame_rgb)
+            # VIDEO mode needs monotonically increasing ms timestamp.
+            result = landmarker.detect_for_video(
+                mp_image, int(timestamp * 1000)
+            )
 
             angle = None
-            if results.pose_landmarks:
-                landmarks = results.pose_landmarks.landmark
-                shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-                elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
-                wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
-                if (
-                    shoulder.visibility >= MIN_CONFIDENCE
-                    and elbow.visibility >= MIN_CONFIDENCE
-                    and wrist.visibility >= MIN_CONFIDENCE
-                ):
-                    a = np.array([shoulder.x, shoulder.y])
-                    b = np.array([elbow.x, elbow.y])
-                    c = np.array([wrist.x, wrist.y])
-                    angle = calculate_angle(a, b, c)
-                    if counter.process(angle, timestamp):
-                        print(
-                            f"  REP {counter.rep_count}! "
-                            f"angle={angle:.1f}° t={timestamp:.1f}s"
-                        )
-
-                if show_skeleton:
-                    mp_drawing.draw_landmarks(
-                        frame,
-                        results.pose_landmarks,
-                        mp_pose.POSE_CONNECTIONS,
-                        mp_drawing_styles.get_default_pose_landmarks_style(),
+            if result.pose_landmarks:
+                frames_with_pose += 1
+                landmarks = result.pose_landmarks[0]
+                angle = elbow_angle_from_landmarks(landmarks)
+                if angle is not None and counter.process(angle, timestamp):
+                    print(
+                        f"  REP {counter.rep_count}! "
+                        f"angle={angle:.1f}° t={timestamp:.1f}s"
                     )
 
             if csv_writer is not None and angle is not None:
@@ -215,51 +261,66 @@ def main() -> None:
                     ]
                 )
 
-            cv2.putText(
-                frame,
-                f"Reps: {counter.rep_count}",
-                (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                1.2,
-                (0, 255, 0),
-                3,
-            )
-            if angle is not None:
+            if not args.headless:
                 cv2.putText(
                     frame,
-                    f"Angle: {angle:.1f} deg",
-                    (10, 70),
+                    f"Reps: {counter.rep_count}",
+                    (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (255, 255, 255),
+                    1.2,
+                    (0, 255, 0),
+                    3,
+                )
+                if angle is not None:
+                    cv2.putText(
+                        frame,
+                        f"Angle: {angle:.1f} deg",
+                        (10, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.8,
+                        (255, 255, 255),
+                        2,
+                    )
+                cv2.putText(
+                    frame,
+                    f"State: {counter.state}",
+                    (10, 105),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (200, 200, 200),
                     2,
                 )
-            cv2.putText(
-                frame,
-                f"State: {counter.state}",
-                (10, 105),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.7,
-                (200, 200, 200),
-                2,
-            )
+                if show_skeleton and result.pose_landmarks:
+                    # Simple joint dots (no solutions drawing utils).
+                    h, w = frame.shape[:2]
+                    for lm in result.pose_landmarks[0]:
+                        cx, cy = int(lm.x * w), int(lm.y * h)
+                        cv2.circle(frame, (cx, cy), 2, (0, 255, 255), -1)
 
-            cv2.imshow("FlowRep Webcam Rep-Counter", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
+                cv2.imshow("FlowRep Webcam Rep-Counter", frame)
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord("q"):
+                    break
+                if key == ord("r"):
+                    counter.reset()
+                    print("  [RESET]")
+                if key == ord("s"):
+                    show_skeleton = not show_skeleton
+
+            if args.max_frames > 0 and frames >= args.max_frames:
+                print(f"Reached max-frames={args.max_frames}")
                 break
-            if key == ord("r"):
-                counter.reset()
-                print("  [RESET]")
-            if key == ord("s"):
-                show_skeleton = not show_skeleton
     finally:
         cap.release()
-        cv2.destroyAllWindows()
-        pose.close()
+        if not args.headless:
+            cv2.destroyAllWindows()
+        landmarker.close()
         if csv_file is not None:
             csv_file.close()
-        print(f"Session done. reps={counter.rep_count}")
+        print(
+            f"Session done. frames={frames} pose_frames={frames_with_pose} "
+            f"reps={counter.rep_count}"
+        )
 
 
 if __name__ == "__main__":
