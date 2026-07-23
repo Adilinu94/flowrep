@@ -17,6 +17,8 @@
 
 ## 1. Korrektur-UI
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 1.1 Kurzbeschreibung
 
 Nach jedem abgeschlossenen Satz kann der Benutzer die gezählten Wiederholungen

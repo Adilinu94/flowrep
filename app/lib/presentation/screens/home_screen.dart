@@ -6,6 +6,7 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../providers/engine_provider.dart';
 import '../providers/workout_ui_state.dart';
 import '../widgets/connection_status_card.dart';
+import '../widgets/correction_dialog.dart';
 import '../widgets/exercise_selector_card.dart';
 import '../widgets/onboarding_banner.dart';
 import '../widgets/rep_counter_display.dart';
@@ -25,6 +26,37 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final uiState = ref.watch(engineProvider);
     final notifier = ref.read(engineProvider.notifier);
+
+    // Korrektur-Dialog (P0-1 SPEC §5.1.4)
+    ref.listen<WorkoutUiState>(engineProvider, (prev, next) {
+      if (next.showCorrectionDialog && !(prev?.showCorrectionDialog ?? false)) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => Consumer(
+            builder: (context, dialogRef, _) {
+              final s = dialogRef.watch(engineProvider);
+              return CorrectionDialog(
+                countedReps: s.correctionSetCountedReps ?? 0,
+                userReps: s.correctionSetUserReps ?? 0,
+                onIncrement: () => notifier.applyCorrectionDelta(1),
+                onDecrement: () => notifier.applyCorrectionDelta(-1),
+                onConfirm: () async {
+                  await notifier.confirmCorrection();
+                  if (dialogContext.mounted) {
+                    Navigator.of(dialogContext).pop();
+                  }
+                },
+                onDismiss: () {
+                  notifier.dismissCorrection();
+                  Navigator.of(dialogContext).pop();
+                },
+              );
+            },
+          ),
+        );
+      }
+    });
 
     return Scaffold(
       appBar: AppBar(

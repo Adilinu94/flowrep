@@ -1156,6 +1156,24 @@ class WorkoutEngine {
     _controller.close();
   }
 
+  /// User-initiated pause/stop of counting. Clears in-progress set reps
+  /// and returns to [WorkoutState.idle] without aborting as a completed set.
+  /// Calibration profile and thresholds are preserved.
+  void pause() {
+    if (_state == WorkoutState.idle || _state == WorkoutState.paused) {
+      return;
+    }
+    _repsInSet.clear();
+    _aboveThreshold = false;
+    _currentExcursionPeak = 0.0;
+    _gpAboveThreshold = false;
+    _gyroMagAboveThreshold = false;
+    _fallingDebounceCount = 0;
+    _excursionFallingThreshold = null;
+    _state = WorkoutState.idle;
+    _emitStateEvent();
+  }
+
   /// Call when the BLE connection is lost mid-workout. Saves the current
   /// set as aborted and transitions to [WorkoutState.connectionLost].
   /// Safe to call from any state (no-op if already idle/disconnected).

@@ -36,6 +36,25 @@ class WorkoutUiState {
   final String selectedExerciseId;
   final bool hasCalibration;
 
+  // Manuelle Korrektur (SPEC §5.1.4 / P0-1)
+  final bool showCorrectionDialog;
+  final int? correctionSetCountedReps;
+  final int? correctionSetUserReps;
+
+  // Pausen-Timer (SPEC Phase 2 / P0-2)
+  final bool isRestTimerActive;
+  final int restTimerSecondsRemaining;
+
+  // Session-Zusammenfassung (P0-3)
+  final bool showSessionSummary;
+  final int sessionTotalSets;
+  final int sessionTotalReps;
+  final Duration? sessionDuration;
+
+  // Reconnection (P0-4)
+  final bool isReconnecting;
+  final int reconnectAttempt;
+
   const WorkoutUiState({
     this.workoutState = WorkoutState.idle,
     this.repsInCurrentSet = 0,
@@ -60,6 +79,17 @@ class WorkoutUiState {
     this.isCountingActive = false,
     this.selectedExerciseId = 'bicep_curl',
     this.hasCalibration = false,
+    this.showCorrectionDialog = false,
+    this.correctionSetCountedReps,
+    this.correctionSetUserReps,
+    this.isRestTimerActive = false,
+    this.restTimerSecondsRemaining = 90,
+    this.showSessionSummary = false,
+    this.sessionTotalSets = 0,
+    this.sessionTotalReps = 0,
+    this.sessionDuration,
+    this.isReconnecting = false,
+    this.reconnectAttempt = 0,
   });
 
   WorkoutUiState copyWith({
@@ -86,6 +116,17 @@ class WorkoutUiState {
     bool? isCountingActive,
     String? selectedExerciseId,
     bool? hasCalibration,
+    bool? showCorrectionDialog,
+    int? correctionSetCountedReps,
+    int? correctionSetUserReps,
+    bool? isRestTimerActive,
+    int? restTimerSecondsRemaining,
+    bool? showSessionSummary,
+    int? sessionTotalSets,
+    int? sessionTotalReps,
+    Duration? sessionDuration,
+    bool? isReconnecting,
+    int? reconnectAttempt,
   }) {
     return WorkoutUiState(
       workoutState: workoutState ?? this.workoutState,
@@ -111,6 +152,21 @@ class WorkoutUiState {
       isCountingActive: isCountingActive ?? this.isCountingActive,
       selectedExerciseId: selectedExerciseId ?? this.selectedExerciseId,
       hasCalibration: hasCalibration ?? this.hasCalibration,
+      showCorrectionDialog:
+          showCorrectionDialog ?? this.showCorrectionDialog,
+      correctionSetCountedReps:
+          correctionSetCountedReps ?? this.correctionSetCountedReps,
+      correctionSetUserReps:
+          correctionSetUserReps ?? this.correctionSetUserReps,
+      isRestTimerActive: isRestTimerActive ?? this.isRestTimerActive,
+      restTimerSecondsRemaining:
+          restTimerSecondsRemaining ?? this.restTimerSecondsRemaining,
+      showSessionSummary: showSessionSummary ?? this.showSessionSummary,
+      sessionTotalSets: sessionTotalSets ?? this.sessionTotalSets,
+      sessionTotalReps: sessionTotalReps ?? this.sessionTotalReps,
+      sessionDuration: sessionDuration ?? this.sessionDuration,
+      isReconnecting: isReconnecting ?? this.isReconnecting,
+      reconnectAttempt: reconnectAttempt ?? this.reconnectAttempt,
     );
   }
 }

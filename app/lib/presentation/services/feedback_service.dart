@@ -14,12 +14,18 @@ class FeedbackService {
   bool enableHaptic;
   bool enableAudio;
 
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  /// Lazy: constructing AudioPlayer touches platform channels and breaks
+  /// pure unit tests. Created only when audio is actually played.
+  AudioPlayer? _audioPlayer;
   bool? _hasVibrator;
 
   /// Initialisiert den Vibrations-Support (async, einmalig aufrufen).
   Future<void> init() async {
-    _hasVibrator = await Vibration.hasVibrator();
+    try {
+      _hasVibrator = await Vibration.hasVibrator();
+    } catch (_) {
+      _hasVibrator = false;
+    }
   }
 
   /// Feedback bei einer gezählten Wiederholung.
@@ -37,10 +43,14 @@ class FeedbackService {
   /// Feedback bei Satzende.
   Future<void> onSetCompleted({required int repCount}) async {
     if (enableHaptic) {
-      // Doppelte Vibration für Satzende
-      await Vibration.vibrate(duration: 100);
-      await Future.delayed(const Duration(milliseconds: 150));
-      await Vibration.vibrate(duration: 200);
+      try {
+        // Doppelte Vibration für Satzende
+        await Vibration.vibrate(duration: 100);
+        await Future.delayed(const Duration(milliseconds: 150));
+        await Vibration.vibrate(duration: 200);
+      } catch (_) {
+        // Plugin missing in tests / unsupported platform.
+      }
     }
   }
 
@@ -51,13 +61,16 @@ class FeedbackService {
     final duration = qualityScore != null
         ? (qualityScore >= 0.7 ? 50 : 100)
         : 50;
-    await Vibration.vibrate(duration: duration);
+    try {
+      await Vibration.vibrate(duration: duration);
+    } catch (_) {}
   }
 
   Future<void> _playRepSound() async {
     try {
+      _audioPlayer ??= AudioPlayer();
       // Kurzer Klick-Sound (System-Sound)
-      await _audioPlayer.play(
+      await _audioPlayer!.play(
         AssetSource('sounds/rep_click.wav'),
         volume: 0.5,
       );
@@ -67,6 +80,7 @@ class FeedbackService {
   }
 
   void dispose() {
-    _audioPlayer.dispose();
+    _audioPlayer?.dispose();
+    _audioPlayer = null;
   }
 }

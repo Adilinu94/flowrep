@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -116,6 +117,81 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     );
   }
 
+  // === Manuelle Korrektur (SPEC §5.1.4 / P0-1) ===
+
+  /// Zeigt den Korrektur-Dialog für den zuletzt abgeschlossenen Satz.
+  void showCorrectionForLastSet(int countedReps) {
+    state = state.copyWith(
+      showCorrectionDialog: true,
+      correctionSetCountedReps: countedReps,
+      correctionSetUserReps: countedReps,
+    );
+  }
+
+  /// Wendet eine Korrektur an (+1 oder -1).
+  void applyCorrectionDelta(int delta) {
+    final current =
+        state.correctionSetUserReps ?? state.correctionSetCountedReps ?? 0;
+    final newValue = (current + delta).clamp(0, 999);
+    state = state.copyWith(correctionSetUserReps: newValue);
+  }
+
+  /// Bestätigt die Korrektur und speichert [CorrectionEvent] bei Abweichung.
+  /// [countedReps] bleibt unverändert; nur [ExerciseSet.correctedReps] wird gesetzt.
+  Future<void> confirmCorrection() async {
+    final countedReps = state.correctionSetCountedReps;
+    final userReps = state.correctionSetUserReps;
+    if (countedReps == null || userReps == null) {
+      dismissCorrection();
+      return;
+    }
+
+    if (userReps != countedReps) {
+      if (_completedSets.isNotEmpty) {
+        final lastSet = _completedSets.last;
+        _completedSets[_completedSets.length - 1] =
+            lastSet.copyWith(correctedReps: userReps);
+      }
+
+      final repo = _repository;
+      if (repo != null) {
+        final event = CorrectionEvent(
+          id: _generateId(),
+          setId: _completedSets.isNotEmpty ? _completedSets.last.id : 'unknown',
+          systemCount: countedReps,
+          userCorrectedCount: userReps,
+          timestamp: DateTime.now(),
+        );
+        try {
+          await repo.saveCorrection(event);
+        } catch (_) {
+          // DB-Fehler nicht fatal
+        }
+      }
+
+      _saveSession();
+    }
+
+    dismissCorrection();
+  }
+
+  /// Schließt den Korrektur-Dialog ohne zu speichern.
+  void dismissCorrection() {
+    state = state.copyWith(showCorrectionDialog: false);
+  }
+
+  /// Exposes completed sets for tests (read-only view of last set correction).
+  @visibleForTesting
+  List<ExerciseSet> get debugCompletedSets =>
+      List.unmodifiable(_completedSets);
+
+  /// Inject a completed set for unit tests of correction/session flows.
+  @visibleForTesting
+  void debugAddCompletedSet(ExerciseSet set) {
+    _completedSets.add(set);
+    _sessionStartedAt ??= DateTime.now();
+  }
+
   /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
   /// Lädt die Kalibrierung für die neue Übung neu.
   void selectExercise(String exerciseId) {
@@ -199,11 +275,13 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       _feedbackService.onRepCounted(qualityScore: state.lastQualityScore);
     }
 
-    // Satz abgeschlossen → Feedback + Persistence
+    // Satz abgeschlossen → Feedback + Persistence + Korrektur-Dialog
     if (event.completedSet != null) {
       _feedbackService.onSetCompleted(
           repCount: event.completedSet!.countedReps);
       _onSetCompleted(event.completedSet!);
+      // Korrektur-Dialog zeigen (SPEC §5.1.4 / P0-1)
+      showCorrectionForLastSet(event.completedSet!.countedReps);
     }
 
     state = state.copyWith(
