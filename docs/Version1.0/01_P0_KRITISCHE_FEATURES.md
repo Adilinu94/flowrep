@@ -725,6 +725,8 @@ flutter analyze lib/presentation/widgets/rest_timer_widget.dart
 
 ## 3. Session-Beenden-Flow
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 3.1 Kurzbeschreibung
 
 Ein „Training beenden"-Button stoppt das Zählen, speichert die vollständige

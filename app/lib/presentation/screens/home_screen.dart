@@ -11,6 +11,7 @@ import '../widgets/exercise_selector_card.dart';
 import '../widgets/onboarding_banner.dart';
 import '../widgets/rep_counter_display.dart';
 import '../widgets/rest_timer_widget.dart';
+import '../widgets/session_summary_dialog.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import 'calibration/calibration_wizard_screen.dart';
@@ -28,7 +29,7 @@ class HomeScreen extends ConsumerWidget {
     final uiState = ref.watch(engineProvider);
     final notifier = ref.read(engineProvider.notifier);
 
-    // Korrektur-Dialog (P0-1 SPEC §5.1.4)
+    // Dialoge (P0-1 Korrektur, P0-3 Session-Zusammenfassung)
     ref.listen<WorkoutUiState>(engineProvider, (prev, next) {
       if (next.showCorrectionDialog && !(prev?.showCorrectionDialog ?? false)) {
         showDialog<void>(
@@ -53,6 +54,21 @@ class HomeScreen extends ConsumerWidget {
                   Navigator.of(dialogContext).pop();
                 },
               );
+            },
+          ),
+        );
+      }
+      if (next.showSessionSummary && !(prev?.showSessionSummary ?? false)) {
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (dialogContext) => SessionSummaryDialog(
+            totalSets: next.sessionTotalSets,
+            totalReps: next.sessionTotalReps,
+            duration: next.sessionDuration,
+            onDismiss: () {
+              notifier.dismissSessionSummary();
+              Navigator.of(dialogContext).pop();
             },
           ),
         );
@@ -147,6 +163,20 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
                 ),
+                // Training beenden (P0-3)
+                if (uiState.isCountingActive ||
+                    uiState.repsInCurrentSet > 0 ||
+                    uiState.lastCompletedSetCount != null) ...[
+                  const SizedBox(height: 8),
+                  TextButton.icon(
+                    onPressed: () => _confirmEndSession(context, notifier),
+                    icon: const Icon(Icons.stop, size: 18),
+                    label: const Text('Training beenden'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.red.shade700,
+                    ),
+                  ),
+                ],
                 const SizedBox(height: 16),
 
                 // Rep-Counter
@@ -261,6 +291,33 @@ class HomeScreen extends ConsumerWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
       ],
+    );
+  }
+
+  void _confirmEndSession(BuildContext context, EngineNotifier notifier) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Training beenden?'),
+        content: const Text(
+          'Möchtest du das Training beenden? '
+          'Alle Sätze werden gespeichert.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Abbrechen'),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              notifier.endSession();
+            },
+            style: FilledButton.styleFrom(backgroundColor: Colors.red.shade700),
+            child: const Text('Beenden'),
+          ),
+        ],
+      ),
     );
   }
 

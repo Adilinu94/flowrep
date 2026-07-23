@@ -224,6 +224,62 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Rest duration used for UI progress (default 90s).
   int get restDurationSeconds => _restDurationSeconds;
 
+  // === Session-Beenden-Flow (P0-3) ===
+
+  /// Beendet die aktuelle Trainingssession.
+  /// Speichert alle Sets, stoppt Timer, zeigt Zusammenfassung.
+  Future<void> endSession() async {
+    if (state.isCountingActive) {
+      _engine.pause();
+    }
+    _stopRestTimer();
+    dismissCorrection(startRest: false);
+
+    final totalSets = _completedSets.length;
+    final totalReps = _completedSets.fold<int>(
+      0,
+      (sum, s) => sum + s.effectiveReps,
+    );
+    final duration = _sessionStartedAt != null
+        ? DateTime.now().difference(_sessionStartedAt!)
+        : null;
+
+    final repo = _repository;
+    if (repo != null &&
+        _sessionStartedAt != null &&
+        _completedSets.isNotEmpty) {
+      final session = WorkoutSession(
+        id: _generateId(),
+        startedAt: _sessionStartedAt!,
+        endedAt: DateTime.now(),
+        sets: List.unmodifiable(_completedSets),
+      );
+      try {
+        await repo.saveSession(session);
+      } catch (_) {
+        // DB-Fehler nicht fatal
+      }
+    }
+
+    state = state.copyWith(
+      isCountingActive: false,
+      workoutState: WorkoutState.idle,
+      repsInCurrentSet: 0,
+      showSessionSummary: true,
+      sessionTotalSets: totalSets,
+      sessionTotalReps: totalReps,
+      sessionDuration: duration,
+    );
+
+    _sessionStartedAt = null;
+    _completedSets.clear();
+  }
+
+  /// Schließt die Session-Zusammenfassung.
+  void dismissSessionSummary() {
+    state = state.copyWith(showSessionSummary: false);
+  }
+
   /// Exposes completed sets for tests (read-only view of last set correction).
   @visibleForTesting
   List<ExerciseSet> get debugCompletedSets =>
