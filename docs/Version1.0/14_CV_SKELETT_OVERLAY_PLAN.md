@@ -458,6 +458,7 @@ Jeder Commit: passende Tests grün.
 | 2026-07-23 | Erster Plan: Overlay-MVP + E1–E10 als Ergänzungen |
 | 2026-07-23 | **Scope-Update:** E8 gestrichen; E1–E7, E9, E10 fest in Phasen A–F integriert; DoD/Commits/Checkliste erweitert |
 | 2026-07-23 | **Implementiert:** Phasen A–F Code + Tests; E10 via `VisionFocus.forExercise` (kein ExerciseProfile-JSON); Geräte-QA optional |
+| 2026-07-23 | Fix: no-pose frames always emitted (`fromPoseResultOrEmpty`); E9 `FileLandmarkSink` under app docs; CHANGELOG CV-07 |
 
 ---
 

@@ -19,6 +19,9 @@ import '../../domain/vision/angle_calculator.dart';
 import '../../domain/vision/vision_config.dart';
 
 /// Detected pose frame with MediaPipe-style landmarks (33 points).
+///
+/// Empty [landmarks] means **no person detected** this frame (still emitted so
+/// UI tracking quality / framed guide can react — CV-07 E3/E4).
 class PoseFrame {
   final int timestampMs;
   final List<FlowPoseLandmark> landmarks;
@@ -31,6 +34,23 @@ class PoseFrame {
     required this.processingTimeMs,
     this.fps,
   });
+
+  /// True when at least one landmark is present (person detected).
+  bool get hasPose => landmarks.isNotEmpty;
+
+  /// Explicit no-person frame for stream continuity (E3/E4).
+  factory PoseFrame.noPose({
+    required int timestampMs,
+    double processingTimeMs = 0,
+    double? fps,
+  }) {
+    return PoseFrame(
+      timestampMs: timestampMs,
+      landmarks: const [],
+      processingTimeMs: processingTimeMs,
+      fps: fps,
+    );
+  }
 }
 
 /// App-level landmark (avoids clashing with package [fpd.PoseLandmark]).
@@ -77,6 +97,25 @@ class PoseFrameMapper {
     return PoseFrame(
       timestampMs: timestampMs ?? result.timestamp.millisecondsSinceEpoch,
       landmarks: fromPackagePose(result.firstPose!),
+      processingTimeMs: result.processingTimeMs.toDouble(),
+      fps: fps,
+    );
+  }
+
+  /// Always returns a frame — empty landmarks when no person (live stream path).
+  static PoseFrame fromPoseResultOrEmpty(
+    fpd.PoseResult result, {
+    int? timestampMs,
+    double? fps,
+  }) {
+    final mapped = fromPoseResult(
+      result,
+      timestampMs: timestampMs,
+      fps: fps,
+    );
+    if (mapped != null) return mapped;
+    return PoseFrame.noPose(
+      timestampMs: timestampMs ?? result.timestamp.millisecondsSinceEpoch,
       processingTimeMs: result.processingTimeMs.toDouble(),
       fps: fps,
     );
@@ -327,8 +366,9 @@ class CameraPoseProvider extends ChangeNotifier {
         rotation: 0,
       );
 
-      final frame = PoseFrameMapper.fromPoseResult(result);
-      if (frame != null && !_poseFrameController.isClosed) {
+      // Always emit: empty landmarks when no person so E3/E4 can leave Tracking.
+      final frame = PoseFrameMapper.fromPoseResultOrEmpty(result);
+      if (!_poseFrameController.isClosed) {
         _poseFrameController.add(frame);
       }
     } catch (e) {
@@ -368,6 +408,12 @@ class CameraPoseProvider extends ChangeNotifier {
     if (!_poseFrameController.isClosed) {
       _poseFrameController.add(frame);
     }
+  }
+
+  /// Emit an empty no-person frame (unit tests for E3/E4 lost path).
+  @visibleForTesting
+  void debugEmitNoPose({int timestampMs = 0}) {
+    debugEmitFrame(PoseFrame.noPose(timestampMs: timestampMs));
   }
 
   bool _disposed = false;

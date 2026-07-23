@@ -1,7 +1,11 @@
 /// Opt-in local landmark debug recorder (CV-07 E9).
 ///
-/// Default off. No network. Pure formatting + in-memory sink for tests.
+/// Default off. No network. File sink under app documents (or injected dir).
 library;
+
+import 'dart:io';
+
+import 'package:path_provider/path_provider.dart';
 
 import '../providers/camera_pose_provider.dart';
 
@@ -9,6 +13,9 @@ import '../providers/camera_pose_provider.dart';
 abstract class LandmarkRecordSink {
   void writeLine(String line);
   void close();
+
+  /// Optional path for UI / tests (null for memory).
+  String? get path => null;
 }
 
 /// In-memory sink for unit tests.
@@ -20,6 +27,56 @@ class MemoryLandmarkSink implements LandmarkRecordSink {
 
   @override
   void close() {}
+
+  @override
+  String? get path => null;
+}
+
+/// Appends CSV lines to a local file (grows while recording).
+///
+/// Uses synchronous append+flush so the file length grows immediately
+/// (reliable for mid-session reads and unit tests).
+class FileLandmarkSink implements LandmarkRecordSink {
+  final File file;
+
+  FileLandmarkSink(this.file);
+
+  @override
+  String? get path => file.path;
+
+  @override
+  void writeLine(String line) {
+    file.writeAsStringSync(
+      '$line\n',
+      mode: FileMode.append,
+      flush: true,
+    );
+  }
+
+  @override
+  void close() {
+    // Nothing to close for sync path; method kept for sink interface.
+  }
+}
+
+/// Resolves a timestamped CSV path under app documents (or [getBaseDirectory]).
+class LandmarkFilePaths {
+  /// [getBaseDirectory] injectable for tests (no path_provider channel).
+  static Future<File> createSessionFile({
+    Future<Directory> Function()? getBaseDirectory,
+    DateTime? now,
+  }) async {
+    final baseFn = getBaseDirectory ?? getApplicationDocumentsDirectory;
+    final base = await baseFn();
+    final dir = Directory('${base.path}${Platform.pathSeparator}landmark_logs');
+    if (!dir.existsSync()) {
+      dir.createSync(recursive: true);
+    }
+    final ts = (now ?? DateTime.now()).toIso8601String().replaceAll(':', '-');
+    final path =
+        '${dir.path}${Platform.pathSeparator}landmarks_$ts.csv';
+    return File(path);
+  }
 }
 
 /// Records throttled pose landmarks as CSV lines.
@@ -39,6 +96,8 @@ class LandmarkSessionRecorder {
   });
 
   int get framesWritten => _framesWritten;
+
+  String? get outputPath => sink.path;
 
   /// CSV header (stable schema for offline tools).
   static String get csvHeader {

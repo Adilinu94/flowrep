@@ -14,7 +14,8 @@ Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physi
 - Manual set end: `autoEndSetEnabled: false`, UI „Satz beenden“, `correctedReps` without rewriting `countedReps`
 - CV optional track: camera soft-fail, pose angle / rep counter, fusion engine (IMU authoritative)
 - Real pose landmark confidence into fusion (`PoseFrameMapper.armConfidence` / `primaryElbow`; no live `0.8` placeholder)
-- Living docs: `docs/Version1.0/10`–`13`, hardware session notes
+- **CV-07 skeleton overlay** (optional): live bones/joints over preview, active-arm highlight (E1), elbow form color (E2), tracking badge (E3), framed guide (E4), confidence hysteresis (E5), draw modes full/upper/arm-only (E6), fusion rep pulse UI-only (E7), opt-in local landmark CSV under app documents (E9), `VisionFocus.forExercise` (E10). No E8 privacy blur. Empty no-pose frames keep tracking quality honest when person leaves frame.
+- Living docs: `docs/Version1.0/10`–`14`, hardware session notes
 
 ### Changed
 

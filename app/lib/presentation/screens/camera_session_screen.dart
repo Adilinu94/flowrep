@@ -41,7 +41,7 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
   bool _showSkeleton = true;
   bool _recordLandmarks = false;
   LandmarkSessionRecorder? _recorder;
-  MemoryLandmarkSink? _debugSink;
+  String? _recorderPath;
 
   @override
   void dispose() {
@@ -62,24 +62,31 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
       await _poseSub?.cancel();
       _quality.reset();
       _pulse.reset();
-      _setupRecorder(cam.config);
+      await _setupRecorder(cam.config);
       _poseSub = cam.poseFrames.listen(_onPoseFrame);
     } finally {
       if (mounted) setState(() => _starting = false);
     }
   }
 
-  void _setupRecorder(VisionConfig config) {
+  /// Opens a **file** sink under app documents when recording is on (E9).
+  Future<void> _setupRecorder(VisionConfig config) async {
     _recorder?.close();
     _recorder = null;
-    _debugSink = null;
-    if (_recordLandmarks || config.recordLandmarks) {
-      _debugSink = MemoryLandmarkSink();
+    _recorderPath = null;
+    if (!(_recordLandmarks || config.recordLandmarks)) return;
+    try {
+      final file = await LandmarkFilePaths.createSessionFile();
+      final sink = FileLandmarkSink(file);
       _recorder = LandmarkSessionRecorder(
-        sink: _debugSink!,
+        sink: sink,
         enabled: true,
         minIntervalMs: 100,
       );
+      _recorderPath = file.path;
+    } catch (e) {
+      // Soft-fail: keep session usable without disk log.
+      debugPrint('[CameraSession] Landmark file sink failed: $e');
     }
   }
 
@@ -106,23 +113,25 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
     final engine = ref.read(engineProvider.notifier);
     final cam = ref.read(visionProvider);
     final cfg = cam.config;
-    final primary = PoseFrameMapper.primaryElbow(
-      frame,
-      minConfidence: cfg.minLandmarkConfidence,
-    );
 
-    double? conf;
+    // Empty landmarks = person left frame (always emitted by CameraPoseProvider).
+    final primary = frame.hasPose
+        ? PoseFrameMapper.primaryElbow(
+            frame,
+            minConfidence: cfg.minLandmarkConfidence,
+          )
+        : null;
+
+    final double? conf = primary?.confidence;
     if (primary != null) {
-      conf = primary.confidence;
       engine.processCameraAngle(
         elbowAngleDegrees: primary.angle,
         timestampMs: frame.timestampMs,
         confidence: primary.confidence,
       );
-    } else {
-      conf = null;
     }
 
+    // null conf drives E5 hysteresis → Lost → E4 framed guide.
     _quality.update(conf);
     final decision = engine.fusionEngine.getDecision(
       currentTimestampMs: frame.timestampMs + 1,
@@ -134,7 +143,7 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
     );
 
     AngleFormColor? form;
-    bool highlightRight = _highlightRight;
+    var highlightRight = _highlightRight;
     if (primary != null) {
       form = AngleFormClassifier.classify(
         angleDegrees: primary.angle,
@@ -148,21 +157,28 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
       } else {
         highlightRight = cfg.highlightArm == ArmSide.right;
       }
+    } else {
+      form = null;
     }
 
-    _recorder?.maybeRecord(
-      timestampMs: frame.timestampMs,
-      meanConfidence: conf ?? 0.0,
-      landmarks: frame.landmarks,
-    );
+    if (frame.hasPose) {
+      _recorder?.maybeRecord(
+        timestampMs: frame.timestampMs,
+        meanConfidence: conf ?? 0.0,
+        landmarks: frame.landmarks,
+      );
+    }
 
     if (!mounted) return;
     setState(() {
-      _lastFrame = frame;
+      // Empty landmarks → painter skips skeleton; guide uses trackingQuality.
+      _lastFrame = frame.hasPose ? frame : null;
       _highlightRight = highlightRight;
       _formColor = form;
       _lastElbowAngle = primary?.angle;
-      _lastDiagnostic = decision.diagnostic;
+      _lastDiagnostic = frame.hasPose
+          ? decision.diagnostic
+          : 'Person nicht erkannt';
     });
   }
 
@@ -259,13 +275,17 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
                     : 'Frames: ${_recorder!.framesWritten}',
               ),
               value: _recordLandmarks,
-              onChanged: (v) {
-                setState(() {
-                  _recordLandmarks = v;
-                  _setupRecorder(cfg.copyWith(recordLandmarks: v));
-                });
+              onChanged: (v) async {
+                setState(() => _recordLandmarks = v);
+                await _setupRecorder(cfg.copyWith(recordLandmarks: v));
+                if (mounted) setState(() {});
               },
             ),
+            if (_recorderPath != null)
+              Text(
+                'Log: $_recorderPath',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
           ],
           const SizedBox(height: 12),
           FusionStatusBadge(

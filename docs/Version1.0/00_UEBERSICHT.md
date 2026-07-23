@@ -92,7 +92,7 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
     │
     ├──→ CV-06 Android Simulator (unabhängig)
     │
-    └──→ CV-07 Skelett-Overlay Plan (Doc 14; Code offen) ──
+    └──→ CV-07 Skelett-Overlay Code DONE (Doc 14; Geräte-QA optional) ──
 ```
 
 ---
@@ -232,7 +232,7 @@ refactor(P2): Logging-Struktur verbessern
 | Widget-Tests | 15+ | 15+ ✅ |
 | Integration-Tests | 3-5 | 3-5 ✅ |
 | E2E (Hardware) | Manuell auf M5StickC | Manuell auf M5StickC ✅ |
-| **Gesamt** | **375** | **260+ ✅** |
+| **Gesamt** | **405** | **CV-07 inkl. Skeleton/E9 file sink + no-pose** |
 
 **Test-Befehl**:
 ```bash

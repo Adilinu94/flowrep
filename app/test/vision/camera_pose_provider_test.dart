@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/camera_pose_provider.dart';
+import 'package:flowrep/domain/vision/tracking_quality.dart';
 import 'package:flowrep/domain/vision/vision_config.dart';
 import 'package:flowrep/presentation/providers/vision_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -163,6 +164,47 @@ void main() {
 
       await sub.cancel();
       p.dispose();
+    });
+
+    test('debugEmitNoPose delivers empty frame for E3/E4 lost path', () async {
+      final p = CameraPoseProvider();
+      final frames = <PoseFrame>[];
+      final sub = p.poseFrames.listen(frames.add);
+
+      p.debugEmitNoPose(timestampMs: 99);
+      await Future<void>.delayed(Duration.zero);
+      expect(frames, hasLength(1));
+      expect(frames.single.hasPose, isFalse);
+      expect(frames.single.landmarks, isEmpty);
+      expect(frames.single.timestampMs, 99);
+
+      // Session-side quality: null conf after empty frame → lost after streak.
+      final q = TrackingQualityTracker(
+        emaAlpha: 1.0,
+        framesToTrack: 1,
+        framesToLose: 2,
+      );
+      q.update(0.9);
+      expect(q.state, TrackingQuality.tracking);
+      // Simulate N empty stream frames (what session does with conf=null).
+      for (var i = 0; i < 3; i++) {
+        q.update(frames.single.hasPose
+            ? PoseFrameMapper.armConfidence(
+                frames.single,
+                rightArm: true,
+              )
+            : null);
+      }
+      expect(q.state, TrackingQuality.lost);
+
+      await sub.cancel();
+      p.dispose();
+    });
+
+    test('PoseFrame.noPose is the empty live-frame contract', () {
+      final empty = PoseFrame.noPose(timestampMs: 1);
+      expect(empty.hasPose, isFalse);
+      expect(PoseFrameMapper.primaryElbow(empty), isNull);
     });
 
     test('dispose is safe after detect cycle', () async {

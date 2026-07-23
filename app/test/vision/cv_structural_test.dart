@@ -41,6 +41,8 @@ void main() {
       expect(session.contains('TrackingQualityTracker'), isTrue);
       expect(session.contains('FusionPulseController'), isTrue);
       expect(session.contains('SkeletonDrawMode'), isTrue);
+      expect(session.contains('FileLandmarkSink'), isTrue);
+      expect(session.contains('frame.hasPose'), isTrue);
       // E8 out of scope
       expect(session.toLowerCase().contains('imagefilter.blur'), isFalse);
       expect(session.contains('BackdropFilter'), isFalse);
@@ -52,6 +54,11 @@ void main() {
       expect(overlay.contains('FramedGuideOverlay'), isTrue);
       expect(overlay.contains('_TrackingBadge'), isTrue);
       expect(overlay.contains('BackdropFilter'), isFalse);
+
+      final cam =
+          File('lib/data/providers/camera_pose_provider.dart').readAsStringSync();
+      expect(cam.contains('fromPoseResultOrEmpty'), isTrue);
+      expect(cam.contains('PoseFrame.noPose') || cam.contains('noPose'), isTrue);
     });
 
     test('Android CAMERA permission optional', () {

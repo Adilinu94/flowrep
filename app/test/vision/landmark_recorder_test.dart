@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/camera_pose_provider.dart';
 import 'package:flowrep/data/repositories/landmark_session_recorder.dart';
@@ -76,6 +78,49 @@ void main() {
       final parts = line.split(',');
       // timestamp + conf + 33*3
       expect(parts.length, 2 + 33 * 3);
+    });
+
+    test('FileLandmarkSink grows a real file on disk', () async {
+      final dir = await Directory.systemTemp.createTemp('flowrep_lm_');
+      final file = File('${dir.path}${Platform.pathSeparator}session.csv');
+      final sink = FileLandmarkSink(file);
+      final rec = LandmarkSessionRecorder(
+        sink: sink,
+        enabled: true,
+        minIntervalMs: 0,
+      );
+      expect(rec.outputPath, file.path);
+      rec.maybeRecord(
+        timestampMs: 1,
+        meanConfidence: 0.9,
+        landmarks: fake33(),
+      );
+      rec.maybeRecord(
+        timestampMs: 200,
+        meanConfidence: 0.8,
+        landmarks: fake33(),
+      );
+      rec.close();
+
+      expect(file.existsSync(), isTrue);
+      final body = file.readAsStringSync();
+      expect(body, contains('timestampMs'));
+      expect(body.trim().split('\n').length, greaterThanOrEqualTo(3));
+      expect(file.lengthSync(), greaterThan(50));
+
+      await dir.delete(recursive: true);
+    });
+
+    test('LandmarkFilePaths.createSessionFile uses injected base dir', () async {
+      final dir = await Directory.systemTemp.createTemp('flowrep_lm_base_');
+      final file = await LandmarkFilePaths.createSessionFile(
+        getBaseDirectory: () async => dir,
+        now: DateTime.utc(2026, 7, 23, 12, 0, 0),
+      );
+      expect(file.path, contains('landmark_logs'));
+      expect(file.path, contains('landmarks_'));
+      expect(Directory(file.parent.path).existsSync(), isTrue);
+      await dir.delete(recursive: true);
     });
   });
 }
