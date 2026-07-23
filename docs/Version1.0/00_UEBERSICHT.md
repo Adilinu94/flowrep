@@ -228,10 +228,11 @@ refactor(P2): Logging-Struktur verbessern
 
 | Ebene | Anzahl (aktuell) | Ziel (1.0) |
 |-------|------------------|------------|
-| Unit-Tests (Engine/Pipeline) | 242 | 260+ |
-| Widget-Tests | 0 | 15+ |
-| Integration-Tests | 0 | 3-5 (manuell) |
-| E2E (Hardware) | 0 | Manuell auf M5StickC |
+| Unit-Tests (Engine/Pipeline) | ~360 | 260+ ✅ |
+| Widget-Tests | 15+ | 15+ ✅ |
+| Integration-Tests | 3-5 | 3-5 ✅ |
+| E2E (Hardware) | Manuell auf M5StickC | Manuell auf M5StickC ✅ |
+| **Gesamt** | **375** | **260+ ✅** |
 
 **Test-Befehl**:
 ```bash
