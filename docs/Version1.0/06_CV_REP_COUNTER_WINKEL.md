@@ -1,5 +1,6 @@
 # CV-03 — Rep-Counter via Gelenkwinkel (Bicep Curl)
 
+> **Status**: ✅ DOMAIN DONE — PoseRepCounter + Unit-Tests grün; Live-Kamera-Anbindung folgt mit CV-02 CameraPoseProvider
 > **Voraussetzung**: Doc 05 (Kamera-Setup) abgeschlossen.
 > **Ziel**: Reps über Ellenbogen-Winkel zählen (State Machine).
 > **Ergebnis**: Kamera zählt Bicep-Curl-Reps eigenständig.

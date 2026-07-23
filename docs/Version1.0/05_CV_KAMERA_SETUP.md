@@ -1,5 +1,6 @@
 # CV-02 — Kamera-Setup: flutter_pose_detection Integration
 
+> **Status**: 🟡 PARTIAL — VisionConfig + AngleCalculator + CAMERA permissions (Android/iOS) erledigt; `flutter_pose_detection`/Live-Preview noch offen
 > **Voraussetzung**: Doc 04 (Architektur) gelesen und verstanden.
 > **Ziel**: Kamera-Stream + Pose Detection in FlowRep integrieren.
 > **Ergebnis**: App zeigt Live-Kamerabild mit erkannten Körperpunkten.

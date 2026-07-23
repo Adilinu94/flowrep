@@ -1,0 +1,38 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  group('CV structural (CV-01 foundation)', () {
+    test('vision domain files exist', () {
+      expect(File('lib/domain/vision/vision_config.dart').existsSync(), isTrue);
+      expect(
+          File('lib/domain/vision/angle_calculator.dart').existsSync(), isTrue);
+      expect(
+          File('lib/domain/vision/pose_rep_counter.dart').existsSync(), isTrue);
+    });
+
+    test('Android CAMERA permission optional', () {
+      final m = File('android/app/src/main/AndroidManifest.xml').readAsStringSync();
+      expect(m.contains('android.permission.CAMERA'), isTrue);
+      expect(
+        m.contains('android.hardware.camera" android:required="false"') ||
+            m.contains("android.hardware.camera' android:required=\"false\"") ||
+            m.contains('android:required="false"'),
+        isTrue,
+      );
+    });
+
+    test('iOS camera usage string present', () {
+      final p = File('ios/Runner/Info.plist').readAsStringSync();
+      expect(p.contains('NSCameraUsageDescription'), isTrue);
+      expect(p.contains('lokal verarbeitet'), isTrue);
+    });
+
+    test('IMU engines not modified by CV scaffold (file markers)', () {
+      // CV must not flip the new pipeline flag.
+      final engine = File('lib/domain/workout_engine.dart').readAsStringSync();
+      expect(engine.contains('bool _useNewPipeline = false'), isTrue);
+    });
+  });
+}

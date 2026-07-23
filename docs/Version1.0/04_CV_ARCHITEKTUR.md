@@ -1,7 +1,7 @@
 # CV-01 — Pose Estimation: Architektur & Grundlagen
 
 > **Modul**: Computer-Vision-Erweiterung für FlowRep
-> **Status**: Geplant (nach P0, parallel zu P1/P2 umsetzbar)
+> **Status**: ✅ FOUNDATION DONE — domain/vision scaffold (VisionConfig, AngleCalculator, PoseRepCounter); IMU unverändert autoritativ
 > **Voraussetzung**: P0-1 (Korrektur-UI) muss fertig sein
 > **Widerspruchsfreiheit**: Dieses Modul ERGÄNZT die IMU-Pipeline, ersetzt sie NICHT.
 > Die IMU-Pipeline bleibt autoritativ. Kamera ist ein zusätzlicher Validator.
