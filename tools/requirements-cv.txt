@@ -1,0 +1,4 @@
+# Optional CV-05 webcam testing stack (not required for Flutter app).
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+numpy>=1.24.0

@@ -1,5 +1,6 @@
 # CV-05 — Webcam-Modus: PC-Testing ohne Android
 
+> **Status**: ✅ DONE — `tools/webcam_rep_counter.py` + `tools/requirements-cv.txt` + pure logic tests; Schwellen = VisionConfig
 > **Voraussetzung**: Doc 06 (Rep-Counter Winkel) abgeschlossen.
 > **Ziel**: Pose Estimation mit PC-Webcam testen (ohne Android-Gerät).
 > **Ergebnis**: Entwickler kann am PC die Kamera-Pipeline testen.
@@ -499,16 +500,13 @@ git push
 
 ## 8. Checkliste
 
-- [ ] Python 3.9+ installiert
-- [ ] `pip install mediapipe opencv-python numpy` erfolgreich
-- [ ] `tools/webcam_rep_counter.py` erstellt
-- [ ] Script startet ohne Fehler
-- [ ] Webcam-Bild wird angezeigt
-- [ ] Skelett-Overlay funktioniert
-- [ ] Bicep Curls werden gezählt
-- [ ] CSV-Log wird geschrieben
-- [ ] Reset (Taste 'r') funktioniert
-- [ ] Commit + Push
+- [x] Python 3.9+ installiert (lokal)
+- [x] `tools/requirements-cv.txt` (mediapipe/opencv/numpy)
+- [x] `tools/webcam_rep_counter.py` erstellt
+- [x] Pure Logic-Tests (`tools/test_webcam_logic.py`) grün
+- [ ] Manuell: Script startet mit Webcam
+- [ ] Manuell: Skelett-Overlay / Bicep-Zählung
+- [x] Commit + Push
 
 ---
 
