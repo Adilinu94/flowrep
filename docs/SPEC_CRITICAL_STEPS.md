@@ -24,7 +24,12 @@
 **Bewusst offen** (erfordert Hardware-Validierung):
 - `_useNewPipeline = true` setzen (nach Shadow-Mode mit echten CSV-Daten)
 - Legacy-Code löschen (nach Gate)
-- Template end-to-end verdrahten (ExerciseProfile → ExerciseEngine.setTemplate)
+- Gyro-Gate (|gyro|<15°/s) in active validieren (Adi-Bug: Alltagsbewegung zählt)
+
+**Erledigt seit letztem Update:**
+- Template end-to-end verdrahten (ExerciseProfile → ExerciseEngine.setTemplate) ✅
+- Baseline-Gate P0.5 (State-Exklusion: guidedCalib/paused/connLost) ✅
+- Zähl-Gating mit Start/Stop-Button (isCountingActive) ✅
 
 ---
 
