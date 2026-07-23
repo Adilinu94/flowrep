@@ -4,7 +4,7 @@
 > **Commit-Basis**: siehe `git log` / `origin/main`  
 > **Zweck**: ehrlicher Ledger — erledigt vs. offen. Kein „alles grün“ ohne Evidence.
 
-Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [HW_VALIDATION](HW_VALIDATION_2026-07-23.md)
+Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [HW_VALIDATION](HW_VALIDATION_2026-07-23.md)
 
 ---
 
@@ -104,10 +104,13 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 ## Offene 1.0-Punkte (ehrlich)
 
+> Vollständige Liste mit Prioritäten A–D: **[13_OFFENE_PUNKTE.md](13_OFFENE_PUNKTE.md)**.
+
 1. **[ ]** Volle physische Session: Kalibrieren → Zählen (Curls) → **Satz beenden** → echte Reps eingeben → Training beenden  
 2. **[~]** Wiggle-Resistenz am Gerät (Unit grün; User meldete Rest-Wackeln → weitere Gates gelandet, HW-Retest)  
 3. **[ ]** Phase E–H Hardware-Protokoll (Zähl-DoD G5/G6, Shadow G7) — siehe Doc 11  
-4. Optional: CSV-Export Kalibrier-Puffer, Webcam-Live-Session
+4. Optional: CSV-Export Kalibrier-Puffer, Webcam-Live-Session  
+5. Store/Admin: iOS Archive, Play Signing, Semver-Tag (Doc 10 / 13 §C)
 
 ---
 
