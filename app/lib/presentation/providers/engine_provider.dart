@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -16,6 +17,7 @@ import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
 import '../../domain/workout_engine.dart';
 import '../services/feedback_service.dart';
+import 'lifecycle_provider.dart';
 import 'workout_ui_state.dart';
 
 /// Riverpod-Provider für den Engine-State (SPEC TEIL 6, §6.2).
@@ -54,6 +56,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     );
     notifier._bind();
     notifier._feedbackService.init();
+    notifier._initLifecycleObserver();
     return notifier;
   }
 
@@ -64,6 +67,9 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   final CsvSessionRecorder _recorder = CsvSessionRecorder();
   final FeedbackService _feedbackService = FeedbackService();
   final ForegroundServiceManager _fgService = ForegroundServiceManager();
+  AppLifecycleObserver? _lifecycleObserver;
+  /// Seconds remaining when rest timer was paused by app backgrounding (P1-2).
+  int? _restSecondsWhenPaused;
 
   // Session-Tracking (Phase 5.2)
   DateTime? _sessionStartedAt;
@@ -233,6 +239,67 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   /// Rest duration used for UI progress (default 90s).
   int get restDurationSeconds => _restDurationSeconds;
+
+  // === App-Lifecycle (P1-2) ===
+
+  void _initLifecycleObserver() {
+    // WidgetsBinding may be unavailable in pure dart unit tests.
+    try {
+      _lifecycleObserver = AppLifecycleObserver(
+        onStateChanged: _onAppLifecycleChanged,
+      );
+    } catch (_) {
+      _lifecycleObserver = null;
+    }
+  }
+
+  void _onAppLifecycleChanged(AppLifecycleState lifecycleState) {
+    switch (lifecycleState) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.hidden:
+        // Pause rest countdown while backgrounded; keep BLE reconnect active.
+        if (state.isRestTimerActive) {
+          _restSecondsWhenPaused = state.restTimerSecondsRemaining;
+          _restTimer?.cancel();
+          _restTimer = null;
+        }
+        break;
+      case AppLifecycleState.resumed:
+        if (state.isCountingActive && _sensorProvider is BleSensorProvider) {
+          _updateBleDiagnostics();
+        }
+        // Resume rest timer if it was active when paused.
+        if (_restSecondsWhenPaused != null && !state.isCountingActive) {
+          final remaining = _restSecondsWhenPaused!;
+          _restSecondsWhenPaused = null;
+          if (remaining > 0) {
+            state = state.copyWith(
+              isRestTimerActive: true,
+              restTimerSecondsRemaining: remaining,
+            );
+            _restTimer?.cancel();
+            _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+              final next = state.restTimerSecondsRemaining - 1;
+              if (next <= 0) {
+                _stopRestTimer();
+              } else {
+                state = state.copyWith(restTimerSecondsRemaining: next);
+              }
+            });
+          }
+        }
+        break;
+      case AppLifecycleState.detached:
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  /// Test hook: simulate lifecycle without WidgetsBinding.
+  @visibleForTesting
+  void debugOnAppLifecycle(AppLifecycleState lifecycleState) {
+    _onAppLifecycleChanged(lifecycleState);
+  }
 
   // === Session-Beenden-Flow (P0-3) ===
 
@@ -664,6 +731,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _restTimer = null;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
+    _lifecycleObserver?.dispose();
+    _lifecycleObserver = null;
     unawaited(_fgService.stop());
     _samplesSub?.cancel();
     _eventsSub?.cancel();
