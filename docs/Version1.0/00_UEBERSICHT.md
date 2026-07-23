@@ -134,7 +134,7 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
 | 3 | Rep-Counter Winkel (Bicep Curl) ✅ domain | 2-3h | CV-02 |
 | 4 | Sensor Fusion (IMU+Kamera) ✅ | 2h | CV-03 |
 | 5 | Webcam-Testing (Python-Tool) ✅ | 1h | keine |
-| 6 | Android Simulator Setup | 1h | keine |
+| 6 | Android Simulator Setup ✅ docs/soft-fail | 1h | keine |
 
 **WICHTIG**: CV ist OPTIONAL. Die App funktioniert vollständig ohne Kamera.
 Die IMU-Pipeline bleibt autoritativ. Kamera ist ein zusätzlicher Validator.
@@ -254,4 +254,4 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] CV-03: PoseRepCounter Unit-Logik (Bicep-Winkel-SM) — Live-Kamera-Anbindung offen
 - [x] CV-04: FusionEngine + Stats/Hooks (UI-Badge optional später)
 - [x] CV-05: Webcam-Tool im Repo + Logic-Tests (manuelle Webcam-Session optional)
-- [ ] CV-06: App startet im Emulator ohne Crash
+- [x] CV-06: Soft-fail ohne Kamera/Detector (IMU bleibt); Emulator-Setup in Doc 09

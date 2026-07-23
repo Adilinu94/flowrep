@@ -1,5 +1,6 @@
 # CV-06 — Android Simulator: Setup & Testing
 
+> **Status**: ✅ DOC + Code-Soft-Fail — CameraPoseProvider setzt Fehler bei 0 Kameras / fehlendem Detector; App bleibt IMU-fähig. Emulator-Manuell-Setup bleibt Entwickler-Doku.
 > **Voraussetzung**: Doc 05 (Kamera-Setup) abgeschlossen.
 > **Ziel**: FlowRep mit Kamera-Pipeline im Android Emulator testen.
 > **Ergebnis**: Entwickler kann ohne physisches Gerät testen.

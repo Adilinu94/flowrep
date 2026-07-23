@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/camera_pose_provider.dart';
 import 'package:flowrep/domain/vision/vision_config.dart';
@@ -115,6 +116,20 @@ void main() {
       await p.startDetection();
       await p.stopDetection();
       expect(() => p.dispose(), returnsNormally);
+    });
+
+    test('empty camera list sets error without crash (CV-06 soft-fail)',
+        () async {
+      CameraPoseProvider.debugSkipPlatform = false;
+      CameraPoseProvider.debugAvailableCameras =
+          () async => <CameraDescription>[];
+      final p = CameraPoseProvider();
+      await p.initializeCamera();
+      expect(p.isInitialized, isFalse);
+      expect(p.error, contains('Keine Kamera'));
+      p.dispose();
+      CameraPoseProvider.debugAvailableCameras = null;
+      CameraPoseProvider.debugSkipPlatform = true;
     });
   });
 
