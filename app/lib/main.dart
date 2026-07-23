@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'data/providers/ble_sensor_provider.dart';
-import 'data/providers/sensor_provider.dart';
+import 'domain/workout_engine.dart';
+import 'presentation/providers/engine_provider.dart';
 import 'presentation/screens/home_screen.dart';
 
 /// Entry point.
@@ -10,7 +12,26 @@ import 'presentation/screens/home_screen.dart';
 /// app talks to the real M5StickC Plus2. For CI/web without hardware, switch
 /// back to [MockSensorProvider] (one line below).
 void main() {
-  runApp(const FlowRepApp());
+  // Real BLE for hardware tests. MockSensorProvider() for web/CI only.
+  final sensorProvider = BleSensorProvider();
+  final engine = WorkoutEngine(
+    exerciseId: 'bicep_curl',
+    useSignedProjectionCounting: true,
+  );
+
+  runApp(
+    ProviderScope(
+      overrides: [
+        engineProvider.overrideWith(
+          (_) => EngineNotifier.create(
+            sensorProvider: sensorProvider,
+            engine: engine,
+          ),
+        ),
+      ],
+      child: const FlowRepApp(),
+    ),
+  );
 }
 
 class FlowRepApp extends StatelessWidget {
@@ -20,9 +41,9 @@ class FlowRepApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'FlowRep',
-      theme: ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
-      // Real BLE for hardware tests. MockSensorProvider() for web/CI only.
-      home: HomeScreen(sensorProvider: BleSensorProvider()),
+      theme:
+          ThemeData(colorSchemeSeed: Colors.deepPurple, useMaterial3: true),
+      home: const HomeScreen(),
     );
   }
 }

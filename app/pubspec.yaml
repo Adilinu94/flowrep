@@ -58,6 +58,11 @@ dependencies:
   # eine neue API (SharePlus.instance.share(ShareParams(...)) statt des
   # alten statischen Share.shareXFiles(...)) - siehe csv_session_recorder.dart.
   share_plus: ^12.0.1
+  # Phase 4: Riverpod State Management (SPEC TEIL 6, §6.1)
+  flutter_riverpod: ^2.5.1
+  # Phase 5 Vorbereitung: Haptic/Audio Feedback
+  vibration: ^2.0.0
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
