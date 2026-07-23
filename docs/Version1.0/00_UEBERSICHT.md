@@ -24,7 +24,8 @@ docs/Version1.0/
 ├── 10_RELEASE_VORBEREITUNG.md    ← Release-Gates & Build-Smoke (living)
 ├── 11_HARDWARE_QA_CHECKLISTE.md  ← M5 + Phone QA (living)
 ├── 12_IMPLEMENTIERUNGS_STATUS.md ← P0–P2/CV/Engine Ledger (living)
-└── 13_OFFENE_PUNKTE.md           ← Konsolidiert: was noch aussteht (living)
+├── 13_OFFENE_PUNKTE.md           ← Konsolidiert: was noch aussteht (living)
+└── 14_CV_SKELETT_OVERLAY_PLAN.md ← CV: Skelett-Overlay Plan + 10 Ergänzungen
 
 # Geräte-Evidence: docs/hardware/sessions/2026-07-23/
 # Gesamt-Index: docs/README.md
@@ -89,7 +90,9 @@ CV-04 Sensor Fusion (IMU+Kamera) ───────────────�
     │
     ├──→ CV-05 Webcam-Testing (PC, unabhängig)
     │
-    └──→ CV-06 Android Simulator (unabhängig)
+    ├──→ CV-06 Android Simulator (unabhängig)
+    │
+    └──→ CV-07 Skelett-Overlay Plan (Doc 14; Code offen) ──
 ```
 
 ---
@@ -264,4 +267,5 @@ flutter test --coverage         # Mit Coverage-Report
 - [x] CV-04: FusionEngine + Stats/Hooks + FusionStatusBadge UI
 - [x] CV-05: Webcam-Tool im Repo + Logic-Tests (manuelle Webcam-Session optional)
 - [x] CV-06: Soft-fail ohne Kamera/Detector (IMU bleibt); Emulator-Setup in Doc 09
+- [ ] CV-07: Skelett-Overlay (Plan: `14_CV_SKELETT_OVERLAY_PLAN.md`; Code Phasen A–C offen)
 - [x] CV-UI: CameraSessionScreen + Preview + Settings-Toggle

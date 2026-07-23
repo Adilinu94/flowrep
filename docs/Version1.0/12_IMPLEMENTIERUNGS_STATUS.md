@@ -88,9 +88,11 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 | ID | Status |
 |----|--------|
 | CV-01 … CV-06 + UI | [x] Code/Docs; Geräte-Webcam/Emulator manuell optional |
+| CV-07 Skelett-Overlay | [ ] Plan: `14_CV_SKELETT_OVERLAY_PLAN.md` (Phasen A–D + E1–E10); Code offen |
 | D2 Pose-Confidence | [x] `armConfidence`/`primaryElbow` → fusion; kein Live-Placeholder `0.8` |
 | D1 NPU soft-fail | [x] Code; physische Live-Session [~] |
 | D5 YUV path | [~] yuv420 an Detector; native RGB-Opt deferred |
+| D6 Skelett-Overlay | [ ] siehe CV-07 / Doc 14 |
 
 ---
 

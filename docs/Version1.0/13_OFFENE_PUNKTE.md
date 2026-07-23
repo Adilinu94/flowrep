@@ -88,6 +88,7 @@ Code-Scaffold und Unit-Tests sind grün; manuelle Geräte-/Webcam-Checks bleiben
 | D3 | Manuelle Webcam-Session (Python-Tool) | 08 Checkliste | **[x]** headless 25 Frames (Pipeline OK, pose_frames=0 ohne Person); pure logic 4/4; MediaPipe Tasks + `--headless/--max-frames` |
 | D4 | Android-Emulator Kamera-Checkliste (Doc 09) | 09 | **[~]** env-defer: kein AVD konfiguriert; Soft-fail 0-Kamera Unit grün |
 | D5 | Native YUV→RGB Performance | 06 TODO(cv-opt) | **[~]** deferred: Dart-Pfad sendet bereits `yuv420`-Planes an Detector (kein RGB-Zwischenweg); native Opt nur bei FPS-Mangel |
+| D6 | **Skelett-Overlay** (Live-Punkte/Linien wie Fitness-Screenshot) | [14_CV_SKELETT_OVERLAY_PLAN](14_CV_SKELETT_OVERLAY_PLAN.md) | **[ ]** Plan committed; Code offen (Phasen A–C). Backlog E1–E10 im Plan-Doc |
 
 ---
 
@@ -123,6 +124,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 | `11_HARDWARE_QA_CHECKLISTE.md` | Phone+M5 QA | **living** |
 | `12_IMPLEMENTIERUNGS_STATUS.md` | Ledger Code vs. offen | **living** |
 | `13_OFFENE_PUNKTE.md` | **Diese Datei** — konsolidiert | **living** |
+| `14_CV_SKELETT_OVERLAY_PLAN.md` | Skelett-Overlay MVP + 10 Ergänzungen | Plan |
 | `../hardware/sessions/2026-07-23/HW_VALIDATION.md` | Geräte-Evidence Snapshot | archiviert/session |
 
 ---
@@ -144,4 +146,5 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 | 2026-07-23 | B* env-probe + ehrliche Deferrals; D3 headless Webcam; D4 kein AVD |
 | 2026-07-23 | C3: Semver `1.0.0-rc.1+1`, CHANGELOG, tag `v1.0.0-rc.1`; C1/C2/C4 out of scope |
 | 2026-07-23 | D2: echte Landmark-Confidence live; D1 Code soft-fail [x]; D5 yuv420-Pfad / deferred native |
+| 2026-07-23 | D6: Plan Skelett-Overlay (`14_CV_SKELETT_OVERLAY_PLAN.md`) + 10 Ergänzungen E1–E10 |
 | 2026-07-23 | Erste Konsolidierung aus 00/10/11/12/HW + CV-Docs; Git-Parity bestätigt |
