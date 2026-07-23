@@ -75,6 +75,11 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
   int _restDurationSeconds = 90; // SPEC §5.2.1 / P0-2 default
+  Timer? _reconnectTimer;
+  int _reconnectAttempt = 0;
+  static const int _maxReconnectAttempts = 10;
+  bool _userInitiatedDisconnect = false;
+  Duration? _reconnectDelayOverride; // tests only
   String? _bleDeviceId;
   File? _lastRecordingFile;
 
@@ -298,6 +303,16 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _restDurationSeconds = seconds;
   }
 
+  /// Force near-instant reconnect delays in unit tests.
+  @visibleForTesting
+  void debugSetReconnectDelay(Duration delay) {
+    _reconnectDelayOverride = delay;
+  }
+
+  /// Whether the last disconnect was user-initiated (for tests).
+  @visibleForTesting
+  bool get debugUserInitiatedDisconnect => _userInitiatedDisconnect;
+
   /// Wählt eine Übung aus (V1: nur bicep_curl verfügbar).
   /// Lädt die Kalibrierung für die neue Übung neu.
   void selectExercise(String exerciseId) {
@@ -316,14 +331,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void _onConnectionState(SensorConnectionState connState) {
     switch (connState) {
       case SensorConnectionState.connected:
+        _userInitiatedDisconnect = false;
+        _cancelReconnect();
+        _reconnectAttempt = 0;
         state = state.copyWith(
           isConnected: true,
           isConnecting: false,
           errorText: null,
+          isReconnecting: false,
+          reconnectAttempt: 0,
         );
-        if (!isMock) {
-          final provider = _sensorProvider as BleSensorProvider;
-          _bleDeviceId = provider.remoteId;
+        final sensor = _sensorProvider;
+        if (sensor is BleSensorProvider) {
+          _bleDeviceId = sensor.remoteId;
           _loadCalibration();
           _updateBleDiagnostics();
         }
@@ -333,7 +353,9 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
           const Duration(milliseconds: 500),
           (_) => _periodicRefresh(),
         );
-        _refreshBattery();
+        if (sensor is BleSensorProvider) {
+          _refreshBattery();
+        }
       case SensorConnectionState.connecting:
         state = state.copyWith(isConnecting: true, isConnected: false);
         _refreshTimer?.cancel();
@@ -341,6 +363,60 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         state = state.copyWith(isConnected: false, isConnecting: false);
         _refreshTimer?.cancel();
         _engine.handleDisconnect();
+        // Auto-Reconnect (P0-4) only when not user-initiated
+        if (!_userInitiatedDisconnect) {
+          _startReconnect();
+        }
+    }
+  }
+
+  // === Reconnection-Strategie (SPEC §5.2.4 / P0-4) ===
+
+  void _startReconnect() {
+    if (_reconnectAttempt >= _maxReconnectAttempts) {
+      state = state.copyWith(
+        isReconnecting: false,
+        errorText: 'Verbindung konnte nicht wiederhergestellt werden. '
+            'Bitte manuell verbinden.',
+      );
+      return;
+    }
+
+    _reconnectAttempt++;
+    final delay = _reconnectDelayForAttempt(_reconnectAttempt);
+
+    state = state.copyWith(
+      isReconnecting: true,
+      reconnectAttempt: _reconnectAttempt,
+    );
+
+    _reconnectTimer?.cancel();
+    _reconnectTimer = Timer(delay, () async {
+      if (_userInitiatedDisconnect) return;
+      try {
+        await _sensorProvider.connect();
+      } catch (_) {
+        // Failed connect → next attempt when disconnected is re-emitted
+        // or schedule next attempt if still disconnected.
+        if (!_userInitiatedDisconnect && !state.isConnected) {
+          _startReconnect();
+        }
+      }
+    });
+  }
+
+  Duration _reconnectDelayForAttempt(int attempt) {
+    if (_reconnectDelayOverride != null) return _reconnectDelayOverride!;
+    // Exponential backoff: 1s, 2s, 4s, 8s, max 16s
+    final delaySec = (1 << (attempt - 1)).clamp(1, 16);
+    return Duration(seconds: delaySec);
+  }
+
+  void _cancelReconnect() {
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    if (state.isReconnecting) {
+      state = state.copyWith(isReconnecting: false);
     }
   }
 
@@ -433,6 +509,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   Future<void> connect() async {
+    _userInitiatedDisconnect = false;
     state = state.copyWith(errorText: null);
     try {
       await _sensorProvider.connect();
@@ -446,6 +523,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   Future<void> disconnect() async {
+    _userInitiatedDisconnect = true; // Kein Auto-Reconnect
+    _cancelReconnect();
     await _sensorProvider.disconnect();
   }
 
@@ -573,6 +652,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _recordingSampleCountTimer?.cancel();
     _restTimer?.cancel();
     _restTimer = null;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
     _samplesSub?.cancel();
     _eventsSub?.cancel();
     _recorderSamplesSub?.cancel();

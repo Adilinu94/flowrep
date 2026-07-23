@@ -103,6 +103,28 @@ class HomeScreen extends ConsumerWidget {
                 onConnect: notifier.connect,
                 onDisconnect: notifier.disconnect,
               ),
+              // Reconnect-Indikator (P0-4)
+              if (uiState.isReconnecting)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Verbindung verloren — Versuch ${uiState.reconnectAttempt}…',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: Colors.orange.shade800,
+                            ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 16),
 
               // Debug-Diagnostik (nur !kReleaseMode + BLE)

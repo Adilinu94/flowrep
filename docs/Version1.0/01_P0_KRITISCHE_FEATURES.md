@@ -1021,6 +1021,8 @@ flutter analyze lib/presentation/widgets/session_summary_dialog.dart
 
 ## 4. Reconnection-Strategie
 
+> **Status: ✅ DONE** (implementiert, getestet, auf `main` gepusht)
+
 ### 4.1 Kurzbeschreibung
 
 Bei BLE-Verbindungsverlust versucht die App automatisch, die Verbindung
