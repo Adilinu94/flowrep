@@ -283,7 +283,8 @@ class HomeScreen extends ConsumerWidget {
                 if (uiState.calibratedThreshold != null) ...[
                   const SizedBox(height: 8),
                   Text(
-                    'Kalibriert: ${uiState.calibratedThreshold!.toStringAsFixed(2)}g '
+                    // theta is °/s for gP/gyroMag profiles, not always g.
+                    'Kalibriert: θ=${uiState.calibratedThreshold!.toStringAsFixed(1)} '
                     '(${uiState.calibrationPeaksFound} Peaks)',
                     style: Theme.of(context).textTheme.bodySmall,
                   ),

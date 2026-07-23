@@ -127,6 +127,9 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void startCounting() {
     if (state.isCountingActive) return;
     _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
+    // Re-apply profile so gP/gyroMag thresholds are live even if connect
+    // raced handleReconnect before the first load finished.
+    unawaited(_loadCalibration());
     // P0-5: keep BLE alive under screen lock (Android connectedDevice FGS)
     unawaited(_fgService.start());
     state = state.copyWith(isCountingActive: true);

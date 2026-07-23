@@ -577,9 +577,11 @@ class WorkoutEngine {
           'combined=${combinedSignal.toStringAsFixed(3)} '
           'accelMag=${s.accelMagnitude.toStringAsFixed(3)} '
           'gyroMag=${s.gyroMagnitude.toStringAsFixed(1)} '
+          'gp=${gp?.toStringAsFixed(1) ?? "n/a"} '
           'threshold=${effThresh ?? _peakThreshold} '
           'sig=${_primarySignal?.name ?? "combined"} '
           'gpT=${_gpThreshold?.toStringAsFixed(1)} '
+          'gmT=${_gyroMagThreshold?.toStringAsFixed(1)} '
           'reps=$_legacyRepCount gpReps=$_gpRepCount '
           'baseline=${baselineLevel.toStringAsFixed(3)} '
           'above=$_aboveThreshold');
@@ -642,10 +644,17 @@ class WorkoutEngine {
           _lastMovementAt = s.timestamp;
           _emitStateEvent();
           // BUGFIX: the triggering sample MUST also be processed by
-          // _detectPeak. Without this, the first high signal that
+          // peak detectors. Without this, the first high signal that
           // transitions out of idle is lost, and if the signal drops
           // before the next sample, no rep is ever counted.
           _detectPeak(s, combinedSignal);
+          if (gp != null && _gpThreshold != null) {
+            _detectPeakSigned(gp, s.timestamp);
+          }
+          if (_gyroMagThreshold != null) {
+            final gm = _signalProcessor.biasCorrectedGyroMagnitude(s);
+            if (gm != null) _detectPeakGyroMag(s, gm);
+          }
         }
         break;
 
@@ -833,13 +842,11 @@ class WorkoutEngine {
       // g_p is ready, and as the sole path when the feature is off) but
       // stops writing to _repsInSet once g_p has taken over, so the two
       // paths can never double-count the same physical rep.
-      if (!_gpIsAuthoritative && !_gyroMagIsAuthoritative) {
-        _repsInSet.add(
-          Rep(timestamp: s.timestamp, peakMagnitude: _currentExcursionPeak),
+      if (_combinedCountsReps) {
+        _commitRep(
+          timestamp: s.timestamp,
+          peakMagnitude: _currentExcursionPeak,
         );
-        _legacyRepCount++;
-        _lastCountedRepSample = diagEngineSampleCount;
-        _emitStateEvent();
       }
       _confirmedPeaks.add(_currentExcursionPeak);
       _preMin = combinedSignal;
@@ -872,8 +879,16 @@ class WorkoutEngine {
   double? _gyroMagThreshold;
   bool _gyroMagAboveThreshold = false;
   int _gyroMagRepCount = 0;
+  /// When true, gyroMag peaks write to [_repsInSet] (ChosenSignal.gyroMag).
+  bool _gyroMagCountsReps = false;
+
+  /// When true, gP peak detection uses |g_p| (sign-agnostic). Profile gP
+  /// enables this so a flipped mount / axis sign still counts curls;
+  /// [minRepIntervalSamples] suppresses the opposite-phase double-hump.
+  bool _gpUseAbsProjection = false;
+
   bool get _gyroMagIsAuthoritative =>
-      _primarySignal == ChosenSignal.gyroMag && _gyroMagThreshold != null;
+      _gyroMagCountsReps && _gyroMagThreshold != null;
   int? get gyroMagRepCount => _gyroMagThreshold != null ? _gyroMagRepCount : null;
 
   /// S2's adaptive threshold ([adaptiveThresholdRatio]) is a stopgap for
@@ -891,6 +906,12 @@ class WorkoutEngine {
   bool get _gpIsAuthoritative =>
       (useSignedProjectionCounting || _primarySignal == ChosenSignal.gP) &&
       _gpThreshold != null;
+
+  /// Combined-magnitude path only counts when neither direction-aware path
+  /// owns the rep. Profile gP/gyroMag also raise [_peakThreshold] to a
+  /// sentinel so a missing gate cannot fall back to ultra-sensitive 1.2g.
+  bool get _combinedCountsReps =>
+      !_gpIsAuthoritative && !_gyroMagIsAuthoritative;
 
   /// Schritt B (P2, S8) shadow counting: rising/falling edge on the SIGNED
   /// g_p signal instead of _peakThreshold-gated combined magnitude. No
@@ -910,20 +931,32 @@ class WorkoutEngine {
   /// (always increments here, whether authoritative yet or not) so it
   /// keeps working as a diagnostic/shadow value regardless.
   void _detectPeakSigned(double gp, DateTime timestamp) {
-    final normalized = gp * _gpDirection;
     final threshold = _gpThreshold!;
-    if (!_gpAboveThreshold && normalized > threshold) {
+    // Profile path: |g_p| (tilt/sign tolerant). Self-calib path: signed
+    // with learned direction (structural double-hump fix).
+    final value = _gpUseAbsProjection ? gp.abs() : gp * _gpDirection;
+    if (!_gpAboveThreshold && value > threshold) {
       _gpAboveThreshold = true;
-    } else if (_gpAboveThreshold && normalized < threshold * 0.3) {
+      _lastMovementAt = timestamp;
+    } else if (_gpAboveThreshold && value < threshold * 0.3) {
       _gpAboveThreshold = false;
       _gpRepCount++;
       if (_gpIsAuthoritative) {
-        _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: gp.abs()));
-        _legacyRepCount++;
-        _lastCountedRepSample = diagEngineSampleCount;
-        _emitStateEvent();
+        _commitRep(timestamp: timestamp, peakMagnitude: gp.abs());
       }
     }
+  }
+
+  /// Shared rep commit with sample-based refractory (minRepIntervalSamples).
+  void _commitRep({required DateTime timestamp, required double peakMagnitude}) {
+    final inRefractory = _lastCountedRepSample != null &&
+        (diagEngineSampleCount - _lastCountedRepSample!) < minRepIntervalSamples;
+    if (inRefractory) return;
+    _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: peakMagnitude));
+    _legacyRepCount++;
+    _lastCountedRepSample = diagEngineSampleCount;
+    _lastMovementAt = timestamp;
+    _emitStateEvent();
   }
 
   /// `ChosenSignal.gyroMag` counterpart to [_detectPeakSigned]: same
@@ -938,14 +971,12 @@ class WorkoutEngine {
     final threshold = _gyroMagThreshold!;
     if (!_gyroMagAboveThreshold && gyroMag > threshold) {
       _gyroMagAboveThreshold = true;
+      _lastMovementAt = s.timestamp;
     } else if (_gyroMagAboveThreshold && gyroMag < threshold * 0.3) {
       _gyroMagAboveThreshold = false;
       _gyroMagRepCount++;
       if (_gyroMagIsAuthoritative) {
-        _repsInSet.add(Rep(timestamp: s.timestamp, peakMagnitude: gyroMag));
-        _legacyRepCount++;
-        _lastCountedRepSample = diagEngineSampleCount;
-        _emitStateEvent();
+        _commitRep(timestamp: s.timestamp, peakMagnitude: gyroMag);
       }
     }
   }
@@ -1017,6 +1048,8 @@ class WorkoutEngine {
     _gyroMagThreshold = null;
     _gyroMagAboveThreshold = false;
     _gyroMagRepCount = 0;
+    _gyroMagCountsReps = false;
+    _gpUseAbsProjection = false;
     _primarySignal = null;
     _prominenceOverride = null;
     _adaptiveThresholdEnabled = true;
@@ -1289,17 +1322,42 @@ class WorkoutEngine {
     // bug _wakeThreshold was split out to fix, just via a more precise
     // trigger (chosenSignal) than the original rotationAxis/gyroBias
     // proxy.
+    // Hardware 2026-07-23: gP profile left combined _peakThreshold at the
+    // default 1.2. If gP ever failed to be authoritative, ANY wiggle
+    // counted while real curls (off-axis projection) did not. For
+    // direction-aware profiles we (1) lower the applied °/s threshold for
+    // form variance, (2) park combined at a sentinel, (3) enable gyroMag
+    // backup for gP so slight mount tilt still counts full curls.
+    const combinedSentinel = 999.0;
+    const wakeCombined = 1.5;
     switch (chosenSignal) {
       case ChosenSignal.gP:
-        _gpThreshold = peakThreshold;
-        _gpDirection = 1; // rotationAxis is already sign-conventioned by CalibrationController
+        // 0.55×theta: form/mount variance on device (2026-07-23 hardware).
+        // Combined stays at a sentinel so wiggle can never fall back to the
+        // ultra-sensitive default 1.2 combined threshold.
+        // |g_p| is sign-agnostic (mount flip); min refractory ≥0.7s so the
+        // opposite-phase hump of one curl is not double-counted.
+        _gpThreshold = max(25.0, peakThreshold * 0.55);
+        _gpDirection = 1;
+        _gpUseAbsProjection = true;
+        _gyroMagCountsReps = false;
+        _peakThreshold = combinedSentinel;
+        _wakeThreshold = wakeCombined;
       case ChosenSignal.gyroMag:
-        _gyroMagThreshold = peakThreshold;
+        _gyroMagThreshold = max(25.0, peakThreshold * 0.55);
+        _gyroMagCountsReps = true;
+        _gpUseAbsProjection = false;
+        _peakThreshold = combinedSentinel;
+        _wakeThreshold = wakeCombined;
       case ChosenSignal.combined:
         _peakThreshold = peakThreshold;
         _wakeThreshold = peakThreshold;
+        _gyroMagCountsReps = false;
+        _gpUseAbsProjection = false;
       case null:
         _peakThreshold = peakThreshold;
+        _gyroMagCountsReps = false;
+        _gpUseAbsProjection = false;
         // Only update _wakeThreshold when the threshold is on combined-
         // signal scale. If rotationAxis/gyroBias are provided without an
         // explicit chosenSignal, the threshold is gP-scale (deg/s) and
@@ -1321,6 +1379,12 @@ class WorkoutEngine {
       // since docs/01_protocol.yaml v2 (Agent 4), independent of the
       // ~11.8Hz BATCH arrival rate that number could be confused with.
       minRepIntervalSamples = (minRepIntervalSeconds * 1000 / 20).round();
+    }
+    // |g_p| mode needs enough refractory to collapse opposite-phase humps
+    // of one curl into a single count (after optional profile override).
+    if (_gpUseAbsProjection) {
+      minRepIntervalSamples =
+          max(minRepIntervalSamples, (0.7 * 1000 / 20).round());
     }
     if (prominenceMin != null) {
       _prominenceOverride = prominenceMin;
