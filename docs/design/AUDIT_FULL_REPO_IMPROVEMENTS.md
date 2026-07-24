@@ -826,5 +826,5 @@ Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
 | **Keys** | auto-arm, haptic/audio, blind, M5+button feedback, rest s, adaptive rest, VBT, diagnose, ghost gate + idle s, camera pref |
 | **Load** | `EngineNotifier.create` → async `loadAll`; per-key dirty set avoids late clobber |
 | **Form-Check** | `setCameraEnabled(..., persist: false)` — session must not overwrite Settings pref |
-| **Not persisted** | exercise targets (session / per-exercise memory only) |
-| **Tests** | `user_prefs_store_test.dart` suite + reload |
+| **Exercise targets** | `pref_exercise_targets_v1` JSON `{id: {sets, reps}}`; load into `ExerciseTargets` + UI |
+| **Tests** | `user_prefs_store_test.dart` suite + reload + targets |

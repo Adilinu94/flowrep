@@ -2,6 +2,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/sensor_provider.dart';
 import 'package:flowrep/data/security/user_prefs_store.dart';
+import 'package:flowrep/domain/exercises/exercise_targets.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 import 'package:flowrep/presentation/providers/engine_provider.dart';
 
@@ -37,6 +38,19 @@ class _FakeSecureStorage extends FlutterSecureStorage {
     } else {
       data[key] = value;
     }
+  }
+
+  @override
+  Future<void> delete({
+    required String key,
+    IOSOptions? iOptions,
+    AndroidOptions? aOptions,
+    LinuxOptions? lOptions,
+    WebOptions? webOptions,
+    MacOsOptions? mOptions,
+    WindowsOptions? wOptions,
+  }) async {
+    data.remove(key);
   }
 }
 
@@ -212,6 +226,68 @@ void main() {
       await n.reloadUserPrefsForTest();
       expect(n.autoArmAfterCalib, isTrue);
       n.dispose();
+    });
+
+    test('exercise targets persist across reload', () async {
+      final fake = _FakeSecureStorage();
+      final a = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: UserPrefsStore(storage: fake),
+      );
+      await a.setExerciseTarget(sets: 5, reps: 8);
+      expect(a.state.targetSets, 5);
+      expect(a.state.targetReps, 8);
+      a.dispose();
+
+      final b = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: UserPrefsStore(storage: fake),
+      );
+      await b.reloadUserPrefsForTest();
+      expect(b.state.targetSets, 5);
+      expect(b.state.targetReps, 8);
+      expect(b.targets.of('bicep_curl')?.targetSets, 5);
+      b.dispose();
+    });
+
+    test('clearExerciseTarget removes from storage', () async {
+      final fake = _FakeSecureStorage();
+      final store = UserPrefsStore(storage: fake);
+      final a = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: store,
+      );
+      await a.setExerciseTarget(sets: 3, reps: 10);
+      await a.clearExerciseTarget();
+      expect(a.state.targetSets, isNull);
+      a.dispose();
+
+      final loaded = await store.loadExerciseTargets();
+      expect(loaded.containsKey('bicep_curl'), isFalse);
+    });
+  });
+
+  group('ExerciseTargets JSON', () {
+    test('mapFromJson skips invalid entries', () {
+      final map = ExerciseTargets.mapFromJson({
+        'bicep_curl': {'sets': 4, 'reps': 12},
+        'bad': {'sets': 0, 'reps': 5},
+        'also_bad': 'x',
+      });
+      expect(map.keys, ['bicep_curl']);
+      expect(map['bicep_curl']!.targetReps, 12);
     });
   });
 }

@@ -665,13 +665,34 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       final applyVbt = !_prefsUserSet.contains(UserPrefsStore.keyVbtMetrics);
       final applyBlind = !_prefsUserSet.contains(UserPrefsStore.keyBlindMode);
       final applyCam = !_prefsUserSet.contains(UserPrefsStore.keyCameraEnabled);
-      if (applyDiagnose || applyVbt || applyBlind || applyCam) {
+      final applyTargets =
+          !_prefsUserSet.contains(UserPrefsStore.keyExerciseTargets);
+
+      if (applyTargets) {
+        _targets.replaceAll(p.exerciseTargets);
+      }
+      final currentTarget =
+          applyTargets ? _targets.of(state.selectedExerciseId) : null;
+
+      if (applyDiagnose ||
+          applyVbt ||
+          applyBlind ||
+          applyCam ||
+          applyTargets) {
         state = state.copyWith(
           diagnoseOverlayEnabled:
               applyDiagnose ? p.diagnoseOverlay : state.diagnoseOverlayEnabled,
           vbtMetricsEnabled: applyVbt ? p.vbtMetrics : state.vbtMetricsEnabled,
           blindModeEnabled: applyBlind ? p.blindMode : state.blindModeEnabled,
           cameraEnabled: applyCam ? p.cameraEnabled : state.cameraEnabled,
+          // clearTargets when prefs have no entry for selected exercise.
+          clearTargets: applyTargets && currentTarget == null,
+          targetSets: (applyTargets && currentTarget != null)
+              ? currentTarget.targetSets
+              : null,
+          targetReps: (applyTargets && currentTarget != null)
+              ? currentTarget.targetReps
+              : null,
         );
         if (applyCam) _cameraEnabled = p.cameraEnabled;
         if (applyBlind && p.blindMode) {
@@ -766,14 +787,22 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   int get ghostIdlePauseSeconds => _engine.ghostIdlePauseSeconds;
 
-  void setExerciseTarget({required int sets, required int reps}) {
+  Future<void> setExerciseTarget({required int sets, required int reps}) async {
+    _prefsUserSet.add(UserPrefsStore.keyExerciseTargets);
     _targets.set(state.selectedExerciseId, sets: sets, reps: reps);
     state = state.copyWith(targetSets: sets, targetReps: reps);
+    await _persistPrefs(
+      () => _userPrefs.saveExerciseTargets(_targets.all),
+    );
   }
 
-  void clearExerciseTarget() {
+  Future<void> clearExerciseTarget() async {
+    _prefsUserSet.add(UserPrefsStore.keyExerciseTargets);
     _targets.clear(state.selectedExerciseId);
     state = state.copyWith(clearTargets: true);
+    await _persistPrefs(
+      () => _userPrefs.saveExerciseTargets(_targets.all),
+    );
   }
 
   /// FR-B2/B15: export all history via OS share sheet.

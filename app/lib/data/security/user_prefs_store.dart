@@ -1,6 +1,9 @@
+import 'dart:convert';
+
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../domain/config/engine_constants.dart';
+import '../../domain/exercises/exercise_targets.dart';
 
 /// Snapshot of UX preferences loaded from secure storage.
 class UserPrefsSnapshot {
@@ -18,6 +21,7 @@ class UserPrefsSnapshot {
   final bool ghostGate;
   final int ghostIdlePauseSeconds;
   final bool cameraEnabled;
+  final Map<String, ExerciseTarget> exerciseTargets;
 
   const UserPrefsSnapshot({
     this.autoArmAfterCalib = true,
@@ -34,6 +38,7 @@ class UserPrefsSnapshot {
     this.ghostGate = true,
     this.ghostIdlePauseSeconds = 45,
     this.cameraEnabled = false,
+    this.exerciseTargets = const {},
   });
 }
 
@@ -63,6 +68,8 @@ class UserPrefsStore {
   static const keyGhostGate = 'pref_ghost_gate';
   static const keyGhostIdlePauseSeconds = 'pref_ghost_idle_pause_s';
   static const keyCameraEnabled = 'pref_camera_enabled';
+  /// JSON map `{exerciseId: {sets, reps}}` for Doc 15 FR-B9 targets.
+  static const keyExerciseTargets = 'pref_exercise_targets_v1';
 
   /// Load all known prefs (missing keys → product defaults).
   Future<UserPrefsSnapshot> loadAll() async {
@@ -112,7 +119,33 @@ class UserPrefsStore {
         keyCameraEnabled,
         defaultValue: defaults.cameraEnabled,
       ),
+      exerciseTargets: await loadExerciseTargets(),
     );
+  }
+
+  Future<Map<String, ExerciseTarget>> loadExerciseTargets() async {
+    final raw = await _storage.read(key: keyExerciseTargets);
+    if (raw == null || raw.isEmpty) return const {};
+    try {
+      return ExerciseTargets.mapFromJson(jsonDecode(raw));
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  Future<void> saveExerciseTargets(Map<String, ExerciseTarget> targets) async {
+    if (targets.isEmpty) {
+      await _storage.delete(key: keyExerciseTargets);
+      return;
+    }
+    final jsonMap = {
+      for (final e in targets.entries)
+        e.key: {
+          'sets': e.value.targetSets,
+          'reps': e.value.targetReps,
+        },
+    };
+    await _storage.write(key: keyExerciseTargets, value: jsonEncode(jsonMap));
   }
 
   // --- Individual writers (called from EngineNotifier setters) ---
