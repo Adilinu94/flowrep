@@ -771,3 +771,19 @@ Implemented without physical HW:
 | Tests | **done** | `sensor_health_and_quality_test.dart` |
 
 Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
+
+---
+
+## Appendix G — Slow-rep searchback shadow (2026-07-24)
+
+**Lightest algorithmic next step** after code-only trust UX.
+
+| | |
+|--|--|
+| **What** | When product gP rejects an excursion (`peak < 1.2×θ` or short), a relaxed rule (`peak ≥ 0.85×θ`, samples ≥ 10) may flag a **shadow** slow-rep |
+| **What not** | Never calls `_commitRep`; no change to live `countedReps` |
+| **Why** | Measure undercount risk on slow/fatigued curls before promoting searchback to product |
+| **Code** | `domain/metrics/slow_rep_shadow.dart`, hook in `WorkoutEngine._detectPeakSigned` |
+| **UI** | Diagnose overlay: `slowShadow=N` |
+| **Tests** | `app/test/slow_rep_shadow_test.dart` |
+| **Promote to live?** | Only after labeled HW sets show shadow ≈ true missed reps and low false shadow on wiggles |

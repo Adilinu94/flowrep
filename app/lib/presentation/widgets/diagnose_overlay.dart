@@ -63,7 +63,8 @@ class DiagnoseOverlay extends StatelessWidget {
             ),
             Text(
               'shadow pipeline L=${shadow.legacyReps} N=${shadow.newReps} '
-              'Δ=${shadow.diff}  magShadow=${engine.magnitudeShadowReps}',
+              'Δ=${shadow.diff}  magShadow=${engine.magnitudeShadowReps} '
+              'slowShadow=${engine.slowRepShadowCount}',
             ),
             if (lastShadow != null)
               Text(

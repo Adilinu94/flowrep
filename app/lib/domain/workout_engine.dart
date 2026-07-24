@@ -5,6 +5,7 @@ import 'package:flowrep/data/logger.dart';
 import 'package:flowrep/domain/config/engine_constants.dart';
 import 'package:flowrep/domain/metrics/ghost_rep_gate.dart';
 import 'package:flowrep/domain/metrics/shadow_report.dart';
+import 'package:flowrep/domain/metrics/slow_rep_shadow.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
@@ -118,6 +119,10 @@ class WorkoutEngine {
   bool _magAbove = false;
   double _lastEnvelope = 0.0;
   double? _lastGpAbs;
+
+  /// Audit C-06: gP excursions rejected by product gates but matching
+  /// relaxed searchback (slow curls). Shadow only — never [_commitRep].
+  int _slowRepShadowCount = 0;
 
   /// FR-B12: recent shadow lines for diagnose overlay.
   final ShadowReportBuffer shadowReport = ShadowReportBuffer();
@@ -531,6 +536,9 @@ class WorkoutEngine {
   double? get diagGpAbs => _lastGpAbs;
   double? get diagGpThreshold => _gpThreshold;
   int get magnitudeShadowReps => _magnitudeShadowReps;
+
+  /// Shadow slow-rep searchback hits this session (diag only).
+  int get slowRepShadowCount => _slowRepShadowCount;
   int get repsInCurrentSetCount => _repsInSet.length;
   List<Rep> get currentSetReps => List.unmodifiable(_repsInSet);
 
@@ -1020,8 +1028,36 @@ class WorkoutEngine {
         final peak = _gpPeakInExcursion;
         _gpSamplesAbove = 0;
         _gpPeakInExcursion = 0.0;
+        final productOk = longEnough && strongEnough;
         // Reject short flicks and weak threshold grazes (wiggle).
-        if (!longEnough || !strongEnough) return;
+        if (!productOk) {
+          // Shadow searchback: near-miss slow curls (does NOT count live).
+          if (_gpIsAuthoritative &&
+              SlowRepShadow.shouldFlag(
+                productAccepted: false,
+                peak: peak,
+                threshold: threshold,
+                samplesAbove: samplesAbove,
+              )) {
+            _slowRepShadowCount++;
+            shadowReport.add(ShadowReportLine(
+              timestamp: timestamp,
+              source: 'slow_rep_searchback',
+              liveReps: _legacyRepCount,
+              shadowReps: _slowRepShadowCount,
+              liveSignal: threshold,
+              shadowSignal: peak,
+              note:
+                  'peak=${peak.toStringAsFixed(1)} θ=${threshold.toStringAsFixed(1)} '
+                  'samples=$samplesAbove (shadow only)',
+            ));
+            AppLogger.d(
+              'shadow slow-rep #$_slowRepShadowCount peak=${peak.toStringAsFixed(1)} '
+              'θ=${threshold.toStringAsFixed(1)} samples=$samplesAbove',
+            );
+          }
+          return;
+        }
         _gpRepCount++;
         if (_gpIsAuthoritative) {
           _commitRep(timestamp: timestamp, peakMagnitude: gp.abs());

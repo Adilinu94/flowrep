@@ -68,7 +68,11 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 - [x] Sensor-Health (Gyro-Ruhe-Anomalie) Banner  
 - [x] Placement/Achsen-Schwäche Banner  
 - [x] Set-Quality Score (Summary + letzter Satz)  
-- [x] Active-Set HUD (Zählen = Rep-first)
+- [x] Active-Set HUD (Zählen = Rep-first)  
+
+### Algorithmus (shadow only — Appendix G)
+
+- [x] Slow-Rep Searchback **Shadow** (`slowRepShadowCount`, kein Live-Count)
 
 ---
 

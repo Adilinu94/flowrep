@@ -25,6 +25,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - **Set quality score** (consistency + loss/ghost/sensor flags) on set end + session summary
 - **Active Set HUD**: while counting, rep-first layout (hide setup clutter)
 - Tests: `app/test/sensor_health_and_quality_test.dart`
+- **Slow-rep searchback shadow** (Audit C-06): near-miss gP excursions under product peak gate are logged only (`slowRepShadowCount` / diagnose `slowShadow=`); live counts unchanged
+
+### Docs
+
+- Audit Appendix G: slow-rep shadow
 
 ### Changed
 
