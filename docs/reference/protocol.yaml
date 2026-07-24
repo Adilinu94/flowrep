@@ -111,6 +111,28 @@ service:
             offset: 0
             range: [0, 100]
 
+    - name: "DeviceEvent"
+      uuid: "0000fee4-0000-1000-8000-00805f9b34fb"
+      properties: [read, notify]
+      note: >
+        M5 button → phone. App may poll READ (HyperOS) or use NOTIFY.
+        seq increments on each event so repeated same event_id is detectable.
+      payload:
+        total_bytes: 2
+        fields:
+          - name: seq
+            type: uint8
+            offset: 0
+            note: "Monotonic; wraps 1..255 (0 = no event yet)"
+          - name: event_id
+            type: uint8
+            offset: 1
+            enum:
+              0x00: NONE
+              0x01: COUNT_PRIMARY
+              # COUNT_PRIMARY (BtnA): App maps → startCounting if idle,
+              # endSetManually (Satz beenden) if counting.
+
     - name: "DeviceStatus"
       properties: [read, notify]
       payload:

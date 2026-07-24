@@ -22,6 +22,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _adaptiveRest;
   late bool _blindMode;
   late bool _diagnose;
+  late bool _m5ButtonControl;
+  late bool _buttonHaptic;
+  late bool _buttonAudio;
   int _targetSets = 4;
   int _targetReps = 12;
 
@@ -37,6 +40,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _adaptiveRest = notifier.adaptiveRestEnabled;
     _blindMode = ui.blindModeEnabled;
     _diagnose = ui.diagnoseOverlayEnabled;
+    _m5ButtonControl = notifier.m5ButtonControlEnabled;
+    _buttonHaptic = notifier.buttonHapticEnabled;
+    _buttonAudio = notifier.buttonAudioEnabled;
     _targetSets = ui.targetSets ?? 4;
     _targetReps = ui.targetReps ?? 12;
   }
@@ -76,6 +82,45 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               setState(() => _blindMode = v);
               notifier.setBlindModeEnabled(v);
             },
+          ),
+          const Divider(),
+          Text('M5-Tasten', style: Theme.of(context).textTheme.titleSmall),
+          SwitchListTile(
+            title: const Text('BtnA steuert Zählen'),
+            subtitle: const Text(
+              'Taste am Stick: Start Zählen · während Zählen: Satz beenden',
+            ),
+            value: _m5ButtonControl,
+            onChanged: (v) {
+              setState(() => _m5ButtonControl = v);
+              notifier.setM5ButtonControlEnabled(v);
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Tasten-Feedback: Vibration'),
+            subtitle: const Text('Phone vibriert bei BtnA'),
+            value: _buttonHaptic,
+            onChanged: _m5ButtonControl
+                ? (v) {
+                    setState(() => _buttonHaptic = v);
+                    notifier.setButtonFeedback(haptic: v);
+                  }
+                : null,
+          ),
+          SwitchListTile(
+            title: const Text('Tasten-Feedback: Sound'),
+            subtitle: const Text('Klick-Ton bei BtnA'),
+            value: _buttonAudio,
+            onChanged: _m5ButtonControl
+                ? (v) {
+                    setState(() => _buttonAudio = v);
+                    notifier.setButtonFeedback(audio: v);
+                  }
+                : null,
+          ),
+          Text(
+            'Vibration und Sound einzeln wählbar (auch beide aus).',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
           const Divider(),
           Text('Pausen-Timer', style: Theme.of(context).textTheme.titleSmall),

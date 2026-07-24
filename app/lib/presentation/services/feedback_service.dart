@@ -54,6 +54,25 @@ class FeedbackService {
     }
   }
 
+  /// Feedback for M5 button actions (settings: [buttonHaptic] / [buttonAudio]).
+  bool buttonHaptic = true;
+  bool buttonAudio = true;
+
+  Future<void> onDeviceButton({required bool isStart}) async {
+    try {
+      if (buttonHaptic) {
+        try {
+          await Vibration.vibrate(duration: isStart ? 80 : 140);
+        } catch (_) {}
+      }
+      if (buttonAudio) {
+        await _playRepSound();
+      }
+    } catch (_) {
+      // Missing plugin / platform channels in unit tests — non-fatal.
+    }
+  }
+
   Future<void> _vibrate(double? qualityScore) async {
     if (_hasVibrator != true) return;
 
@@ -75,7 +94,8 @@ class FeedbackService {
         volume: 0.5,
       );
     } catch (_) {
-      // Sound-Datei existiert möglicherweise noch nicht — kein Fehler.
+      // Sound-Datei / plugin missing (tests, unsupported platform) — no error.
+      _audioPlayer = null;
     }
   }
 

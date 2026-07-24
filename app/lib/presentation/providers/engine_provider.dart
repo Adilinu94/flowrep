@@ -15,6 +15,7 @@ import '../../data/security/calibration_store.dart';
 import '../../data/services/export_service.dart';
 import '../../data/services/foreground_service_manager.dart';
 import '../../domain/config/engine_constants.dart';
+import '../../domain/device_event.dart';
 import '../../domain/exercises/exercise_targets.dart';
 import '../../domain/metrics/form_quality.dart';
 import '../../domain/metrics/velocity_metrics.dart';
@@ -104,6 +105,9 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   StreamSubscription<dynamic>? _eventsSub;
   StreamSubscription<dynamic>? _recorderSamplesSub;
   StreamSubscription<dynamic>? _connectionSub;
+  StreamSubscription<DeviceEvent>? _deviceEventSub;
+  /// When true, M5 BtnA drives startCounting / endSetManually.
+  bool _m5ButtonControlEnabled = true;
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
@@ -135,6 +139,24 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         state = state.copyWith(errorText: error.toString());
       },
     );
+    _deviceEventSub = _sensorProvider.deviceEvents.listen(_onDeviceEvent);
+  }
+
+  /// M5 BtnA (COUNT_PRIMARY): start counting, or end set while counting.
+  void _onDeviceEvent(DeviceEvent event) {
+    if (!_m5ButtonControlEnabled) return;
+    if (event.id != DeviceEventId.countPrimary) return;
+
+    if (!state.isCountingActive) {
+      startCounting();
+      unawaited(_feedbackService.onDeviceButton(isStart: true));
+      AppLogger.i('M5 BtnA → startCounting');
+      return;
+    }
+    // User decision: stop path = Satz beenden (correction dialog follows).
+    endSetManually();
+    unawaited(_feedbackService.onDeviceButton(isStart: false));
+    AppLogger.i('M5 BtnA → endSetManually');
   }
 
   /// Zähl-Gating: Samples werden nur an die Engine weitergeleitet,
@@ -440,6 +462,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void setFeedback({bool? haptic, bool? audio}) {
     if (haptic != null) _feedbackService.enableHaptic = haptic;
     if (audio != null) _feedbackService.enableAudio = audio;
+  }
+
+  bool get m5ButtonControlEnabled => _m5ButtonControlEnabled;
+  bool get buttonHapticEnabled => _feedbackService.buttonHaptic;
+  bool get buttonAudioEnabled => _feedbackService.buttonAudio;
+
+  void setM5ButtonControlEnabled(bool enabled) {
+    _m5ButtonControlEnabled = enabled;
+  }
+
+  void setButtonFeedback({bool? haptic, bool? audio}) {
+    if (haptic != null) _feedbackService.buttonHaptic = haptic;
+    if (audio != null) _feedbackService.buttonAudio = audio;
   }
 
   void setDiagnoseOverlayEnabled(bool enabled) {
@@ -1118,6 +1153,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _eventsSub?.cancel();
     _recorderSamplesSub?.cancel();
     _connectionSub?.cancel();
+    _deviceEventSub?.cancel();
     _recorder.dispose();
     _feedbackService.dispose();
     _engine.dispose();

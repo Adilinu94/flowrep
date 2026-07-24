@@ -18,6 +18,7 @@ Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physi
 - Living docs: `docs/Version1.0/10`–`14`, hardware session notes
 - Post-1.0 backlog: `docs/Version1.0/15_VERBESSERUNGEN_EXTERNE_REPOS.md` (external-repo research + ticket IDs)
 - Doc 15 feature wave: diagnose overlay (B10), gP ghost-rep gate (B6), session CSV/JSON export + privacy (B2/B15), VBT peak/loss UI (A1), adaptive rest (B1), rep timeline (B3), history trends (B5), sensor tutorial (B7), blind mode (B8), exercise targets (B9), PR badge (B4), form-quality + rule coaching, magnitude shadow report (A8/B12), heuristic exercise suggestion (A4 scaffold), LOSO tool (`tools/ml/`), low-battery snackbar (A2), app idle BLE disconnect (A3)
+- M5 BtnA count control: BLE DeviceEvent `fee4`, start counting / end set; Settings for master toggle + separate vibration/sound feedback; ghost-pause default 45s configurable (30/45/90/off)
 
 ### Changed
 

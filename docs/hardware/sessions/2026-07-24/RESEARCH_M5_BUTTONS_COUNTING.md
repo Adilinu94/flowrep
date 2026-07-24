@@ -111,11 +111,13 @@ Empfehlung: **fee4 Notify**, bei 0 Events in App nach 2s Read-Probe; Product-Tes
 
 ---
 
-## 7. Entscheidung nötig (User)
+## 7. Entscheidungen (User 2026-07-24) — umgesetzt
 
-1. **BtnA = Toggle** Start/Stop — ja/nein?  
-2. Stop = nur Zählen stoppen **oder** Satz beenden + Korrektur-Dialog?  
-3. Feedback: Vibration, Sound, oder beides (Settings existieren schon)?
+1. **BtnA = Toggle-Pfad** — ja  
+2. Stop = **Satz beenden** (+ Korrektur-Dialog)  
+3. Feedback: **Vib und Sound einzeln** in Settings wählbar (Master „BtnA steuert Zählen“)
+
+Siehe: `docs/Version1.0/16_M5_BUTTON_COUNT_CONTROL.md`
 
 ---
 

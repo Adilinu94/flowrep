@@ -18,6 +18,11 @@
 #define SENSOR_DATA_CHAR_UUID  "0000fee1-0000-1000-8000-00805f9b34fb"
 #define CONTROL_POINT_CHAR_UUID "0000fee2-0000-1000-8000-00805f9b34fb"
 #define BATTERY_CHAR_UUID      "0000fee3-0000-1000-8000-00805f9b34fb"
+// DeviceEvent: Stick → App button presses (seq + event_id). See protocol.yaml.
+#define DEVICE_EVENT_CHAR_UUID "0000fee4-0000-1000-8000-00805f9b34fb"
+
+// Event IDs (must match app DeviceEventId)
+#define EVT_COUNT_PRIMARY 0x01  // BtnA: app starts counting or ends set
 
 #define DEVICE_NAME "GymTracker"
 #define SAMPLE_RATE_HZ 50
@@ -47,6 +52,8 @@ NimBLEServer* server = nullptr;
 NimBLECharacteristic* sensorDataChar = nullptr;
 NimBLECharacteristic* controlPointChar = nullptr;
 NimBLECharacteristic* batteryChar = nullptr;
+NimBLECharacteristic* deviceEventChar = nullptr;
+uint8_t deviceEventSeq = 0;
 
 bool deviceConnected = false;
 bool streaming = false;
@@ -87,6 +94,29 @@ void updateDisplayStatus(const char* status) {
   strncpy(debugState.lastStatus, status, sizeof(debugState.lastStatus) - 1);
   debugState.lastStatus[sizeof(debugState.lastStatus) - 1] = '\0';
   debugState.needsRefresh = true;
+}
+
+/// Publish a device event for the app (button → phone feedback / count control).
+/// Payload: [seq, event_id] so pollers can detect repeats of the same event.
+void sendDeviceEvent(uint8_t eventId) {
+  if (deviceEventChar == nullptr) return;
+  deviceEventSeq++;
+  if (deviceEventSeq == 0) deviceEventSeq = 1;  // avoid 0 as "no event" sentinel on app
+  uint8_t payload[2] = {deviceEventSeq, eventId};
+  deviceEventChar->setValue(payload, sizeof(payload));
+  if (deviceEventChar->getSubscribedCount() > 0) {
+    deviceEventChar->notify();
+  }
+  Serial.printf("DeviceEvent seq=%u id=0x%02x\n", deviceEventSeq, eventId);
+  updateDisplayStatus(eventId == EVT_COUNT_PRIMARY ? "BtnA" : "Event");
+}
+
+/// Poll M5 buttons (call every loop after M5.update()). Works even if not streaming.
+void pollButtons() {
+  // BtnA (front): primary count control — app maps to startCounting / endSetManually.
+  if (M5.BtnA.wasClicked()) {
+    sendDeviceEvent(EVT_COUNT_PRIMARY);
+  }
 }
 
 void renderDisplay() {
@@ -183,6 +213,14 @@ void setupBle() {
   batteryChar = service->createCharacteristic(
       BATTERY_CHAR_UUID,
       NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+
+  // Button / device events → app (READ for HyperOS poll, NOTIFY when CCCD ok).
+  deviceEventChar = service->createCharacteristic(
+      DEVICE_EVENT_CHAR_UUID,
+      NIMBLE_PROPERTY::READ | NIMBLE_PROPERTY::NOTIFY);
+  // Initial empty: seq=0 means "no event yet".
+  uint8_t zeroEvent[2] = {0, 0};
+  deviceEventChar->setValue(zeroEvent, sizeof(zeroEvent));
 
   service->start();
 
@@ -318,6 +356,9 @@ void setup() {
 void loop() {
   M5.update();
   debugState.loopCount++;
+
+  // Button events independent of IMU streaming (start/stop count from Stick).
+  pollButtons();
 
   // Heartbeat / status refresh on screen every ~250 ms so we can see whether
   // loop() is still alive even when Serial is silent. All display rendering is

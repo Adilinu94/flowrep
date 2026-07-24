@@ -3,6 +3,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
+import '../../domain/device_event.dart';
 import '../../domain/filters/jitter_buffer.dart';
 import '../../domain/workout_engine.dart';
 import '../logger.dart';
@@ -35,6 +36,8 @@ class BleSensorProvider implements ISensorProvider {
       '0000fee2-0000-1000-8000-00805f9b34fb';
   static const String batteryLevelCharUuid =
       '0000fee3-0000-1000-8000-00805f9b34fb';
+  static const String deviceEventCharUuid =
+      '0000fee4-0000-1000-8000-00805f9b34fb';
 
   // We request 185 to avoid the HyperOS MTU-517 off-by-one boundary bug,
   // but HyperOS ignores client MTU requests and always returns the
@@ -45,6 +48,7 @@ class BleSensorProvider implements ISensorProvider {
 
   final _connectionController = StreamController<SensorConnectionState>.broadcast();
   final _sampleController = StreamController<SensorSample>.broadcast();
+  final _deviceEventController = StreamController<DeviceEvent>.broadcast();
   final _parser = BleProtocolParser();
 
   /// Wandelt unregelmäßige BLE-Bursts in einen gleichmäßigen 50-Hz-Strom um.
@@ -61,8 +65,12 @@ class BleSensorProvider implements ISensorProvider {
   BluetoothCharacteristic? _sensorDataChar;
   BluetoothCharacteristic? _controlPointChar;
   BluetoothCharacteristic? _batteryChar;
+  BluetoothCharacteristic? _deviceEventChar;
   StreamSubscription<List<int>>? _notifySubscription;
+  StreamSubscription<List<int>>? _deviceEventNotifySub;
   StreamSubscription<int>? _mtuSubscription;
+  Timer? _deviceEventPollTimer;
+  int _lastDeviceEventSeq = 0;
   int _lastNegotiatedMtu = 0;
 
   int get lastNegotiatedMtu => _lastNegotiatedMtu;
@@ -78,6 +86,9 @@ class BleSensorProvider implements ISensorProvider {
 
   @override
   Stream<SensorSample> get samples => _sampleController.stream;
+
+  @override
+  Stream<DeviceEvent> get deviceEvents => _deviceEventController.stream;
 
   static bool _uuidMatches(Guid uuid, String expected) {
     final full = uuid.str128.toLowerCase();
@@ -210,6 +221,17 @@ class BleSensorProvider implements ISensorProvider {
       (c) => _uuidMatches(c.uuid, batteryLevelCharUuid),
       orElse: () => throw StateError('Battery-Char fehlt'),
     );
+    // DeviceEvent is optional for older firmware (pre fee4).
+    try {
+      _deviceEventChar = service.characteristics.firstWhere(
+        (c) => _uuidMatches(c.uuid, deviceEventCharUuid),
+      );
+    } catch (_) {
+      _deviceEventChar = null;
+      AppLogger.i('DeviceEvent char fee4 missing — M5 button control disabled');
+    }
+    _lastDeviceEventSeq = 0;
+    await _bindDeviceEventChar();
 
     // NO CCCD / setNotifyValue: HyperOS caches the "last notified value"
     // and returns it for every read(), even though notification delivery is
@@ -348,9 +370,64 @@ class BleSensorProvider implements ISensorProvider {
     poll();
   }
 
+  Future<void> _bindDeviceEventChar() async {
+    await _deviceEventNotifySub?.cancel();
+    _deviceEventPollTimer?.cancel();
+    final ch = _deviceEventChar;
+    if (ch == null) return;
+
+    // Try NOTIFY (rare events); always setValue on FW so READ poll works.
+    try {
+      await ch.setNotifyValue(true);
+      _deviceEventNotifySub = ch.lastValueStream.listen(_onDeviceEventBytes);
+      AppLogger.i('DeviceEvent notify subscribed');
+    } catch (e) {
+      AppLogger.i('DeviceEvent notify failed, poll only: $e');
+    }
+
+    // HyperOS-safe poll every 250 ms (button events are rare).
+    _deviceEventPollTimer = Timer.periodic(
+      const Duration(milliseconds: 250),
+      (_) => unawaited(_pollDeviceEvent()),
+    );
+  }
+
+  Future<void> _pollDeviceEvent() async {
+    final ch = _deviceEventChar;
+    if (ch == null || _device?.isConnected != true) return;
+    try {
+      final bytes = await ch.read();
+      _onDeviceEventBytes(bytes);
+    } catch (_) {
+      // Transient GATT errors while busy — ignore.
+    }
+  }
+
+  void _onDeviceEventBytes(List<int> bytes) {
+    if (bytes.length < 2) return;
+    final seq = bytes[0] & 0xff;
+    final id = bytes[1] & 0xff;
+    if (seq == 0) return; // no event yet
+    if (seq == _lastDeviceEventSeq) return;
+    _lastDeviceEventSeq = seq;
+    final event = DeviceEvent(
+      seq: seq,
+      id: DeviceEventId.fromWire(id),
+      receivedAt: DateTime.now(),
+    );
+    AppLogger.i('DeviceEvent seq=$seq id=0x${id.toRadixString(16)}');
+    if (!_deviceEventController.isClosed) {
+      _deviceEventController.add(event);
+    }
+  }
+
   @override
   Future<void> disconnect() async {
     _jitterBuffer.stop();
+    _deviceEventPollTimer?.cancel();
+    _deviceEventPollTimer = null;
+    await _deviceEventNotifySub?.cancel();
+    _deviceEventNotifySub = null;
     await _sendControlCommand(0x02); // STOP_STREAM
     await _notifySubscription?.cancel();
     await _mtuSubscription?.cancel();
@@ -384,9 +461,12 @@ class BleSensorProvider implements ISensorProvider {
 
   void dispose() {
     _jitterBuffer.dispose();
+    _deviceEventPollTimer?.cancel();
+    _deviceEventNotifySub?.cancel();
     _notifySubscription?.cancel();
     _mtuSubscription?.cancel();
     _connectionController.close();
+    _deviceEventController.close();
     _sampleController.close();
   }
 }

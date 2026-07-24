@@ -27,7 +27,8 @@ docs/Version1.0/
 ├── 12_IMPLEMENTIERUNGS_STATUS.md ← P0–P2/CV/Engine Ledger (living)
 ├── 13_OFFENE_PUNKTE.md           ← Konsolidiert: was noch aussteht (living)
 ├── 14_CV_SKELETT_OVERLAY_PLAN.md ← CV: Skelett-Overlay Plan + 10 Ergänzungen
-└── 15_VERBESSERUNGEN_EXTERNE_REPOS.md ← Backlog aus externer Recherche (V1.1/V2.0/V3.0)
+├── 15_VERBESSERUNGEN_EXTERNE_REPOS.md ← Backlog aus externer Recherche (V1.1/V2.0/V3.0)
+└── 16_M5_BUTTON_COUNT_CONTROL.md     ← M5 BtnA: Start Zählen / Satz beenden + Feedback
 
 # Geräte-Evidence: docs/hardware/sessions/2026-07-23/
 # Gesamt-Index: docs/README.md

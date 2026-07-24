@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import '../../domain/device_event.dart';
 import '../../domain/workout_engine.dart';
 
 enum SensorConnectionState { disconnected, connecting, connected }
@@ -11,6 +12,9 @@ enum SensorConnectionState { disconnected, connecting, connected }
 abstract class ISensorProvider {
   Stream<SensorConnectionState> get connectionState;
   Stream<SensorSample> get samples;
+
+  /// M5 button / device events (empty stream if unsupported).
+  Stream<DeviceEvent> get deviceEvents;
 
   Future<void> connect();
   Future<void> disconnect();
@@ -27,17 +31,32 @@ abstract class ISensorProvider {
 class MockSensorProvider implements ISensorProvider {
   final _connectionController = StreamController<SensorConnectionState>.broadcast();
   final _sampleController = StreamController<SensorSample>.broadcast();
+  final _deviceEventController = StreamController<DeviceEvent>.broadcast();
   Timer? _sampleTimer;
   Timer? _repCycleTimer;
   final _random = Random();
   double _cyclePhase = 0.0;
   bool _simulatingRep = false;
+  int _mockEventSeq = 0;
 
   @override
   Stream<SensorConnectionState> get connectionState => _connectionController.stream;
 
   @override
   Stream<SensorSample> get samples => _sampleController.stream;
+
+  @override
+  Stream<DeviceEvent> get deviceEvents => _deviceEventController.stream;
+
+  /// Test helper: emit a BtnA-equivalent primary count event.
+  void emitCountPrimaryEvent() {
+    _mockEventSeq++;
+    _deviceEventController.add(DeviceEvent(
+      seq: _mockEventSeq,
+      id: DeviceEventId.countPrimary,
+      receivedAt: DateTime.now(),
+    ));
+  }
 
   @override
   Future<void> connect() async {
@@ -112,5 +131,6 @@ class MockSensorProvider implements ISensorProvider {
     _repCycleTimer?.cancel();
     _connectionController.close();
     _sampleController.close();
+    _deviceEventController.close();
   }
 }
