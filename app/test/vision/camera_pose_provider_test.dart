@@ -135,6 +135,19 @@ void main() {
       p.dispose();
     });
 
+    test('switchCameraLens toggles front/back in debug mode', () async {
+      final p = CameraPoseProvider(
+        config: const VisionConfig(enabled: true, cameraLens: 'back'),
+      );
+      await p.initializeCamera();
+      expect(p.activeLens, 'back');
+      await p.switchCameraLens();
+      expect(p.activeLens, 'front');
+      await p.switchCameraLens();
+      expect(p.activeLens, 'back');
+      p.dispose();
+    });
+
     test('updateConfig notifies and stores', () {
       final p = CameraPoseProvider();
       var notified = 0;

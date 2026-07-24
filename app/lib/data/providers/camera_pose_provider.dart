@@ -232,6 +232,63 @@ class CameraPoseProvider extends ChangeNotifier {
   CameraController? get cameraController => _cameraController;
   VisionConfig get config => _config;
 
+  /// Current lens preference: `'front'` or `'back'`.
+  String get activeLens => _config.cameraLens;
+
+  /// Whether a camera with the opposite lens exists on this device.
+  Future<bool> canSwitchLens() async {
+    if (debugSkipPlatform) return true;
+    try {
+      final cameras = debugAvailableCameras != null
+          ? await debugAvailableCameras!()
+          : await availableCameras();
+      final hasFront =
+          cameras.any((c) => c.lensDirection == CameraLensDirection.front);
+      final hasBack =
+          cameras.any((c) => c.lensDirection == CameraLensDirection.back);
+      return hasFront && hasBack;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Toggle front ↔ back camera. Restarts image stream if detection was active.
+  Future<void> switchCameraLens() async {
+    final next = _config.cameraLens == 'front' ? 'back' : 'front';
+    await setCameraLens(next);
+  }
+
+  /// Open a specific lens (`'front'` / `'back'`). Soft-fails if missing.
+  Future<void> setCameraLens(String lens) async {
+    final want = lens == 'front' ? 'front' : 'back';
+    if (_config.cameraLens == want && _isInitialized) {
+      return;
+    }
+    final wasDetecting = _isDetecting;
+    if (wasDetecting) {
+      await stopDetection();
+    }
+    await _disposeControllerOnly();
+    _config = _config.copyWith(cameraLens: want);
+    await initializeCamera(lens: want);
+    if (wasDetecting && _isInitialized) {
+      await startDetection();
+    }
+    notifyListeners();
+  }
+
+  Future<void> _disposeControllerOnly() async {
+    if (_cameraController != null &&
+        _cameraController!.value.isStreamingImages) {
+      try {
+        await _cameraController!.stopImageStream();
+      } catch (_) {}
+    }
+    await _cameraController?.dispose();
+    _cameraController = null;
+    _isInitialized = false;
+  }
+
   /// Initialize the camera (must run before [startDetection]).
   Future<void> initializeCamera({String? lens}) async {
     if (_isInitialized) return;
@@ -239,6 +296,9 @@ class CameraPoseProvider extends ChangeNotifier {
     if (debugSkipPlatform) {
       _isInitialized = true;
       _error = null;
+      if (lens != null) {
+        _config = _config.copyWith(cameraLens: lens);
+      }
       notifyListeners();
       return;
     }
@@ -253,7 +313,8 @@ class CameraPoseProvider extends ChangeNotifier {
         return;
       }
 
-      final lensDirection = (lens ?? _config.cameraLens) == 'front'
+      final preferred = lens ?? _config.cameraLens;
+      final lensDirection = preferred == 'front'
           ? CameraLensDirection.front
           : CameraLensDirection.back;
 
@@ -261,6 +322,11 @@ class CameraPoseProvider extends ChangeNotifier {
         (c) => c.lensDirection == lensDirection,
         orElse: () => cameras.first,
       );
+
+      // Reflect actual lens if preferred was unavailable.
+      final actualLens =
+          camera.lensDirection == CameraLensDirection.front ? 'front' : 'back';
+      _config = _config.copyWith(cameraLens: actualLens);
 
       _cameraController = CameraController(
         camera,
@@ -273,7 +339,9 @@ class CameraPoseProvider extends ChangeNotifier {
       _isInitialized = true;
       _error = null;
       notifyListeners();
-      debugPrint('[CameraPose] Kamera initialisiert: ${camera.name}');
+      debugPrint(
+        '[CameraPose] Kamera initialisiert: ${camera.name} ($actualLens)',
+      );
     } catch (e) {
       _error = 'Kamera-Fehler: $e';
       _isInitialized = false;

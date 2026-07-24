@@ -31,6 +31,8 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
   double? _lastElbowAngle;
   String? _lastDiagnostic;
   bool _starting = false;
+  bool _switchingLens = false;
+  bool _canSwitchLens = false;
 
   PoseFrame? _lastFrame;
   bool _highlightRight = true;
@@ -64,8 +66,36 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
       _pulse.reset();
       await _setupRecorder(cam.config);
       _poseSub = cam.poseFrames.listen(_onPoseFrame);
+      final canSwitch = await cam.canSwitchLens();
+      if (mounted) setState(() => _canSwitchLens = canSwitch);
     } finally {
       if (mounted) setState(() => _starting = false);
+    }
+  }
+
+  Future<void> _toggleLens() async {
+    if (_switchingLens || _starting) return;
+    setState(() => _switchingLens = true);
+    final cam = ref.read(visionProvider);
+    try {
+      await cam.switchCameraLens();
+      // Re-attach pose listener (stream controller is the same).
+      await _poseSub?.cancel();
+      _poseSub = cam.poseFrames.listen(_onPoseFrame);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              cam.activeLens == 'front'
+                  ? 'Frontkamera aktiv (gespiegelt)'
+                  : 'Rückkamera aktiv',
+            ),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _switchingLens = false);
     }
   }
 
@@ -196,6 +226,24 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
       appBar: AppBar(
         title: const Text('Kamera-Validierung'),
         actions: [
+          if (cam.isDetecting && _canSwitchLens)
+            IconButton(
+              tooltip: cam.activeLens == 'front'
+                  ? 'Zur Rückkamera'
+                  : 'Zur Frontkamera',
+              icon: _switchingLens
+                  ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      cam.activeLens == 'front'
+                          ? Icons.camera_rear
+                          : Icons.camera_front,
+                    ),
+              onPressed: _switchingLens ? null : _toggleLens,
+            ),
           if (cam.isDetecting)
             IconButton(
               tooltip: 'Skelett an/aus',
@@ -216,10 +264,20 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
         padding: const EdgeInsets.all(16),
         children: [
           Text(
-            'Validierung — Zählen über Sensor (IMU). '
-            'Kamera bestätigt Form und liefert Skelett-Overlay.',
+            'Optional — Zählen läuft weiter über den Sensor (IMU). '
+            'Die Kamera zeigt Pose/Skelett und kann Form bestätigen; '
+            'sie ersetzt die IMU-Zählung nicht. '
+            'Umschalten Front/Rück: Kamera-Symbol oben.',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
+          if (cam.isDetecting) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Aktiv: ${cam.activeLens == 'front' ? 'Frontkamera' : 'Rückkamera'}'
+              '${mirror ? ' (Spiegel)' : ''}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
           const SizedBox(height: 12),
           CameraPreviewOverlay(
             controller: cam.cameraController,
