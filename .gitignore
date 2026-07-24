@@ -45,7 +45,8 @@ analyze_main.log
 test_main.log
 
 # Device dumps, Secure-Storage pulls, lokale DB-Kopien (DSGVO / Secrets)
-data/
+# Nur Repo-Root — NICHT app/lib/data/ (Source-Code)
+/data/
 
 # CV-05 local artifacts (downloaded models / session CSVs)
 tools/models/
