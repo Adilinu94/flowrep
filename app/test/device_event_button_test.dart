@@ -18,7 +18,7 @@ void main() {
     late MockSensorProvider sensor;
     late EngineNotifier notifier;
 
-    setUp(() {
+    setUp(() async {
       sensor = MockSensorProvider();
       notifier = EngineNotifier.create(
         sensorProvider: sensor,
@@ -29,7 +29,7 @@ void main() {
         ),
       );
       // Avoid audioplayers platform channel in unit tests.
-      notifier.setButtonFeedback(haptic: false, audio: false);
+      await notifier.setButtonFeedback(haptic: false, audio: false);
     });
 
     tearDown(() => notifier.dispose());

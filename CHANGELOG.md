@@ -29,6 +29,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - **BLE dual-name scan** (Audit F-03): App finds `FlowRep` **or** legacy `GymTracker`; firmware advertise default `FlowRep` (reflash to apply); diagnose line `health=` / `place=`
 - **Vision agreement badge** (Audit U-02): Active-Set chip „Pose bestätigt X/Y“ when camera enabled; `FusionEngine.agreementLabel` / ratio; IMU still authoritative (no count override)
 - **Auto-arm after calib persisted** (`UserPrefsStore` / secure storage): Settings toggle survives app restart; default still on
+- **All Settings toggles persisted** via `UserPrefsStore`: feedback, blind mode, M5 BtnA + button feedback, rest duration, adaptive rest, VBT, diagnose overlay, ghost gate + idle pause, camera preference; Form-Check session uses `setCameraEnabled(persist: false)` so it does not clobber the Settings flag
 
 ### Docs
 

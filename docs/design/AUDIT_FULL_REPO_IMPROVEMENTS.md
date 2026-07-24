@@ -817,12 +817,14 @@ Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
 
 ---
 
-## Appendix J — Auto-arm prefs persistence (2026-07-24)
+## Appendix J — Settings prefs persistence (2026-07-24)
 
 | | |
 |--|--|
-| **Problem** | `autoArmAfterCalib` was in-memory only — toggle reset after kill |
-| **Store** | `UserPrefsStore` (`pref_auto_arm_after_calib`) via FlutterSecureStorage |
-| **Load** | `EngineNotifier.create` → async `_loadUserPrefs` (default **true**) |
-| **Save** | `setAutoArmAfterCalib` writes immediately |
-| **Tests** | `user_prefs_store_test.dart` with fake secure storage |
+| **Problem** | UX toggles were in-memory only — reset after kill |
+| **Store** | `UserPrefsStore` + `UserPrefsSnapshot` via FlutterSecureStorage |
+| **Keys** | auto-arm, haptic/audio, blind, M5+button feedback, rest s, adaptive rest, VBT, diagnose, ghost gate + idle s, camera pref |
+| **Load** | `EngineNotifier.create` → async `loadAll`; per-key dirty set avoids late clobber |
+| **Form-Check** | `setCameraEnabled(..., persist: false)` — session must not overwrite Settings pref |
+| **Not persisted** | exercise targets (session / per-exercise memory only) |
+| **Tests** | `user_prefs_store_test.dart` suite + reload |

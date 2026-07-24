@@ -58,7 +58,8 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
     final cam = ref.read(visionProvider);
     final engine = ref.read(engineProvider.notifier);
     try {
-      engine.setCameraEnabled(true);
+      // Session-only: do not overwrite Settings „Form-Check freigeben“.
+      engine.setCameraEnabled(true, persist: false);
       await cam.initializeCamera();
       await cam.startDetection();
       await _poseSub?.cancel();
@@ -126,7 +127,7 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
     await _poseSub?.cancel();
     _poseSub = null;
     await cam.stopDetection();
-    engine.setCameraEnabled(false);
+    engine.setCameraEnabled(false, persist: false);
     _recorder?.close();
     if (mounted) {
       setState(() {

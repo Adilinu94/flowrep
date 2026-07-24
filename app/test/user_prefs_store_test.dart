@@ -54,9 +54,53 @@ void main() {
       await store.saveAutoArmAfterCalib(true);
       expect(await store.loadAutoArmAfterCalib(), isTrue);
     });
+
+    test('loadAll returns product defaults when empty', () async {
+      final snap = await UserPrefsStore(storage: _FakeSecureStorage()).loadAll();
+      expect(snap.autoArmAfterCalib, isTrue);
+      expect(snap.haptic, isTrue);
+      expect(snap.audio, isFalse);
+      expect(snap.restDurationSeconds, 90);
+      expect(snap.ghostIdlePauseSeconds, 45);
+      expect(snap.cameraEnabled, isFalse);
+      expect(snap.diagnoseOverlay, isFalse);
+      expect(snap.ghostGate, isTrue);
+    });
+
+    test('loadAll reflects saved suite', () async {
+      final store = UserPrefsStore(storage: _FakeSecureStorage());
+      await store.saveHaptic(false);
+      await store.saveAudio(true);
+      await store.saveRestDurationSeconds(60);
+      await store.saveGhostIdlePauseSeconds(90);
+      await store.saveGhostGate(false);
+      await store.saveM5ButtonControl(false);
+      await store.saveVbtMetrics(false);
+      await store.saveAdaptiveRest(false);
+      await store.saveDiagnoseOverlay(true);
+      await store.saveBlindMode(true);
+      await store.saveCameraEnabled(true);
+      await store.saveButtonHaptic(false);
+      await store.saveButtonAudio(false);
+
+      final snap = await store.loadAll();
+      expect(snap.haptic, isFalse);
+      expect(snap.audio, isTrue);
+      expect(snap.restDurationSeconds, 60);
+      expect(snap.ghostIdlePauseSeconds, 90);
+      expect(snap.ghostGate, isFalse);
+      expect(snap.m5ButtonControl, isFalse);
+      expect(snap.vbtMetrics, isFalse);
+      expect(snap.adaptiveRest, isFalse);
+      expect(snap.diagnoseOverlay, isTrue);
+      expect(snap.blindMode, isTrue);
+      expect(snap.cameraEnabled, isTrue);
+      expect(snap.buttonHaptic, isFalse);
+      expect(snap.buttonAudio, isFalse);
+    });
   });
 
-  group('EngineNotifier auto-arm persistence', () {
+  group('EngineNotifier prefs persistence', () {
     test('setAutoArmAfterCalib persists across reload', () async {
       final fake = _FakeSecureStorage();
       final prefs = UserPrefsStore(storage: fake);
@@ -81,10 +125,79 @@ void main() {
         ),
         userPrefs: UserPrefsStore(storage: fake),
       );
-      // create() loads prefs async
       await b.reloadUserPrefsForTest();
       expect(b.autoArmAfterCalib, isFalse);
       b.dispose();
+    });
+
+    test('settings suite survives reload', () async {
+      final fake = _FakeSecureStorage();
+      final a = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: UserPrefsStore(storage: fake),
+      );
+
+      await a.setFeedback(haptic: false, audio: true);
+      await a.setRestDurationSeconds(60);
+      await a.setM5ButtonControlEnabled(false);
+      await a.setButtonFeedback(haptic: false, audio: false);
+      await a.setAdaptiveRestEnabled(false);
+      await a.setVbtMetricsEnabled(false);
+      await a.setDiagnoseOverlayEnabled(true);
+      await a.setGhostGateEnabled(false);
+      await a.setGhostIdlePauseSeconds(30);
+      await a.setCameraEnabled(true);
+      await a.setBlindModeEnabled(true);
+      a.dispose();
+
+      final b = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: UserPrefsStore(storage: fake),
+      );
+      await b.reloadUserPrefsForTest();
+
+      expect(b.hapticEnabled, isTrue); // blind mode forces haptic on
+      expect(b.audioEnabled, isTrue);
+      expect(b.restDurationSeconds, 60);
+      expect(b.m5ButtonControlEnabled, isFalse);
+      expect(b.buttonHapticEnabled, isFalse);
+      expect(b.buttonAudioEnabled, isFalse);
+      expect(b.adaptiveRestEnabled, isFalse);
+      expect(b.vbtEnabled, isFalse);
+      expect(b.state.diagnoseOverlayEnabled, isTrue);
+      expect(b.state.vbtMetricsEnabled, isFalse);
+      expect(b.state.blindModeEnabled, isTrue);
+      expect(b.state.cameraEnabled, isTrue);
+      expect(b.engine.ghostGateEnabled, isFalse);
+      expect(b.ghostIdlePauseSeconds, 30);
+      b.dispose();
+    });
+
+    test('setCameraEnabled persist:false does not write storage', () async {
+      final fake = _FakeSecureStorage();
+      final n = EngineNotifier.create(
+        sensorProvider: MockSensorProvider(),
+        engine: WorkoutEngine(
+          exerciseId: 'bicep_curl',
+          useSignedProjectionCounting: true,
+        ),
+        userPrefs: UserPrefsStore(storage: fake),
+      );
+      await n.setCameraEnabled(true, persist: false);
+      expect(n.isCameraEnabled, isTrue);
+      expect(fake.data.containsKey(UserPrefsStore.keyCameraEnabled), isFalse);
+
+      await n.setCameraEnabled(true, persist: true);
+      expect(fake.data[UserPrefsStore.keyCameraEnabled], '1');
+      n.dispose();
     });
 
     test('default remains true without stored value', () async {

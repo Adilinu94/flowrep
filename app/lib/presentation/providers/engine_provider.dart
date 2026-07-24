@@ -127,8 +127,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   bool _m5ButtonControlEnabled = true;
   /// After successful calib reload, auto-start counting (Audit QW-2). Default on.
   bool _autoArmAfterCalib = true;
-  /// True after user toggles — late [_loadUserPrefs] must not clobber.
-  bool _autoArmUserSet = false;
+  /// Pref keys the user changed this session — late [_loadUserPrefs] skips them.
+  final Set<String> _prefsUserSet = <String>{};
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
@@ -533,35 +533,56 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   int get restDurationSeconds => _restDurationSeconds;
 
   /// Settings (P1-3): change default rest duration between sets.
-  void setRestDurationSeconds(int seconds) {
+  Future<void> setRestDurationSeconds(int seconds) async {
     if (seconds < 1) return;
+    _prefsUserSet.add(UserPrefsStore.keyRestDurationSeconds);
     _restDurationSeconds = seconds;
+    await _persistPrefs(() => _userPrefs.saveRestDurationSeconds(seconds));
   }
 
   bool get hapticEnabled => _feedbackService.enableHaptic;
   bool get audioEnabled => _feedbackService.enableAudio;
 
-  void setFeedback({bool? haptic, bool? audio}) {
-    if (haptic != null) _feedbackService.enableHaptic = haptic;
-    if (audio != null) _feedbackService.enableAudio = audio;
+  Future<void> setFeedback({bool? haptic, bool? audio}) async {
+    // Apply in-memory first so callers (and tests) see flags before I/O.
+    if (haptic != null) {
+      _prefsUserSet.add(UserPrefsStore.keyHaptic);
+      _feedbackService.enableHaptic = haptic;
+    }
+    if (audio != null) {
+      _prefsUserSet.add(UserPrefsStore.keyAudio);
+      _feedbackService.enableAudio = audio;
+    }
+    if (haptic != null) {
+      await _persistPrefs(() => _userPrefs.saveHaptic(haptic));
+    }
+    if (audio != null) {
+      await _persistPrefs(() => _userPrefs.saveAudio(audio));
+    }
   }
 
   bool get m5ButtonControlEnabled => _m5ButtonControlEnabled;
   bool get buttonHapticEnabled => _feedbackService.buttonHaptic;
   bool get buttonAudioEnabled => _feedbackService.buttonAudio;
 
-  void setM5ButtonControlEnabled(bool enabled) {
+  Future<void> setM5ButtonControlEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyM5ButtonControl);
     _m5ButtonControlEnabled = enabled;
+    await _persistPrefs(() => _userPrefs.saveM5ButtonControl(enabled));
   }
 
   bool get autoArmAfterCalib => _autoArmAfterCalib;
 
   /// Toggle + persist (survives app restart). Default remains on when unset.
   Future<void> setAutoArmAfterCalib(bool enabled) async {
-    _autoArmUserSet = true;
+    _prefsUserSet.add(UserPrefsStore.keyAutoArmAfterCalib);
     _autoArmAfterCalib = enabled;
+    await _persistPrefs(() => _userPrefs.saveAutoArmAfterCalib(enabled));
+  }
+
+  Future<void> _persistPrefs(Future<void> Function() write) async {
     try {
-      await _userPrefs.saveAutoArmAfterCalib(enabled);
+      await write();
     } catch (_) {
       // Platform channel missing in unit tests — in-memory value still applies.
     }
@@ -569,56 +590,178 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   Future<void> _loadUserPrefs() async {
     try {
-      final stored = await _userPrefs.loadAutoArmAfterCalib();
-      // Ignore late load if the user already changed the toggle this session.
-      if (!_autoArmUserSet) {
-        _autoArmAfterCalib = stored;
+      final p = await _userPrefs.loadAll();
+      void applyBool(String key, void Function(bool) apply, bool value) {
+        if (!_prefsUserSet.contains(key)) apply(value);
+      }
+
+      void applyInt(String key, void Function(int) apply, int value) {
+        if (!_prefsUserSet.contains(key)) apply(value);
+      }
+
+      applyBool(
+        UserPrefsStore.keyAutoArmAfterCalib,
+        (v) => _autoArmAfterCalib = v,
+        p.autoArmAfterCalib,
+      );
+      applyBool(
+        UserPrefsStore.keyHaptic,
+        (v) => _feedbackService.enableHaptic = v,
+        p.haptic,
+      );
+      applyBool(
+        UserPrefsStore.keyAudio,
+        (v) => _feedbackService.enableAudio = v,
+        p.audio,
+      );
+      applyBool(
+        UserPrefsStore.keyM5ButtonControl,
+        (v) => _m5ButtonControlEnabled = v,
+        p.m5ButtonControl,
+      );
+      applyBool(
+        UserPrefsStore.keyButtonHaptic,
+        (v) => _feedbackService.buttonHaptic = v,
+        p.buttonHaptic,
+      );
+      applyBool(
+        UserPrefsStore.keyButtonAudio,
+        (v) => _feedbackService.buttonAudio = v,
+        p.buttonAudio,
+      );
+      applyInt(
+        UserPrefsStore.keyRestDurationSeconds,
+        (v) {
+          if (v >= 1) _restDurationSeconds = v;
+        },
+        p.restDurationSeconds,
+      );
+      applyBool(
+        UserPrefsStore.keyAdaptiveRest,
+        (v) => _adaptiveRestEnabled = v,
+        p.adaptiveRest,
+      );
+      applyBool(
+        UserPrefsStore.keyVbtMetrics,
+        (v) {
+          _vbtEnabled = v;
+        },
+        p.vbtMetrics,
+      );
+      applyBool(
+        UserPrefsStore.keyGhostGate,
+        (v) => _engine.ghostGateEnabled = v,
+        p.ghostGate,
+      );
+      applyInt(
+        UserPrefsStore.keyGhostIdlePauseSeconds,
+        (v) => _engine.ghostIdlePauseSeconds = v,
+        p.ghostIdlePauseSeconds,
+      );
+
+      // UI-state fields: single copyWith if any applied.
+      final applyDiagnose =
+          !_prefsUserSet.contains(UserPrefsStore.keyDiagnoseOverlay);
+      final applyVbt = !_prefsUserSet.contains(UserPrefsStore.keyVbtMetrics);
+      final applyBlind = !_prefsUserSet.contains(UserPrefsStore.keyBlindMode);
+      final applyCam = !_prefsUserSet.contains(UserPrefsStore.keyCameraEnabled);
+      if (applyDiagnose || applyVbt || applyBlind || applyCam) {
+        state = state.copyWith(
+          diagnoseOverlayEnabled:
+              applyDiagnose ? p.diagnoseOverlay : state.diagnoseOverlayEnabled,
+          vbtMetricsEnabled: applyVbt ? p.vbtMetrics : state.vbtMetricsEnabled,
+          blindModeEnabled: applyBlind ? p.blindMode : state.blindModeEnabled,
+          cameraEnabled: applyCam ? p.cameraEnabled : state.cameraEnabled,
+        );
+        if (applyCam) _cameraEnabled = p.cameraEnabled;
+        if (applyBlind && p.blindMode) {
+          // Blind mode implies strong feedback (same as setBlindModeEnabled).
+          if (!_prefsUserSet.contains(UserPrefsStore.keyHaptic)) {
+            _feedbackService.enableHaptic = true;
+          }
+          if (!_prefsUserSet.contains(UserPrefsStore.keyAudio)) {
+            _feedbackService.enableAudio = true;
+          }
+        }
       }
     } catch (_) {
-      // Keep constructor default (true).
+      // Keep constructor defaults.
     }
   }
 
   /// Test hook: re-read prefs (forces apply even after a prior toggle).
   @visibleForTesting
   Future<void> reloadUserPrefsForTest() async {
-    _autoArmUserSet = false;
+    _prefsUserSet.clear();
     await _loadUserPrefs();
   }
 
-  void setButtonFeedback({bool? haptic, bool? audio}) {
-    if (haptic != null) _feedbackService.buttonHaptic = haptic;
-    if (audio != null) _feedbackService.buttonAudio = audio;
+  Future<void> setButtonFeedback({bool? haptic, bool? audio}) async {
+    if (haptic != null) {
+      _prefsUserSet.add(UserPrefsStore.keyButtonHaptic);
+      _feedbackService.buttonHaptic = haptic;
+    }
+    if (audio != null) {
+      _prefsUserSet.add(UserPrefsStore.keyButtonAudio);
+      _feedbackService.buttonAudio = audio;
+    }
+    if (haptic != null) {
+      await _persistPrefs(() => _userPrefs.saveButtonHaptic(haptic));
+    }
+    if (audio != null) {
+      await _persistPrefs(() => _userPrefs.saveButtonAudio(audio));
+    }
   }
 
-  void setDiagnoseOverlayEnabled(bool enabled) {
+  Future<void> setDiagnoseOverlayEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyDiagnoseOverlay);
     state = state.copyWith(diagnoseOverlayEnabled: enabled);
+    await _persistPrefs(() => _userPrefs.saveDiagnoseOverlay(enabled));
   }
 
-  void setVbtMetricsEnabled(bool enabled) {
+  Future<void> setVbtMetricsEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyVbtMetrics);
     _vbtEnabled = enabled;
     state = state.copyWith(vbtMetricsEnabled: enabled);
+    await _persistPrefs(() => _userPrefs.saveVbtMetrics(enabled));
   }
 
-  void setAdaptiveRestEnabled(bool enabled) {
+  Future<void> setAdaptiveRestEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyAdaptiveRest);
     _adaptiveRestEnabled = enabled;
+    await _persistPrefs(() => _userPrefs.saveAdaptiveRest(enabled));
   }
 
-  void setBlindModeEnabled(bool enabled) {
+  Future<void> setBlindModeEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyBlindMode);
     state = state.copyWith(blindModeEnabled: enabled);
     if (enabled) {
       _feedbackService.enableAudio = true;
       _feedbackService.enableHaptic = true;
+      // Blind mode forces feedback on; persist that product intent.
+      _prefsUserSet.add(UserPrefsStore.keyHaptic);
+      _prefsUserSet.add(UserPrefsStore.keyAudio);
+      await _persistPrefs(() async {
+        await _userPrefs.saveBlindMode(true);
+        await _userPrefs.saveHaptic(true);
+        await _userPrefs.saveAudio(true);
+      });
+    } else {
+      await _persistPrefs(() => _userPrefs.saveBlindMode(false));
     }
   }
 
-  void setGhostGateEnabled(bool enabled) {
+  Future<void> setGhostGateEnabled(bool enabled) async {
+    _prefsUserSet.add(UserPrefsStore.keyGhostGate);
     _engine.ghostGateEnabled = enabled;
+    await _persistPrefs(() => _userPrefs.saveGhostGate(enabled));
   }
 
   /// Idle seconds before ghost-pause freezes counting (0 = off). Default 45.
-  void setGhostIdlePauseSeconds(int seconds) {
+  Future<void> setGhostIdlePauseSeconds(int seconds) async {
+    _prefsUserSet.add(UserPrefsStore.keyGhostIdlePauseSeconds);
     _engine.ghostIdlePauseSeconds = seconds;
+    await _persistPrefs(() => _userPrefs.saveGhostIdlePauseSeconds(seconds));
   }
 
   int get ghostIdlePauseSeconds => _engine.ghostIdlePauseSeconds;
@@ -838,12 +981,18 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   // === CV-04: optional camera fusion (stats / future UI) ===
 
-  void setCameraEnabled(bool enabled) {
+  /// [persist] false for Form-Check session start/stop (must not clobber
+  /// the Settings „Form-Check freigeben“ preference).
+  Future<void> setCameraEnabled(bool enabled, {bool persist = true}) async {
     _cameraEnabled = enabled;
     if (!enabled) {
       _poseRepCounter.reset();
     }
     state = state.copyWith(cameraEnabled: enabled);
+    if (persist) {
+      _prefsUserSet.add(UserPrefsStore.keyCameraEnabled);
+      await _persistPrefs(() => _userPrefs.saveCameraEnabled(enabled));
+    }
   }
 
   bool get isCameraEnabled => _cameraEnabled;

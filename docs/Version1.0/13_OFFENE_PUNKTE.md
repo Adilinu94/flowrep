@@ -87,7 +87,8 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 
 ### Settings persistence
 
-- [x] Auto-Arm nach Calib in `UserPrefsStore` (secure storage, Default an) 
+- [x] Auto-Arm nach Calib in `UserPrefsStore` (secure storage, Default an)  
+- [x] Gesamte Settings-Suite (Feedback, M5, Rest, VBT, Ghost, Diagnose, Kamera-Pref) 
 - [ ] Operator: optional reflash; unflashed stick bleibt GymTracker und verbindet weiter
 
 ---

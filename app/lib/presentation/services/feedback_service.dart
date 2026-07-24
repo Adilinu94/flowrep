@@ -59,17 +59,19 @@ class FeedbackService {
   bool buttonAudio = true;
 
   Future<void> onDeviceButton({required bool isStart}) async {
-    try {
-      if (buttonHaptic) {
-        try {
-          await Vibration.vibrate(duration: isStart ? 80 : 140);
-        } catch (_) {}
+    if (buttonHaptic) {
+      try {
+        await Vibration.vibrate(duration: isStart ? 80 : 140);
+      } catch (_) {
+        // Plugin missing in tests / unsupported platform.
       }
-      if (buttonAudio) {
+    }
+    if (buttonAudio) {
+      try {
         await _playRepSound();
+      } catch (_) {
+        // audioplayers async init can surface after play — non-fatal.
       }
-    } catch (_) {
-      // Missing plugin / platform channels in unit tests — non-fatal.
     }
   }
 
