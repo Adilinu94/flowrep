@@ -16,6 +16,7 @@
 | **Setup (Adi)** | [`reference/SETUP_ANLEITUNG.md`](reference/SETUP_ANLEITUNG.md) · [`reference/ANLEITUNG_FUER_ADI.md`](reference/ANLEITUNG_FUER_ADI.md) |
 | **Hardware-QA** | [`hardware/`](hardware/) · [`Version1.0/11_HARDWARE_QA_CHECKLISTE.md`](Version1.0/11_HARDWARE_QA_CHECKLISTE.md) |
 | **Design / Spec / Recherche** | [`design/`](design/) |
+| **Full-Repo Improvement Audit** | [`design/AUDIT_FULL_REPO_IMPROVEMENTS.md`](design/AUDIT_FULL_REPO_IMPROVEMENTS.md) |
 | **Historisches (Umbauplan, alte DoD)** | [`archive/`](archive/) |
 
 ## Ordnerstruktur

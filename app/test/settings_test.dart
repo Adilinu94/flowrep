@@ -93,6 +93,12 @@ void main() {
       expect(find.text('Einstellungen'), findsOneWidget);
       expect(find.text('Vibration bei Wiederholung'), findsOneWidget);
       expect(find.text('Sound bei Wiederholung'), findsOneWidget);
+      expect(find.text('Nach Kalibrierung auto starten'), findsOneWidget);
+      await tester.scrollUntilVisible(
+        find.text('90s'),
+        200,
+        scrollable: find.byType(Scrollable).first,
+      );
       expect(find.text('90s'), findsOneWidget);
       await tester.scrollUntilVisible(
         find.text('Alle Daten löschen'),
@@ -107,11 +113,11 @@ void main() {
       );
       expect(find.textContaining('Version 1.0.0'), findsOneWidget);
       await tester.scrollUntilVisible(
-        find.text('Kamera-Session öffnen'),
+        find.text('Form-Check öffnen'),
         -200,
         scrollable: find.byType(Scrollable).first,
       );
-      expect(find.text('Kamera-Session öffnen'), findsOneWidget);
+      expect(find.text('Form-Check öffnen'), findsOneWidget);
     });
   });
 }

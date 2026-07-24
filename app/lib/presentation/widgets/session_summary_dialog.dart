@@ -84,9 +84,17 @@ class SessionSummaryDialog extends StatelessWidget {
             const SizedBox(height: 8),
             _StatRow(
               icon: Icons.repeat,
-              label: 'Wiederholungen',
+              label: 'Wiederholungen (effektiv)',
               value: '$totalReps',
             ),
+            if (setList.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _StatRow(
+                icon: Icons.memory,
+                label: 'Engine (roh)',
+                value: '${setList.fold<int>(0, (a, s) => a + s.countedReps)}',
+              ),
+            ],
             if (duration != null) ...[
               const SizedBox(height: 8),
               _StatRow(
@@ -106,7 +114,10 @@ class SessionSummaryDialog extends StatelessWidget {
             for (var i = 0; i < setList.length; i++) ...[
               const SizedBox(height: 12),
               Text(
-                'Satz ${i + 1} — Peaks (rel. °/s-Proxy)',
+                'Satz ${i + 1} — '
+                'Engine ${setList[i].countedReps}'
+                '${setList[i].correctedReps != null ? ' · Korrigiert ${setList[i].correctedReps}' : ''}'
+                ' — Peaks',
                 style: Theme.of(context).textTheme.labelMedium,
               ),
               const SizedBox(height: 4),

@@ -8,6 +8,7 @@ import '../providers/engine_provider.dart';
 import '../providers/workout_ui_state.dart';
 import '../widgets/connection_status_card.dart';
 import '../widgets/correction_dialog.dart';
+import '../widgets/counting_status_chip.dart';
 import '../widgets/diagnose_overlay.dart';
 import '../widgets/exercise_selector_card.dart';
 import '../widgets/onboarding_banner.dart';
@@ -49,9 +50,14 @@ class HomeScreen extends ConsumerWidget {
                 onIncrement: () => notifier.applyCorrectionDelta(1),
                 onDecrement: () => notifier.applyCorrectionDelta(-1),
                 onConfirm: () async {
-                  await notifier.confirmCorrection();
+                  final msg = await notifier.confirmCorrection();
                   if (dialogContext.mounted) {
                     Navigator.of(dialogContext).pop();
+                  }
+                  if (msg != null && context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text(msg)),
+                    );
                   }
                 },
                 onDismiss: () {
@@ -102,7 +108,7 @@ class HomeScreen extends ConsumerWidget {
         actions: [
           IconButton(
             icon: const Icon(Icons.videocam_outlined),
-            tooltip: 'Kamera-Validierung',
+            tooltip: 'Form-Check (Kamera, zählt nicht statt IMU)',
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const CameraSessionScreen()),
             ),
@@ -138,6 +144,9 @@ class HomeScreen extends ConsumerWidget {
                 onConnect: notifier.connect,
                 onDisconnect: notifier.disconnect,
               ),
+              const SizedBox(height: 10),
+              // Audit QW-1: glanceable BEREIT / ZÄHLT / GHOST
+              CountingStatusChip(uiState: uiState),
               // Fusion-Status (optional, wenn Kamera freigegeben)
               if (uiState.cameraEnabled) ...[
                 const SizedBox(height: 8),
@@ -173,7 +182,7 @@ class HomeScreen extends ConsumerWidget {
                 ),
               const SizedBox(height: 16),
 
-              // Debug-Diagnostik (nur !kReleaseMode + BLE)
+              // Debug-Diagnostik collapsed by default (Audit QW-6)
               if (uiState.isConnected &&
                   !notifier.isMock &&
                   !uiState.diagnoseOverlayEnabled)
@@ -195,7 +204,7 @@ class HomeScreen extends ConsumerWidget {
                 const SizedBox(height: 8),
               ],
 
-              if (uiState.ghostGatePaused)
+              if (uiState.ghostGatePaused && !uiState.ghostBannerDismissed)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
                   child: MaterialBanner(
@@ -205,7 +214,7 @@ class HomeScreen extends ConsumerWidget {
                     ),
                     actions: [
                       TextButton(
-                        onPressed: () {},
+                        onPressed: notifier.dismissGhostBanner,
                         child: const Text('OK'),
                       ),
                     ],
@@ -262,6 +271,19 @@ class HomeScreen extends ConsumerWidget {
                     ),
                   ),
 
+                // Audit QW-10: clear prompt when armed-ready but not counting
+                if (!uiState.isCountingActive && uiState.hasCalibration)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Text(
+                      'Tippe „Zählen starten“ (oder M5 BtnA) — sonst bleiben Reps bei 0.',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.orange.shade900,
+                            fontWeight: FontWeight.w600,
+                          ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
                 // Start/Stop Zähl-Gating
                 SizedBox(
                   width: double.infinity,

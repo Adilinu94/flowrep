@@ -4,6 +4,24 @@ All notable changes to FlowRep are documented here.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: SemVer.
 
+## [Unreleased] — 2026-07-24
+
+### Added (Audit Quick Wins)
+
+- Full-repo audit: `docs/design/AUDIT_FULL_REPO_IMPROVEMENTS.md`
+- Home **status chip** (BEREIT / ZÄHLT / GHOST / …)
+- **Auto-arm after calib** (default on; Settings toggle) — avoids silent 0-rep after wizard
+- Ghost banner **real dismiss** (`ghostBannerDismissed`)
+- **Form-Check** branding + 3-line disclaimer (camera does not replace IMU)
+- Correction confirm **snackbar** („Gespeichert — Schwelle angepasst“)
+- Session summary: **Engine (raw) vs effective / per-set corrected**
+- Hint when calibrated but not counting: „Tippe Zählen starten…“
+- Tests: `app/test/quick_wins_audit_test.dart`
+
+### Changed
+
+- Debug `SignalDebugView` collapsed by default (ExpansionTile)
+
 ## [1.0.0-rc.1] — 2026-07-23
 
 Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physical A-path HW validation and store admin remain open (see `docs/Version1.0/13_OFFENE_PUNKTE.md`).

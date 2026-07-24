@@ -25,6 +25,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late bool _m5ButtonControl;
   late bool _buttonHaptic;
   late bool _buttonAudio;
+  late bool _autoArmAfterCalib;
   int _targetSets = 4;
   int _targetReps = 12;
 
@@ -43,6 +44,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     _m5ButtonControl = notifier.m5ButtonControlEnabled;
     _buttonHaptic = notifier.buttonHapticEnabled;
     _buttonAudio = notifier.buttonAudioEnabled;
+    _autoArmAfterCalib = notifier.autoArmAfterCalib;
     _targetSets = ui.targetSets ?? 4;
     _targetReps = ui.targetReps ?? 12;
   }
@@ -94,6 +96,18 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             onChanged: (v) {
               setState(() => _m5ButtonControl = v);
               notifier.setM5ButtonControlEnabled(v);
+            },
+          ),
+          SwitchListTile(
+            title: const Text('Nach Kalibrierung auto starten'),
+            subtitle: const Text(
+              'Nach erfolgreichem Assistenten: Zählen startet automatisch '
+              '(verhindert 0-Reps-Falle). Default an.',
+            ),
+            value: _autoArmAfterCalib,
+            onChanged: (v) {
+              setState(() => _autoArmAfterCalib = v);
+              notifier.setAutoArmAfterCalib(v);
             },
           ),
           SwitchListTile(
@@ -208,10 +222,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             },
           ),
           const Divider(),
-          Text('Kamera (optional)', style: Theme.of(context).textTheme.titleSmall),
+          Text('Form-Check (Kamera, optional)',
+              style: Theme.of(context).textTheme.titleSmall),
           SwitchListTile(
-            title: const Text('Kamera-Validierung freigeben'),
-            subtitle: const Text('Öffnet den Kamera-Validator (IMU bleibt primär)'),
+            title: const Text('Form-Check freigeben'),
+            subtitle: const Text(
+              'Kamera als Form-Lab — ersetzt IMU-Zählung nicht',
+            ),
             value: ui.cameraEnabled,
             onChanged: (v) {
               notifier.setCameraEnabled(v);
@@ -220,8 +237,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           ListTile(
             leading: const Icon(Icons.videocam),
-            title: const Text('Kamera-Session öffnen'),
-            subtitle: const Text('Preview + Pose-Fusion-Stats'),
+            title: const Text('Form-Check öffnen'),
+            subtitle: const Text('Pose, Winkel, Skelett — nur Hinweis'),
             onTap: () {
               Navigator.of(context).push(
                 MaterialPageRoute(

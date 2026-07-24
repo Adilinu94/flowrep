@@ -224,7 +224,7 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kamera-Validierung'),
+        title: const Text('Form-Check'),
         actions: [
           if (cam.isDetecting && _canSwitchLens)
             IconButton(
@@ -263,12 +263,26 @@ class _CameraSessionScreenState extends ConsumerState<CameraSessionScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          Text(
-            'Optional — Zählen läuft weiter über den Sensor (IMU). '
-            'Die Kamera zeigt Pose/Skelett und kann Form bestätigen; '
-            'sie ersetzt die IMU-Zählung nicht. '
-            'Umschalten Front/Rück: Kamera-Symbol oben.',
-            style: Theme.of(context).textTheme.bodyMedium,
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Form-Check (optional)',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• Ersetzt die IMU-Zählung nicht — Home zählt weiter über den Sensor.\n'
+                    '• Braucht Licht, Abstand und Oberkörper im Bild.\n'
+                    '• Pose/Winkel = Form-Feedback; Übereinstimmung ist nur Hinweis.',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ],
+              ),
+            ),
           ),
           if (cam.isDetecting) ...[
             const SizedBox(height: 4),

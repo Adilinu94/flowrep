@@ -50,7 +50,18 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 - [x] Zählen starten (UI; Samples an Engine)  
 - [x] M5 **BtnA**: Start Zählen / Satz beenden (+ Feedback-Settings)  
 - [x] Ghost-Pause Default 45 s (kurze Satz-Pause friert nicht mehr)  
-- [x] Kamera-Session: Pose sichtbar; Front/Rück umschaltbar
+- [x] Kamera-Session: Pose sichtbar; Front/Rück umschaltbar  
+
+### Audit Quick Wins (2026-07-24, Code — siehe AUDIT Appendix E)
+
+- [x] Status-Chip BEREIT/ZÄHLT/GHOST  
+- [x] Auto-Arm nach Calib (default on)  
+- [x] Ghost-Banner Dismiss  
+- [x] Form-Check Copy  
+- [x] Correction-Snackbar  
+- [x] Diagnose collapsed  
+- [x] Session Summary Engine vs korrigiert  
+- [x] Hinweis „Tippe Zählen starten“
 
 ---
 

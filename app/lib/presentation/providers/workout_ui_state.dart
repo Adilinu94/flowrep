@@ -62,6 +62,8 @@ class WorkoutUiState {
   final bool diagnoseOverlayEnabled;
   final bool vbtMetricsEnabled;
   final bool ghostGatePaused;
+  /// User dismissed ghost banner for current pause streak (Audit QW-3).
+  final bool ghostBannerDismissed;
   final bool blindModeEnabled;
   final bool lowBatteryWarned;
   final double? lastSetVelocityLossPct;
@@ -112,6 +114,7 @@ class WorkoutUiState {
     this.diagnoseOverlayEnabled = false,
     this.vbtMetricsEnabled = true,
     this.ghostGatePaused = false,
+    this.ghostBannerDismissed = false,
     this.blindModeEnabled = false,
     this.lowBatteryWarned = false,
     this.lastSetVelocityLossPct,
@@ -161,6 +164,7 @@ class WorkoutUiState {
     bool? diagnoseOverlayEnabled,
     bool? vbtMetricsEnabled,
     bool? ghostGatePaused,
+    bool? ghostBannerDismissed,
     bool? blindModeEnabled,
     bool? lowBatteryWarned,
     double? lastSetVelocityLossPct,
@@ -217,6 +221,8 @@ class WorkoutUiState {
           diagnoseOverlayEnabled ?? this.diagnoseOverlayEnabled,
       vbtMetricsEnabled: vbtMetricsEnabled ?? this.vbtMetricsEnabled,
       ghostGatePaused: ghostGatePaused ?? this.ghostGatePaused,
+      ghostBannerDismissed:
+          ghostBannerDismissed ?? this.ghostBannerDismissed,
       blindModeEnabled: blindModeEnabled ?? this.blindModeEnabled,
       lowBatteryWarned: lowBatteryWarned ?? this.lowBatteryWarned,
       lastSetVelocityLossPct: clearLastSetVelocityLossPct

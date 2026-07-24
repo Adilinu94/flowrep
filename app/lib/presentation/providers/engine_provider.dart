@@ -108,6 +108,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   StreamSubscription<DeviceEvent>? _deviceEventSub;
   /// When true, M5 BtnA drives startCounting / endSetManually.
   bool _m5ButtonControlEnabled = true;
+  /// After successful calib reload, auto-start counting (Audit QW-2). Default on.
+  bool _autoArmAfterCalib = true;
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
@@ -169,10 +171,13 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _noteActivity();
     _pushImuWindow(sample);
     // Refresh ghost / diag flags periodically cheaply each sample.
-    if (_engine.ghostGatePaused != state.ghostGatePaused ||
-        state.diagnoseOverlayEnabled) {
+    final ghostNow = _engine.ghostGatePaused;
+    if (ghostNow != state.ghostGatePaused || state.diagnoseOverlayEnabled) {
       state = state.copyWith(
-        ghostGatePaused: _engine.ghostGatePaused,
+        ghostGatePaused: ghostNow,
+        // New pause streak → show banner again; resume → clear dismiss.
+        ghostBannerDismissed:
+            ghostNow ? state.ghostBannerDismissed : false,
         engineSampleCount: _engine.diagEngineSampleCount,
         engineThreshold: _engine.diagGpThreshold ?? state.engineThreshold,
         engineBaseline: _engine.baselineLevel,
@@ -236,7 +241,14 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     state = state.copyWith(
       isCountingActive: true,
       ghostGatePaused: false,
+      ghostBannerDismissed: false,
     );
+  }
+
+  /// Hide ghost banner for the current pause (counting stays paused until motion).
+  void dismissGhostBanner() {
+    if (!state.ghostGatePaused) return;
+    state = state.copyWith(ghostBannerDismissed: true);
   }
 
   /// Stoppt das Zählen und setzt die Engine zurück auf idle.
@@ -279,14 +291,18 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   /// Bestätigt die Korrektur und speichert [CorrectionEvent] bei Abweichung.
   /// [countedReps] bleibt unverändert; nur [ExerciseSet.correctedReps] wird gesetzt.
-  Future<void> confirmCorrection() async {
+  ///
+  /// Returns a short snackbar message when something was saved / learned
+  /// (Audit QW-5). Null if dismissed without meaningful action.
+  Future<String?> confirmCorrection() async {
     final countedReps = state.correctionSetCountedReps;
     final userReps = state.correctionSetUserReps;
     if (countedReps == null || userReps == null) {
       dismissCorrection();
-      return;
+      return null;
     }
 
+    String? message;
     if (userReps != countedReps) {
       if (_completedSets.isNotEmpty) {
         final lastSet = _completedSets.last;
@@ -311,15 +327,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       }
 
       // Online learning (rule-based, not ML): nudge thresholds from error.
-      await _learnFromCorrection(
+      final learned = await _learnFromCorrection(
         systemCount: countedReps,
         userCount: userReps,
       );
 
       _saveSession();
+      message = learned
+          ? 'Gespeichert — Schwelle angepasst'
+          : 'Gespeichert';
     }
 
     dismissCorrection();
+    return message;
   }
 
   /// Rule-based threshold adaptation after a user correction.
@@ -328,11 +348,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Under-count (system < user) → lower θ (more sensitive).
   /// Persists into [CalibrationStore] so the next session inherits it.
   /// Spec: store CorrectionEvent forever; never claim "KI lernt" in UI copy.
-  Future<void> _learnFromCorrection({
+  /// Returns true when θ was nudged (in-memory and/or persisted).
+  Future<bool> _learnFromCorrection({
     required int systemCount,
     required int userCount,
   }) async {
-    if (systemCount <= 0 && userCount <= 0) return;
+    if (systemCount <= 0 && userCount <= 0) return false;
     final sys = systemCount < 1 ? 1 : systemCount;
     final ratio = sys / (userCount < 1 ? 1 : userCount);
     // ratio > 1: over-count; ratio < 1: under-count
@@ -342,19 +363,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     } else if (ratio < 0.95) {
       factor = (1.0 - 0.15 * (1.0 - ratio)).clamp(0.80, 0.95);
     } else {
-      return; // within noise band
+      return false; // within noise band
     }
 
     _engine.nudgeDirectionAwareThreshold(factor);
 
     final deviceId = _bleDeviceId;
-    if (deviceId == null || isMock) return;
+    if (deviceId == null || isMock) return true;
     try {
       final profile = await _calibrationStore.loadProfile(
         exerciseId: _engine.exerciseId,
         deviceId: deviceId,
       );
-      if (profile == null || profile.migratedFrom != 0) return;
+      if (profile == null || profile.migratedFrom != 0) return true;
       final newTheta = (profile.theta * factor).clamp(30.0, 250.0);
       final updated = ExerciseProfile(
         exerciseId: profile.exerciseId,
@@ -389,6 +410,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     } catch (_) {
       // Non-fatal — in-memory nudge already applied.
     }
+    return true;
   }
 
   /// Schließt den Korrektur-Dialog ohne zu speichern.
@@ -470,6 +492,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   void setM5ButtonControlEnabled(bool enabled) {
     _m5ButtonControlEnabled = enabled;
+  }
+
+  bool get autoArmAfterCalib => _autoArmAfterCalib;
+
+  void setAutoArmAfterCalib(bool enabled) {
+    _autoArmAfterCalib = enabled;
   }
 
   void setButtonFeedback({bool? haptic, bool? audio}) {
@@ -1096,7 +1124,20 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   /// Reload calibration (called after CalibrationWizardScreen saves).
-  void reloadCalibration() => _loadCalibration();
+  /// When [autoArmAfterCalib] is on and device is connected, starts counting
+  /// so users do not hit the silent 0-rep trap (Audit QW-2).
+  void reloadCalibration() {
+    unawaited(_reloadCalibrationAndMaybeArm());
+  }
+
+  Future<void> _reloadCalibrationAndMaybeArm() async {
+    await _loadCalibration();
+    if (!_autoArmAfterCalib) return;
+    if (!state.isConnected || !state.hasCalibration) return;
+    if (state.isCountingActive) return;
+    startCounting();
+    AppLogger.i('Auto-arm after calib → startCounting');
+  }
 
   // === CSV Recording ===
 
