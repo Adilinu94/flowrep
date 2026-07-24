@@ -139,6 +139,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | Audit follow-up: SensorHealth, Placement, SetQuality, Active-Set HUD — App. F |
 | 2026-07-24 | Audit Quick Wins (Status-Chip, Auto-Arm, Form-Check, Ghost dismiss, …) — `AUDIT_FULL_REPO_IMPROVEMENTS.md` App. E |
 | 2026-07-24 | A1–A5 Session partial; BtnA/Ghost/Kamera; Rest-Checkliste 4 Punkte |
 | 2026-07-23 | Post-1.0 Abschnitt Doc 15 (V1.1 schlank, A2 DONE, Already) |

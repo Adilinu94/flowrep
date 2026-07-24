@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/coaching/rule_coaching.dart';
+import '../../domain/metrics/form_quality.dart';
+import '../../domain/metrics/set_quality_score.dart';
 import '../../domain/metrics/velocity_metrics.dart';
 import '../../domain/models/workout_models.dart';
 import 'rep_timeline.dart';
@@ -122,11 +124,18 @@ class SessionSummaryDialog extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               RepTimeline(reps: setList[i].reps, height: 40),
-              if (VelocityMetrics.setVelocityLossPct(setList[i].reps) != null)
-                Text(
-                  'Loss ${VelocityMetrics.setVelocityLossPct(setList[i].reps)!.toStringAsFixed(0)} %',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
+              Builder(
+                builder: (context) {
+                  final q = SetQualityScore.forSet(reps: setList[i].reps);
+                  final form = FormQuality.setScore(setList[i].reps);
+                  return Text(
+                    'Qualität: ${q.label} (${q.percent}%)'
+                    '${form != null ? ' · Konsistenz ${form.round()}%' : ''}'
+                    '${VelocityMetrics.setVelocityLossPct(setList[i].reps) != null ? ' · Loss ${VelocityMetrics.setVelocityLossPct(setList[i].reps)!.toStringAsFixed(0)}%' : ''}',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  );
+                },
+              ),
             ],
             if (tips.isNotEmpty) ...[
               const SizedBox(height: 12),

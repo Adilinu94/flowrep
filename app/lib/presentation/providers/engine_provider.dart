@@ -18,6 +18,9 @@ import '../../domain/config/engine_constants.dart';
 import '../../domain/device_event.dart';
 import '../../domain/exercises/exercise_targets.dart';
 import '../../domain/metrics/form_quality.dart';
+import '../../domain/metrics/placement_energy_monitor.dart';
+import '../../domain/metrics/sensor_health_monitor.dart';
+import '../../domain/metrics/set_quality_score.dart';
 import '../../domain/metrics/velocity_metrics.dart';
 import '../../domain/ml/exercise_classifier.dart';
 import '../../domain/models/exercise_profile.dart';
@@ -96,6 +99,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   final ExerciseClassifier _classifier = HeuristicExerciseClassifier();
   final List<double> _imuWindowBuf = <double>[];
   static const int _imuWindowMax = 104; // ~2 s @ 52 Hz
+  final SensorHealthMonitor _sensorHealth = SensorHealthMonitor();
+  final PlacementEnergyMonitor _placement = PlacementEnergyMonitor();
+  /// Sticky flags for the current set (reset on startCounting / set end).
+  bool _setHadPacketLoss = false;
+  bool _setHadGhostPause = false;
+  bool _setHadSensorUnhealthy = false;
   Timer? _idleDisconnectTimer;
   static const Duration _idleDisconnectAfter = Duration(minutes: 15);
   bool _adaptiveRestEnabled = true;
@@ -132,7 +141,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   bool get vbtEnabled => _vbtEnabled;
 
   void _bind() {
-    _samplesSub = _sensorProvider.samples.listen(_onSampleGated);
+    _samplesSub = _sensorProvider.samples.listen(_onSample);
     _eventsSub = _engine.events.listen(_onEngineEvent);
     _recorderSamplesSub = _sensorProvider.samples.listen(_recorder.onSample);
     _connectionSub = _sensorProvider.connectionState.listen(
@@ -161,23 +170,59 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     AppLogger.i('M5 BtnA → endSetManually');
   }
 
-  /// Zähl-Gating: Samples werden nur an die Engine weitergeleitet,
-  /// wenn der Benutzer das Zählen explizit gestartet hat.
-  /// Verhindert „App zählt permanent bei Alltagsbewegung“.
-  void _onSampleGated(dynamic sample) {
-    if (!state.isCountingActive) return;
+  /// All connected samples update health; only counting forwards to engine.
+  /// Health runs even when idle so bad gyro-rest is visible before start.
+  void _onSample(dynamic sample) {
     if (sample is! SensorSample) return;
+
+    _sensorHealth.push(
+      gyroMagnitude: sample.gyroMagnitude,
+      accelMagnitude: sample.accelMagnitude,
+    );
+    final healthChanged =
+        _sensorHealth.isUnhealthy != state.sensorHealthUnhealthy;
+    if (_sensorHealth.isUnhealthy) {
+      _setHadSensorUnhealthy = true;
+    }
+
+    if (!state.isCountingActive) {
+      if (healthChanged) {
+        state = state.copyWith(
+          sensorHealthUnhealthy: _sensorHealth.isUnhealthy,
+          sensorHealthMessage: _sensorHealth.message,
+          clearSensorHealthMessage: !_sensorHealth.isUnhealthy,
+        );
+      }
+      return;
+    }
+
     _engine.processSample(sample);
     _noteActivity();
     _pushImuWindow(sample);
-    // Refresh ghost / diag flags periodically cheaply each sample.
+
+    // Placement: after engine update so diagGpAbs is current.
+    _placement.push(
+      accelMagnitude: sample.accelMagnitude,
+      gpAbs: _engine.diagGpAbs,
+      theta: _engine.diagGpThreshold ?? state.calibratedThreshold,
+    );
+
     final ghostNow = _engine.ghostGatePaused;
-    if (ghostNow != state.ghostGatePaused || state.diagnoseOverlayEnabled) {
+    if (ghostNow) _setHadGhostPause = true;
+
+    final needUi = ghostNow != state.ghostGatePaused ||
+        healthChanged ||
+        _placement.shouldWarn != state.placementWarn ||
+        state.diagnoseOverlayEnabled;
+    if (needUi) {
       state = state.copyWith(
         ghostGatePaused: ghostNow,
-        // New pause streak → show banner again; resume → clear dismiss.
         ghostBannerDismissed:
             ghostNow ? state.ghostBannerDismissed : false,
+        sensorHealthUnhealthy: _sensorHealth.isUnhealthy,
+        sensorHealthMessage: _sensorHealth.message,
+        clearSensorHealthMessage: !_sensorHealth.isUnhealthy,
+        placementWarn: _placement.shouldWarn,
         engineSampleCount: _engine.diagEngineSampleCount,
         engineThreshold: _engine.diagGpThreshold ?? state.engineThreshold,
         engineBaseline: _engine.baselineLevel,
@@ -232,6 +277,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
     _engine.resetGhostGate();
     _imuWindowBuf.clear();
+    _placement.reset();
+    _setHadPacketLoss = false;
+    _setHadGhostPause = false;
+    _setHadSensorUnhealthy = _sensorHealth.isUnhealthy;
     // Re-apply profile so gP/gyroMag thresholds are live even if connect
     // raced handleReconnect before the first load finished.
     unawaited(_loadCalibration());
@@ -242,6 +291,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       isCountingActive: true,
       ghostGatePaused: false,
       ghostBannerDismissed: false,
+      placementWarn: false,
     );
   }
 
@@ -842,7 +892,15 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         state = state.copyWith(isConnecting: true, isConnected: false);
         _refreshTimer?.cancel();
       case SensorConnectionState.disconnected:
-        state = state.copyWith(isConnected: false, isConnecting: false);
+        _sensorHealth.reset();
+        _placement.reset();
+        state = state.copyWith(
+          isConnected: false,
+          isConnecting: false,
+          sensorHealthUnhealthy: false,
+          clearSensorHealthMessage: true,
+          placementWarn: false,
+        );
         _refreshTimer?.cancel();
         _engine.handleDisconnect();
         // Auto-Reconnect (P0-4) only when not user-initiated
@@ -925,6 +983,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (total <= 0) return;
     final underrunRate = provider.jitterDroppedFrames / total;
     if (underrunRate > kPacketLossWarnThreshold && state.isCountingActive) {
+      _setHadPacketLoss = true;
       if (state.errorText == null ||
           !(state.errorText!.contains('Paketverlust'))) {
         state = state.copyWith(
@@ -993,9 +1052,24 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _completedSets.add(completedSet);
     final loss = VelocityMetrics.setVelocityLossPct(completedSet.reps);
     final toward = state.completedSetsTowardTarget + 1;
+    final quality = SetQualityScore.forSet(
+      reps: completedSet.reps,
+      packetLossWarned: _setHadPacketLoss,
+      sensorUnhealthy: _setHadSensorUnhealthy || _sensorHealth.isUnhealthy,
+      ghostPausedDuringSet: _setHadGhostPause,
+    );
+    // Reset per-set sticky flags for the next set.
+    _setHadPacketLoss = false;
+    _setHadGhostPause = false;
+    _setHadSensorUnhealthy = _sensorHealth.isUnhealthy;
+    _placement.reset();
     state = state.copyWith(
       lastSetVelocityLossPct: loss,
       completedSetsTowardTarget: toward,
+      lastSetQualityScore: quality.score01,
+      lastSetQualityLabel: '${quality.label} (${quality.percent}%)',
+      lastQualityScore: quality.score01,
+      placementWarn: false,
     );
     _saveSession();
   }

@@ -18,9 +18,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - Hint when calibrated but not counting: „Tippe Zählen starten…“
 - Tests: `app/test/quick_wins_audit_test.dart`
 
+### Added (Audit follow-up, code-only)
+
+- **Sensor health** monitor: stuck high gyro at rest → red banner (pre-count samples too)
+- **Placement energy** monitor: motion + weak gP vs θ → re-calib hint
+- **Set quality score** (consistency + loss/ghost/sensor flags) on set end + session summary
+- **Active Set HUD**: while counting, rep-first layout (hide setup clutter)
+- Tests: `app/test/sensor_health_and_quality_test.dart`
+
 ### Changed
 
 - Debug `SignalDebugView` collapsed by default (ExpansionTile)
+- Home: setup vs active-set body split
 
 ## [1.0.0-rc.1] — 2026-07-23
 

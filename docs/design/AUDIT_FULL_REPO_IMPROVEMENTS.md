@@ -755,3 +755,19 @@ Umgesetzt und getestet (siehe `app/test/quick_wins_audit_test.dart`):
 | 7 | Doc 13 A1–A5 formal [x] | **offen** | braucht Operator-Zahlen |
 
 **Nicht** angefasst: `_useNewPipeline`, Vision-Counts, θ-Algorithmen.
+
+---
+
+## Appendix F — Agent follow-up (2026-07-24, code-only)
+
+Implemented without physical HW:
+
+| Item | Status | Evidence |
+|------|--------|----------|
+| Sensor health (gyro rest anomaly) | **done** | `sensor_health_monitor.dart` + banners; samples evaluated even when not counting |
+| Placement / weak-gP while moving | **done** | `placement_energy_monitor.dart` + amber banner |
+| Set quality score | **done** | `set_quality_score.dart`; summary + last-set label |
+| Active Set HUD | **done** | `home_screen` splits setup vs counting |
+| Tests | **done** | `sensor_health_and_quality_test.dart` |
+
+Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.

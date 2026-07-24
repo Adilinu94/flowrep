@@ -70,6 +70,13 @@ class WorkoutUiState {
   final String? exerciseSuggestion;
   final double? exerciseSuggestionConfidence;
 
+  // Audit: sensor health + placement + set quality
+  final bool sensorHealthUnhealthy;
+  final String? sensorHealthMessage;
+  final bool placementWarn;
+  final double? lastSetQualityScore;
+  final String? lastSetQualityLabel;
+
   // Exercise targets (FR-B9)
   final int? targetSets;
   final int? targetReps;
@@ -120,6 +127,11 @@ class WorkoutUiState {
     this.lastSetVelocityLossPct,
     this.exerciseSuggestion,
     this.exerciseSuggestionConfidence,
+    this.sensorHealthUnhealthy = false,
+    this.sensorHealthMessage,
+    this.placementWarn = false,
+    this.lastSetQualityScore,
+    this.lastSetQualityLabel,
     this.targetSets,
     this.targetReps,
     this.completedSetsTowardTarget = 0,
@@ -172,6 +184,13 @@ class WorkoutUiState {
     String? exerciseSuggestion,
     bool clearExerciseSuggestion = false,
     double? exerciseSuggestionConfidence,
+    bool? sensorHealthUnhealthy,
+    String? sensorHealthMessage,
+    bool clearSensorHealthMessage = false,
+    bool? placementWarn,
+    double? lastSetQualityScore,
+    String? lastSetQualityLabel,
+    bool clearLastSetQuality = false,
     int? targetSets,
     int? targetReps,
     bool clearTargets = false,
@@ -234,6 +253,18 @@ class WorkoutUiState {
       exerciseSuggestionConfidence: clearExerciseSuggestion
           ? null
           : (exerciseSuggestionConfidence ?? this.exerciseSuggestionConfidence),
+      sensorHealthUnhealthy:
+          sensorHealthUnhealthy ?? this.sensorHealthUnhealthy,
+      sensorHealthMessage: clearSensorHealthMessage
+          ? null
+          : (sensorHealthMessage ?? this.sensorHealthMessage),
+      placementWarn: placementWarn ?? this.placementWarn,
+      lastSetQualityScore: clearLastSetQuality
+          ? null
+          : (lastSetQualityScore ?? this.lastSetQualityScore),
+      lastSetQualityLabel: clearLastSetQuality
+          ? null
+          : (lastSetQualityLabel ?? this.lastSetQualityLabel),
       targetSets: clearTargets ? null : (targetSets ?? this.targetSets),
       targetReps: clearTargets ? null : (targetReps ?? this.targetReps),
       completedSetsTowardTarget:

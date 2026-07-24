@@ -61,7 +61,14 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 - [x] Correction-Snackbar  
 - [x] Diagnose collapsed  
 - [x] Session Summary Engine vs korrigiert  
-- [x] Hinweis „Tippe Zählen starten“
+- [x] Hinweis „Tippe Zählen starten“  
+
+### Audit follow-up code (Appendix F — ohne HW)
+
+- [x] Sensor-Health (Gyro-Ruhe-Anomalie) Banner  
+- [x] Placement/Achsen-Schwäche Banner  
+- [x] Set-Quality Score (Summary + letzter Satz)  
+- [x] Active-Set HUD (Zählen = Rep-first)
 
 ---
 
