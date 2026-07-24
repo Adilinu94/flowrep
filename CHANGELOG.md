@@ -26,10 +26,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - **Active Set HUD**: while counting, rep-first layout (hide setup clutter)
 - Tests: `app/test/sensor_health_and_quality_test.dart`
 - **Slow-rep searchback shadow** (Audit C-06): near-miss gP excursions under product peak gate are logged only (`slowRepShadowCount` / diagnose `slowShadow=`); live counts unchanged
+- **BLE dual-name scan** (Audit F-03): App finds `FlowRep` **or** legacy `GymTracker`; firmware advertise default `FlowRep` (reflash to apply); diagnose line `health=` / `place=`
 
 ### Docs
 
 - Audit Appendix G: slow-rep shadow
+- Audit Appendix H: BLE dual-name
+- `protocol.yaml` advertise_names
 
 ### Changed
 

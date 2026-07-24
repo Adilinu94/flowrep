@@ -24,7 +24,8 @@
 // Event IDs (must match app DeviceEventId)
 #define EVT_COUNT_PRIMARY 0x01  // BtnA: app starts counting or ends set
 
-#define DEVICE_NAME "GymTracker"
+// Product advertise name. App dual-scans "FlowRep" + legacy "GymTracker".
+#define DEVICE_NAME "FlowRep"
 #define SAMPLE_RATE_HZ 50
 #define SAMPLES_PER_BATCH 4
 #define PROTOCOL_VERSION 2  // siehe docs/01_protocol.yaml versions:
@@ -234,7 +235,7 @@ void setup() {
   auto cfg = M5.config();
   M5.begin(cfg);
   M5.Display.setTextSize(2);
-  M5.Display.println("Gym Tracker");
+  M5.Display.println("FlowRep");
   M5.Display.println("Bereit");
 
   // ---- Aggressive IMU initialization ----

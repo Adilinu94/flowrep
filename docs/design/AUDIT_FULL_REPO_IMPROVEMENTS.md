@@ -787,3 +787,16 @@ Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
 | **UI** | Diagnose overlay: `slowShadow=N` |
 | **Tests** | `app/test/slow_rep_shadow_test.dart` |
 | **Promote to live?** | Only after labeled HW sets show shadow ≈ true missed reps and low false shadow on wiggles |
+
+---
+
+## Appendix H — BLE dual-name (2026-07-24)
+
+| | |
+|--|--|
+| **Problem** | Product = FlowRep, stick still advertised as GymTracker (or vice versa after rename) |
+| **App** | `BleSensorProvider.deviceNames = [FlowRep, GymTracker]`; `isFlowRepDeviceName` |
+| **Firmware** | `DEVICE_NAME "FlowRep"` — **requires reflash**; unflashed sticks stay GymTracker and still connect via dual-scan |
+| **UUIDs** | Unchanged (`fee0`…) — identity is UUID + dual name |
+| **UI copy** | Connect / errors say FlowRep-Sensor; mention both names in not-found text |
+| **Diagnose** | Extra line `health=` / `place=` for sensor + placement monitors |

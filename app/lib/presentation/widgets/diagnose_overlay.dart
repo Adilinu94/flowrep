@@ -62,6 +62,15 @@ class DiagnoseOverlay extends StatelessWidget {
               ),
             ),
             Text(
+              'health=${uiState.sensorHealthUnhealthy ? "BAD" : "ok"}  '
+              'place=${uiState.placementWarn ? "WARN" : "ok"}',
+              style: TextStyle(
+                color: (uiState.sensorHealthUnhealthy || uiState.placementWarn)
+                    ? Colors.orangeAccent
+                    : Colors.greenAccent,
+              ),
+            ),
+            Text(
               'shadow pipeline L=${shadow.legacyReps} N=${shadow.newReps} '
               'Δ=${shadow.diff}  magShadow=${engine.magnitudeShadowReps} '
               'slowShadow=${engine.slowRepShadowCount}',

@@ -15,8 +15,9 @@ class BleErrorMapper {
     if (msg.contains('nicht gefunden') ||
         msg.contains('timeout') ||
         msg.contains('not found')) {
-      return 'GymTracker nicht gefunden. '
-          'Ist der Stick eingeschaltet und in der Nähe?';
+      return 'FlowRep-Sensor nicht gefunden. '
+          'Stick eingeschaltet und in der Nähe? '
+          '(BLE-Name: FlowRep oder GymTracker)';
     }
 
     if (msg.contains('mtu')) {

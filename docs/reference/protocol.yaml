@@ -15,7 +15,11 @@
 protocol_version: 2
 
 service:
-  name: "GymTracker"
+  # GATT service is identified by UUID, not this label.
+  # BLE advertise local name: prefer "FlowRep"; legacy firmware "GymTracker".
+  # App dual-scans both (BleSensorProvider.deviceNames).
+  name: "FlowRep"
+  advertise_names: ["FlowRep", "GymTracker"]
   characteristics:
 
     - name: "SensorData"

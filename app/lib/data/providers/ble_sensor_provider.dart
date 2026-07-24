@@ -12,7 +12,10 @@ import 'batch_dedup_tracker.dart';
 import 'sensor_provider.dart';
 
 /// Real hardware implementation of ISensorProvider. Talks to the
-/// "GymTracker" GATT service defined in docs/reference/protocol.yaml.
+/// FlowRep GATT service (UUIDs in docs/reference/protocol.yaml).
+///
+/// Advertise name: product prefers **FlowRep**; legacy firmware used
+/// **GymTracker**. Scan accepts both (Audit F-03 dual-name).
 ///
 /// Hardware-verified (2026-07-18, commit accf44d): live logcat against a
 /// real M5StickC Plus2 showed protocol v2 parsing correctly at ~11.8 Hz
@@ -22,7 +25,29 @@ import 'sensor_provider.dart';
 /// state/threshold in that same test - a WorkoutEngine concern, not a
 /// connection/parsing one, and outside this file's scope.
 class BleSensorProvider implements ISensorProvider {
-  static const String deviceName = 'GymTracker';
+  /// Preferred BLE advertise name (new firmware / product branding).
+  static const String deviceNamePreferred = 'FlowRep';
+
+  /// Legacy advertise name still on many flashed sticks.
+  static const String deviceNameLegacy = 'GymTracker';
+
+  /// All names accepted when scanning (order = preference for filter lists).
+  static const List<String> deviceNames = [
+    deviceNamePreferred,
+    deviceNameLegacy,
+  ];
+
+  /// Back-compat alias = preferred name.
+  static const String deviceName = deviceNamePreferred;
+
+  /// True if [platformName] is a known FlowRep stick advertise name.
+  static bool isFlowRepDeviceName(String platformName) {
+    final n = platformName.trim();
+    for (final allowed in deviceNames) {
+      if (n == allowed) return true;
+    }
+    return false;
+  }
 
   // UUIDs are placeholders - the firmware side (firmware/src/main.cpp) must
   // define and advertise the SAME UUIDs. Neither side is authoritative by
@@ -153,26 +178,30 @@ class BleSensorProvider implements ISensorProvider {
     // and does not use scan results to infer location, so no
     // ACCESS_FINE_LOCATION is requested on Android 12+ (see ADR-007 and
     // AndroidManifest.xml in this repo).
+    // Dual-name: FlowRep (preferred) + GymTracker (legacy flashes).
     await FlutterBluePlus.startScan(
       timeout: const Duration(seconds: 15),
-      withNames: [deviceName],
+      withNames: deviceNames,
     );
 
     late final ScanResult result;
     try {
       result = await FlutterBluePlus.scanResults
           .expand((results) => results)
-          .firstWhere((r) => r.device.platformName == deviceName)
+          .firstWhere((r) => isFlowRepDeviceName(r.device.platformName))
           .timeout(
             const Duration(seconds: 15),
             onTimeout: () => throw StateError(
-              'GymTracker nicht gefunden (15s Scan). '
-              'Stick eingeschaltet? Display zeigt "Gym Tracker Bereit"?',
+              'FlowRep-Sensor nicht gefunden (15s Scan). '
+              'Stick eingeschaltet? Name im BLE-Scan: FlowRep oder GymTracker.',
             ),
           );
     } finally {
       await FlutterBluePlus.stopScan();
     }
+    AppLogger.i(
+      'BLE connected advertise name="${result.device.platformName}"',
+    );
 
     _device = result.device;
     await _device!.connect(

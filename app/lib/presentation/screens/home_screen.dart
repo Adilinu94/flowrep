@@ -627,7 +627,7 @@ class HomeScreen extends ConsumerWidget {
       return isMock ? 'Verbunden (Mock)' : 'Verbunden (BLE)';
     }
     if (uiState.isConnecting) {
-      return isMock ? 'Verbinde (Mock) …' : 'Verbinde mit GymTracker …';
+      return isMock ? 'Verbinde (Mock) …' : 'Verbinde mit FlowRep …';
     }
     return 'Getrennt';
   }

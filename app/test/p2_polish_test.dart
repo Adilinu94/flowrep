@@ -11,7 +11,7 @@ void main() {
   group('BleErrorMapper (P2-4)', () {
     test('mappt timeout auf nutzerfreundliche Meldung', () {
       final msg = BleErrorMapper.toUserMessage(Exception('scan timeout'));
-      expect(msg.toLowerCase(), contains('gymtracker'));
+      expect(msg.toLowerCase(), contains('flowrep'));
       expect(msg.contains('PlatformException'), isFalse);
     });
 

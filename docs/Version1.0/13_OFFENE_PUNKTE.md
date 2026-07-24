@@ -72,7 +72,13 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 
 ### Algorithmus (shadow only — Appendix G)
 
-- [x] Slow-Rep Searchback **Shadow** (`slowRepShadowCount`, kein Live-Count)
+- [x] Slow-Rep Searchback **Shadow** (`slowRepShadowCount`, kein Live-Count)  
+
+### BLE branding (Appendix H)
+
+- [x] Dual-Scan FlowRep + GymTracker (App)  
+- [x] Firmware `DEVICE_NAME` → FlowRep (Re-Flash nötig für neuen Namen)  
+- [ ] Operator: optional reflash; unflashed stick bleibt GymTracker und verbindet weiter
 
 ---
 
