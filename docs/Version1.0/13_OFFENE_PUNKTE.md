@@ -1,25 +1,27 @@
 # FlowRep 1.0 — Offene Punkte (konsolidiert)
 
-> **Stand**: 2026-07-24 (HW-Session A1–A5 partial)  
+> **Stand**: 2026-07-24 (Repo-Hygiene + Code-Welle Audit/Settings; HW A1–A5 partial)  
 > **Git**: `main` = `origin/main`; RC-Tag `v1.0.0-rc.1`  
 > **Zweck**: eine Seite für „was ist fertig / was steht noch aus“ aus dem gesamten Ordner `docs/Version1.0/`.  
-> **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09, Session `docs/hardware/sessions/2026-07-24/`.  
+> **Quellen**: 00, 10, 11, 12, HW-Plan, Session `docs/hardware/sessions/2026-07-24/`, Audit.  
 > **Dieses Ziel**: alle Optionals außer C1/C2/C4; B5 bleibt off; Motion-B* ehrlich env-deferred.  
-> **Post-1.0**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) — Code weitgehend da; A1–A5 physisch weiter Gate.
+> **Post-1.0**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) — Code weitgehend da; A1–A5 physisch weiter Gate.  
+> **HW-Testplan**: [PLAN_HW_TEST_AKTUELL](../hardware/PLAN_HW_TEST_AKTUELL.md)
 
 ---
 
-## 0. Repo / Commit-Status (diese Session)
+## 0. Repo / Commit-Status
 
 | Check | Status |
 |-------|--------|
-| Feature-Code (P0–P2, CV-Scaffold, manual set end, correction learn, gP harden) | **committed + pushed** |
-| Living Tracker 10 / 11 / 12 | **committed + pushed** |
-| Untracked nur: `data/`, `app/android/build/`, `*.log` | **bewusst nicht im Repo** (gitignore / Artefakte) |
+| Feature-Code (P0–P2, CV, Trust-UX, Prefs, Dual-BLE, Agreement, Shadow) | **committed + pushed** (`main`) |
+| Living Tracker 10–13 + HW-Plan | **committed + pushed** |
+| Artefakte `data/`, `*.log`, `app/build/`, `app/android/build/` | **gitignore** — nicht committen |
 | Force-Push | verboten — nicht genutzt |
 | `_useNewPipeline` | bleibt **`false`** |
 
-**Kein ausstehender Code-Commit** für die 1.0-Codepfade, die in 00/12 als erledigt markiert sind. Offen ist vor allem **physische Validierung + Store-Admin**.
+**Code-Seite 1.0-Produktpfad:** Feature-Arbeit aus Audit/Settings ist im Repo.  
+**Offen vor „Release honesty“:** physische A1–A5-Kurzchecks + Store-Admin (C1/C2/C4).
 
 ---
 
@@ -206,6 +208,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | Repo-Hygiene: gitignore data/logs/android-build; Docs/README/12/13 + HW-Plan Link; Code Audit/Prefs complete |
 | 2026-07-24 | A1–A5 → [~] nach HW-Session; Rest-Checkliste 4 Punkte; Evidence HW_SESSION_A1_A5 |
 | 2026-07-23 | Doc 15 verlinkt: Post-1.0 Gate, §6b Already, Datei-Index + 1.0-DoD Punkt 6 |
 | 2026-07-23 | B* env-probe + ehrliche Deferrals; D3 headless Webcam; D4 kein AVD |

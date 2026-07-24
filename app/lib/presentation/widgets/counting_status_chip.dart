@@ -40,7 +40,7 @@ class CountingStatusChip extends StatelessWidget {
     final (label, color, icon) = _visual(kind, uiState);
 
     return Material(
-      color: color.withOpacity(0.15),
+      color: color.withValues(alpha: 0.15),
       borderRadius: BorderRadius.circular(24),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),

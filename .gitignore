@@ -2,6 +2,7 @@
 app/.dart_tool/
 app/.packages
 app/build/
+app/android/build/
 app/.flutter-plugins
 app/.flutter-plugins-dependencies
 **/*.g.dart
@@ -15,7 +16,7 @@ app/windows/
 firmware/.pio/
 firmware/.vscode/
 
-# IDE (gefunden als untracked beim Aufräumen, Session Claude-9936160f 2026-07-16)
+# IDE
 app/.idea/
 *.iml
 
@@ -23,6 +24,8 @@ app/.idea/
 .DS_Store
 # Windows-Shell-Artefakt, tauchte wiederholt im Repo-Root auf
 nul
+Thumbs.db
+desktop.ini
 
 # Backups & interne Verzeichnisse (nicht ins Repo)
 _backup_app/
@@ -31,12 +34,23 @@ _backup_app/
 # Python Bytecode
 __pycache__/
 *.pyc
+*.pyo
 
-# Temporaere Dateien / Dumps
+# Temporaere Dateien / Dumps / Logs (Root + App)
+*.log
 flutter_test_verify_claude.txt
 screen_calib.png
 flowrep_device_dump.bin
+analyze_main.log
+test_main.log
+
+# Device dumps, Secure-Storage pulls, lokale DB-Kopien (DSGVO / Secrets)
+data/
 
 # CV-05 local artifacts (downloaded models / session CSVs)
 tools/models/
 tools/logs/
+
+# Optional local agent / session noise
+.grok/
+.memory/

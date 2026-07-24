@@ -1,10 +1,10 @@
 # FlowRep 1.0 — Implementierungsstatus (Living Tracker)
 
-> **Stand**: 2026-07-23  
-> **Commit-Basis**: siehe `git log` / `origin/main`  
+> **Stand**: 2026-07-24  
+> **Commit-Basis**: `origin/main` (Audit/Trust/Prefs/Dual-BLE/Agreement/HW-Plan)  
 > **Zweck**: ehrlicher Ledger — erledigt vs. offen. Kein „alles grün“ ohne Evidence.
 
-Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [15_POST_1.0_BACKLOG](15_VERBESSERUNGEN_EXTERNE_REPOS.md) · [HW_VALIDATION](../hardware/sessions/2026-07-23/HW_VALIDATION.md)
+Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBEREITUNG.md) · [11_HARDWARE_QA](11_HARDWARE_QA_CHECKLISTE.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [15_POST_1.0_BACKLOG](15_VERBESSERUNGEN_EXTERNE_REPOS.md) · [HW-Plan aktuell](../hardware/PLAN_HW_TEST_AKTUELL.md) · [Audit](../design/AUDIT_FULL_REPO_IMPROVEMENTS.md)
 
 ---
 
@@ -36,7 +36,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 |----|---------|--------|
 | P1-1 | Global Error Handler | [x] |
 | P1-2 | App-Lifecycle | [x] |
-| P1-3 | Settings-Screen | [x] |
+| P1-3 | Settings-Screen + Prefs-Persistenz | [x] | `UserPrefsStore` (Toggles + Übungsziele) |
 | P1-4 | iOS-Konfiguration | [x] (plist; Geräte-iOS separat) |
 | P1-5 | Sound-Asset | [x] |
 | P1-6 | App-Icon + Splash | [x] |
@@ -78,8 +78,21 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 | Peak-Amplitude-Gate in Excursion | [x] | Peak ≥ 1.2×θ |
 | Kurze/kleine Wiggles zählen nicht | [x] Unit | `tool_count_sim_test.dart` |
 | Echte Curl-Form zählt | [x] Unit | sin-Excursion ~800 ms, Peak ≥100 °/s |
-| HW: Wackeln vs. Curl am Arm | [~] | physisch offen / User-Retest |
+| HW: Wackeln vs. Curl am Arm | [~] | physisch offen / User-Retest (P0.5) |
+| Slow-rep searchback | **shadow only** | `slowRepShadowCount` / diag — kein Live-Count |
 | `_useNewPipeline` | **false** | G7 — nicht freigeben ohne Shadow-DoD |
+
+### Trust-UX / Audit (2026-07-24)
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| Status-Chip BEREIT/ZÄHLT/GHOST | [x] | `counting_status_chip.dart` |
+| Auto-Arm nach Calib (persisted) | [x] | default on |
+| Sensor health / placement banners | [x] | |
+| Set quality + Active-Set HUD | [x] | |
+| BLE Dual-Scan FlowRep+GymTracker | [x] | FW-Name Re-Flash optional |
+| Vision Agreement Badge | [x] | IMU authoritative |
+| Settings full suite + targets prefs | [x] | |
 
 ---
 
@@ -100,8 +113,8 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Check | Status | Stand |
 |-------|--------|-------|
-| `flutter analyze lib` | [x] | 0 issues (2026-07-23, optional-goal final) |
-| `flutter test` | [x] | 405 green (CV-07 skeleton + E9 file sink + no-pose frames) |
+| `flutter analyze lib` | [x] | 0 issues target (2026-07-24 hygiene: const + withValues) |
+| `flutter test` | [x] | Suite grün; Prefs/Agreement/Shadow/BLE-Namen-Tests ergänzt |
 | `flutter build apk --release` | [x] | ~108 MB; TFLite AGP9-Workaround |
 | Force-Push / Test-Abschwächung | verboten | siehe 00_UEBERSICHT |
 
@@ -139,6 +152,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | Repo-Hygiene + Prefs-Suite/Targets/Agreement/Dual-BLE/Shadow im Ledger; Link HW-Plan |
 | 2026-07-24 | Audit follow-up: SensorHealth, Placement, SetQuality, Active-Set HUD — App. F |
 | 2026-07-24 | Audit Quick Wins (Status-Chip, Auto-Arm, Form-Check, Ghost dismiss, …) — `AUDIT_FULL_REPO_IMPROVEMENTS.md` App. E |
 | 2026-07-24 | A1–A5 Session partial; BtnA/Ghost/Kamera; Rest-Checkliste 4 Punkte |

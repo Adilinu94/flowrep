@@ -73,7 +73,7 @@ class UserPrefsStore {
 
   /// Load all known prefs (missing keys → product defaults).
   Future<UserPrefsSnapshot> loadAll() async {
-    final defaults = const UserPrefsSnapshot();
+    const defaults = UserPrefsSnapshot();
     return UserPrefsSnapshot(
       autoArmAfterCalib: await _loadBool(
         keyAutoArmAfterCalib,

@@ -37,12 +37,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - Audit Appendix G: slow-rep shadow
 - Audit Appendix H: BLE dual-name
 - Audit Appendix I: vision agreement badge
+- Audit Appendix J: settings prefs persistence
+- HW plan: `docs/hardware/PLAN_HW_TEST_AKTUELL.md` (P0–P3)
+- Living docs/README/root README auf Stand 2026-07-24
 - `protocol.yaml` advertise_names
 
 ### Changed
 
 - Debug `SignalDebugView` collapsed by default (ExpansionTile)
 - Home: setup vs active-set body split
+
+### Chore
+
+- `.gitignore`: `data/`, `*.log`, `app/android/build/`, backup noise
+- Analyze hygiene: `prefer_const` prefs; `withValues` status chip
 
 ## [1.0.0-rc.1] — 2026-07-23
 
