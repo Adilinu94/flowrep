@@ -121,16 +121,16 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 ## Post-1.0 Backlog (Doc 15) — nicht 1.0-DoD
 
-> Details, Ticket-IDs, Already/Delta: **[15_VERBESSERUNGEN_EXTERNE_REPOS.md](15_VERBESSERUNGEN_EXTERNE_REPOS.md)**.
+> Details + Matrix: **[15_VERBESSERUNGEN_EXTERNE_REPOS.md](15_VERBESSERUNGEN_EXTERNE_REPOS.md)**.
 
-| Phase | Fokus | Gate |
-|-------|--------|------|
-| **V1.1** | B10 Diagnose → B6 Ghost-Rep → B2 Export → A1 VBT light; A2 Akku **DONE** | Nach/mit Doc-13 A1–A5 |
-| **V1.2** | B1/B3/B7, Shadow-Report, Korrektur-Analytics, Multi-Übung | Nach V1.1 |
-| **V2.0** | ML Recognition + LOSO, History-Trends, CV-Form | Daten + LOSO |
-| **V3.0** | LLM Coaching, Teachable-Presets | Opt-in / Privacy |
+| Phase | Fokus | Code 2026-07-24 |
+|-------|--------|-----------------|
+| **V1.1** | B10, B6, B2, A1 light, A2 | **[x]** implementiert |
+| **V1.2** | B1/B3/B7, Shadow, … | **[x]** größtenteils |
+| **V2.0** | History-Trends, A5/A8/A9, A4 heuristic | **[~]** Trends+domain; TFLite offen |
+| **V3.0** | LLM / Teachable-Presets | **[~]** RuleCoaching offline; A10 offen |
 
-**Already (nicht neu bauen):** Akku UI (`fee3`), gP-Gates, History-Liste, Calib+θ-Nudge, `peakMagnitude`, Skelett-Overlay (Doc 14).
+**Gate:** physische Doc-13 A1–A5 weiter **[ ]** — Feature-Code blockiert Release nicht.
 
 ---
 

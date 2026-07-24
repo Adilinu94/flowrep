@@ -8,6 +8,7 @@ import '../providers/engine_provider.dart';
 import '../providers/workout_ui_state.dart';
 import '../widgets/connection_status_card.dart';
 import '../widgets/correction_dialog.dart';
+import '../widgets/diagnose_overlay.dart';
 import '../widgets/exercise_selector_card.dart';
 import '../widgets/onboarding_banner.dart';
 import '../widgets/rep_counter_display.dart';
@@ -70,10 +71,26 @@ class HomeScreen extends ConsumerWidget {
             totalSets: next.sessionTotalSets,
             totalReps: next.sessionTotalReps,
             duration: next.sessionDuration,
+            sets: notifier.lastSessionSets,
+            showPrBadge: notifier.lastSessionHadPr,
             onDismiss: () {
               notifier.dismissSessionSummary();
               Navigator.of(dialogContext).pop();
             },
+          ),
+        );
+      }
+      // FR-A2: low battery snackbar once when crossing into warned state.
+      if (next.lowBatteryWarned &&
+          next.batteryPercent != null &&
+          next.batteryPercent! < 15 &&
+          !(prev?.lowBatteryWarned ?? false)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'M5-Akku niedrig (${next.batteryPercent} %). Bitte laden.',
+            ),
+            backgroundColor: Colors.orange.shade800,
           ),
         );
       }
@@ -157,10 +174,69 @@ class HomeScreen extends ConsumerWidget {
               const SizedBox(height: 16),
 
               // Debug-Diagnostik (nur !kReleaseMode + BLE)
-              if (uiState.isConnected && !notifier.isMock)
+              if (uiState.isConnected &&
+                  !notifier.isMock &&
+                  !uiState.diagnoseOverlayEnabled)
                 SignalDebugView(
                   uiState: uiState,
                   workoutStateName: uiState.workoutState.name,
+                ),
+
+              // FR-B10: full diagnose overlay (settings toggle; works in release)
+              if (uiState.diagnoseOverlayEnabled) ...[
+                DiagnoseOverlay(
+                  uiState: uiState,
+                  engine: notifier.engine,
+                  packetLossHint: uiState.errorText != null &&
+                          uiState.errorText!.contains('Paketverlust')
+                      ? uiState.errorText
+                      : null,
+                ),
+                const SizedBox(height: 8),
+              ],
+
+              if (uiState.ghostGatePaused)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: MaterialBanner(
+                    content: const Text(
+                      'Zählung pausiert: wenig Bewegung erkannt '
+                      '(Ablegen/Wackeln). Weiter trainieren zum Fortsetzen.',
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {},
+                        child: const Text('OK'),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (uiState.exerciseSuggestion != null)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.lightbulb_outline),
+                    title: Text(
+                      'Vorschlag: ${uiState.exerciseSuggestion}'
+                      '${uiState.exerciseSuggestionConfidence != null ? ' (${(uiState.exerciseSuggestionConfidence! * 100).round()} %)' : ''}',
+                    ),
+                    subtitle: const Text(
+                      'Nur Hinweis — IMU zählt weiter mit der gewählten Übung.',
+                    ),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextButton(
+                          onPressed: notifier.dismissExerciseSuggestion,
+                          child: const Text('Nein'),
+                        ),
+                        FilledButton(
+                          onPressed: notifier.acceptExerciseSuggestion,
+                          child: const Text('Übernehmen'),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
 
               if (uiState.isConnected) ...[
@@ -261,6 +337,26 @@ class HomeScreen extends ConsumerWidget {
                   repCount: uiState.repsInCurrentSet,
                   qualityScore: uiState.lastQualityScore,
                 ),
+                if (uiState.targetSets != null && uiState.targetReps != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      'Ziel: Satz ${uiState.completedSetsTowardTarget}/'
+                      '${uiState.targetSets} · ${uiState.targetReps} Wdh.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                if (uiState.vbtMetricsEnabled &&
+                    uiState.lastSetVelocityLossPct != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Letzter Satz Velocity-Loss: '
+                      '${uiState.lastSetVelocityLossPct!.toStringAsFixed(0)} % '
+                      '(relativ)',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
                 const SizedBox(height: 8),
                 Text('Zustand: ${uiState.workoutState.name}'),
                 // Pausen-Timer (P0-2, nur wenn aktiv)
@@ -274,7 +370,12 @@ class HomeScreen extends ConsumerWidget {
                 ],
                 const SizedBox(height: 8),
                 // Letzter Satz
-                SetHistoryCard(lastSetCount: uiState.lastCompletedSetCount),
+                SetHistoryCard(
+                  lastSetCount: uiState.lastCompletedSetCount,
+                  velocityLossPct: uiState.vbtMetricsEnabled
+                      ? uiState.lastSetVelocityLossPct
+                      : null,
+                ),
                 const SizedBox(height: 16),
 
                 // Mock: Rep simulieren

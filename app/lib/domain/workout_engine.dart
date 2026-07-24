@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flowrep/data/logger.dart';
 import 'package:flowrep/domain/config/engine_constants.dart';
+import 'package:flowrep/domain/metrics/ghost_rep_gate.dart';
+import 'package:flowrep/domain/metrics/shadow_report.dart';
 import 'package:flowrep/domain/models/exercise_profile.dart' show ChosenSignal;
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/signal_processor.dart';
@@ -106,6 +108,19 @@ class WorkoutEngine {
   bool _shadowMode = false;
   int _shadowRepCount = 0;
   int _legacyRepCount = 0;
+
+  /// FR-B6: pause counting when device appears idle / laid down.
+  final GhostRepGate _ghostGate = GhostRepGate();
+  bool _ghostGateEnabled = true;
+
+  /// FR-A8: magnitude shadow rep count (does not affect live counting).
+  int _magnitudeShadowReps = 0;
+  bool _magAbove = false;
+  double _lastEnvelope = 0.0;
+  double? _lastGpAbs;
+
+  /// FR-B12: recent shadow lines for diagnose overlay.
+  final ShadowReportBuffer shadowReport = ShadowReportBuffer();
 
   /// Die neue ExerciseEngine-Pipeline (SignalChain → RepCounter → StateMachine).
   /// Wird lazy initialisiert, sobald rotationAxis/gyroBias verfügbar sind.
@@ -495,6 +510,24 @@ class WorkoutEngine {
     diff: _shadowRepCount - _legacyRepCount,
   );
 
+  /// FR-B6 diagnostics.
+  bool get ghostGatePaused => _ghostGate.isPaused;
+  bool get ghostGateEnabled => _ghostGateEnabled;
+  set ghostGateEnabled(bool value) {
+    _ghostGateEnabled = value;
+    if (!value) _ghostGate.reset();
+  }
+
+  /// Latest envelope / signal snapshot for diagnose overlay (FR-B10).
+  double get diagEnvelope => _lastEnvelope;
+  double? get diagGpAbs => _lastGpAbs;
+  double? get diagGpThreshold => _gpThreshold;
+  int get magnitudeShadowReps => _magnitudeShadowReps;
+  int get repsInCurrentSetCount => _repsInSet.length;
+  List<Rep> get currentSetReps => List.unmodifiable(_repsInSet);
+
+  void resetGhostGate() => _ghostGate.reset();
+
   /// NEUER PFAD (KRITISCHER SCHRITT 3): delegiert an ExerciseEngine.
   /// Öffentliche API bleibt identisch — gleiche Events, gleiche Zustände.
   void _processSampleNewPipeline(SensorSample s) {
@@ -539,6 +572,9 @@ class WorkoutEngine {
       _signalProcessor.observeForAxisLearning(s);
       gp = _signalProcessor.signedGyroProjection(s);
     }
+
+    // FR-B6 / FR-A8 / FR-B10: activity gate + magnitude shadow + diag snapshot.
+    _updateActivityAndShadow(combinedSignal, gp?.abs());
     if (gp != null && _gpThreshold == null) {
       // Self-contained g_p auto-calibration, decoupled on purpose from the
       // combined-signal auto-calibration below: axis learning takes
@@ -995,11 +1031,49 @@ class WorkoutEngine {
     final inRefractory = _lastCountedRepSample != null &&
         (diagEngineSampleCount - _lastCountedRepSample!) < minRepIntervalSamples;
     if (inRefractory) return;
+    // FR-B6: skip commits while ghost gate says device is idle/laid down.
+    if (_ghostGateEnabled && !_ghostGate.allowCounting) {
+      AppLogger.d('Ghost gate: skip rep peak=${peakMagnitude.toStringAsFixed(1)}');
+      return;
+    }
     _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: peakMagnitude));
     _legacyRepCount++;
     _lastCountedRepSample = diagEngineSampleCount;
     _lastMovementAt = timestamp;
     _emitStateEvent();
+  }
+
+  /// Feed activity gates + magnitude shadow from the live signal sample.
+  void _updateActivityAndShadow(double envelope, double? gpAbs) {
+    _lastEnvelope = envelope;
+    _lastGpAbs = gpAbs;
+    // FR-B6 only on product gP path: combined-scale synthetic/bootstrap signals
+    // sit near 1–2 and would false-pause the gate. |gP| °/s is the right scale.
+    if (_ghostGateEnabled &&
+        _state == WorkoutState.active &&
+        _gpIsAuthoritative &&
+        gpAbs != null) {
+      _ghostGate.push(gpAbs);
+    }
+    // FR-A8 magnitude shadow: simple rising/falling on envelope vs 1.2× baseline.
+    final magThresh = max(baselineLevel * 1.15, 1.2);
+    if (!_magAbove && envelope > magThresh) {
+      _magAbove = true;
+    } else if (_magAbove && envelope < magThresh * 0.4) {
+      _magAbove = false;
+      _magnitudeShadowReps++;
+      if (_magnitudeShadowReps % 5 == 0 ||
+          _magnitudeShadowReps != _legacyRepCount) {
+        shadowReport.add(ShadowReportLine(
+          timestamp: DateTime.now(),
+          source: 'magnitude',
+          liveReps: _legacyRepCount,
+          shadowReps: _magnitudeShadowReps,
+          liveSignal: gpAbs ?? envelope,
+          shadowSignal: envelope,
+        ));
+      }
+    }
   }
 
   /// `ChosenSignal.gyroMag` counterpart to [_detectPeakSigned]: same

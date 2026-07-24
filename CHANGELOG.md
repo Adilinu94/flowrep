@@ -17,6 +17,7 @@ Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physi
 - **CV-07 skeleton overlay** (optional): live bones/joints over preview, active-arm highlight (E1), elbow form color (E2), tracking badge (E3), framed guide (E4), confidence hysteresis (E5), draw modes full/upper/arm-only (E6), fusion rep pulse UI-only (E7), opt-in local landmark CSV under app documents (E9), `VisionFocus.forExercise` (E10). No E8 privacy blur. Empty no-pose frames keep tracking quality honest when person leaves frame.
 - Living docs: `docs/Version1.0/10`–`14`, hardware session notes
 - Post-1.0 backlog: `docs/Version1.0/15_VERBESSERUNGEN_EXTERNE_REPOS.md` (external-repo research + ticket IDs)
+- Doc 15 feature wave: diagnose overlay (B10), gP ghost-rep gate (B6), session CSV/JSON export + privacy (B2/B15), VBT peak/loss UI (A1), adaptive rest (B1), rep timeline (B3), history trends (B5), sensor tutorial (B7), blind mode (B8), exercise targets (B9), PR badge (B4), form-quality + rule coaching, magnitude shadow report (A8/B12), heuristic exercise suggestion (A4 scaffold), LOSO tool (`tools/ml/`), low-battery snackbar (A2), app idle BLE disconnect (A3)
 
 ### Changed
 

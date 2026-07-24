@@ -58,6 +58,21 @@ class WorkoutUiState {
   // Optional CV camera validator (CV-04 UI)
   final bool cameraEnabled;
 
+  // Doc 15: diagnose overlay, VBT, ghost, blind mode, low battery
+  final bool diagnoseOverlayEnabled;
+  final bool vbtMetricsEnabled;
+  final bool ghostGatePaused;
+  final bool blindModeEnabled;
+  final bool lowBatteryWarned;
+  final double? lastSetVelocityLossPct;
+  final String? exerciseSuggestion;
+  final double? exerciseSuggestionConfidence;
+
+  // Exercise targets (FR-B9)
+  final int? targetSets;
+  final int? targetReps;
+  final int completedSetsTowardTarget;
+
   const WorkoutUiState({
     this.workoutState = WorkoutState.idle,
     this.repsInCurrentSet = 0,
@@ -94,6 +109,17 @@ class WorkoutUiState {
     this.isReconnecting = false,
     this.reconnectAttempt = 0,
     this.cameraEnabled = false,
+    this.diagnoseOverlayEnabled = false,
+    this.vbtMetricsEnabled = true,
+    this.ghostGatePaused = false,
+    this.blindModeEnabled = false,
+    this.lowBatteryWarned = false,
+    this.lastSetVelocityLossPct,
+    this.exerciseSuggestion,
+    this.exerciseSuggestionConfidence,
+    this.targetSets,
+    this.targetReps,
+    this.completedSetsTowardTarget = 0,
   });
 
   WorkoutUiState copyWith({
@@ -132,6 +158,20 @@ class WorkoutUiState {
     bool? isReconnecting,
     int? reconnectAttempt,
     bool? cameraEnabled,
+    bool? diagnoseOverlayEnabled,
+    bool? vbtMetricsEnabled,
+    bool? ghostGatePaused,
+    bool? blindModeEnabled,
+    bool? lowBatteryWarned,
+    double? lastSetVelocityLossPct,
+    bool clearLastSetVelocityLossPct = false,
+    String? exerciseSuggestion,
+    bool clearExerciseSuggestion = false,
+    double? exerciseSuggestionConfidence,
+    int? targetSets,
+    int? targetReps,
+    bool clearTargets = false,
+    int? completedSetsTowardTarget,
   }) {
     return WorkoutUiState(
       workoutState: workoutState ?? this.workoutState,
@@ -173,6 +213,25 @@ class WorkoutUiState {
       isReconnecting: isReconnecting ?? this.isReconnecting,
       reconnectAttempt: reconnectAttempt ?? this.reconnectAttempt,
       cameraEnabled: cameraEnabled ?? this.cameraEnabled,
+      diagnoseOverlayEnabled:
+          diagnoseOverlayEnabled ?? this.diagnoseOverlayEnabled,
+      vbtMetricsEnabled: vbtMetricsEnabled ?? this.vbtMetricsEnabled,
+      ghostGatePaused: ghostGatePaused ?? this.ghostGatePaused,
+      blindModeEnabled: blindModeEnabled ?? this.blindModeEnabled,
+      lowBatteryWarned: lowBatteryWarned ?? this.lowBatteryWarned,
+      lastSetVelocityLossPct: clearLastSetVelocityLossPct
+          ? null
+          : (lastSetVelocityLossPct ?? this.lastSetVelocityLossPct),
+      exerciseSuggestion: clearExerciseSuggestion
+          ? null
+          : (exerciseSuggestion ?? this.exerciseSuggestion),
+      exerciseSuggestionConfidence: clearExerciseSuggestion
+          ? null
+          : (exerciseSuggestionConfidence ?? this.exerciseSuggestionConfidence),
+      targetSets: clearTargets ? null : (targetSets ?? this.targetSets),
+      targetReps: clearTargets ? null : (targetReps ?? this.targetReps),
+      completedSetsTowardTarget:
+          completedSetsTowardTarget ?? this.completedSetsTowardTarget,
     );
   }
 }

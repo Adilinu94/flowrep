@@ -1,9 +1,10 @@
 # FlowRep 1.x/2.x — Verbesserungs-Leitfaden aus externer Recherche
 
-> **Stand**: 23. Juli 2026 (Code-Review-Korrektur)  
+> **Stand**: 24. Juli 2026 (Implementierungs-Welle)  
 > **Basis**: Analyse von 8 GitHub-Repos, 1 Peer-Review-Studie (PMC), 1 Tech-Artikel (Edge Impulse)  
-> **Gegen Code verifiziert**: 2026-07-23 (`main` / Product-Pfad gP, `_useNewPipeline = false`)  
+> **Gegen Code verifiziert**: 2026-07-24 (`main` / Product-Pfad gP, `_useNewPipeline = false`)  
 > **Zweck**: Kuratierter, ticket-fähiger Backlog konkreter Verbesserungen für FlowRep **nach** 1.0  
+> **Code-Status**: V1.1 + große Teile V1.2/V2/V3 **im Code** (siehe Changelog unten); physische HW-QA (Doc 13 A1–A5) weiter offen  
 > **Verwandte Docs**: [00_UEBERSICHT](00_UEBERSICHT.md) · [13_OFFENE_PUNKTE](13_OFFENE_PUNKTE.md) · [12_IMPLEMENTIERUNGS_STATUS](12_IMPLEMENTIERUNGS_STATUS.md) · [07_CV_SENSOR_FUSION](07_CV_SENSOR_FUSION.md) · [14_CV_SKELETT_OVERLAY_PLAN](14_CV_SKELETT_OVERLAY_PLAN.md)
 
 ---
@@ -540,3 +541,30 @@ Nicht erneut als Greenfield planen:
 |-------|----------|
 | 2026-07-22 | Erstfassung: 10 Quellen, A1–A10, B1–B10, Roadmap V1.1/V2/V3 |
 | 2026-07-23 | Code-Review-Korrektur: A2 DONE; A1 gP-Pfad; Already/Delta; V1.1 schlank; B1/B3/B7 → V1.2; Risiken A1/B6/A4; B11–B16; Gate Doc 13; Product-Pfad-Tabelle |
+| 2026-07-24 | **Implementierung**: B10 Diagnose-Overlay; B6 Ghost-Gate (gP-only); B2/B15 Export; A1 VBT light UI; A2 Snackbar &lt;15 %; B1 adaptive Pause; B3 Rep-Timeline; B5 History-Trends; B7 Tutorial; B8 Blind-Mode; B9 Ziele; B4 PR-Badge; A5 FormQuality; A8 Magnitude-Shadow; B12 ShadowReport; A7 RuleCoaching offline; A4 HeuristicClassifier + UI-Vorschlag; A9 `tools/ml/loso_eval.py`; A3 App-Idle-Disconnect 15 min. **Nicht** vollständig: TFLite-ML-Training, Firmware Deep-Sleep, LLM-Cloud, Multi-Subject-Daten |
+
+### Implementierungs-Matrix (2026-07-24)
+
+| ID | Status Code | Notes |
+|----|-------------|-------|
+| FR-B10 | **[x]** | Settings → Diagnose-Overlay |
+| FR-B6 | **[x]** | gP-autoritativ; Unit + Settings-Toggle |
+| FR-B2/B15 | **[x]** | CSV/JSON + Privacy-Text + Share |
+| FR-A1 | **[x]** light | Peak/Loss UI + Summary; keine m/s |
+| FR-A2 | **[x]** | Already + Snackbar &lt;15 % |
+| FR-B1 | **[x]** | Adaptive Rest aus Loss |
+| FR-B3 | **[x]** | `RepTimeline` |
+| FR-B5 | **[x]** | Trends auf History-Screen |
+| FR-B7 | **[x]** | Tutorial-Screen |
+| FR-B8 | **[x]** | Blind-Mode Toggle (Haptik/Audio) |
+| FR-B9 | **[x]** | Ziel Sätze×Reps in Settings |
+| FR-B4 | **[x]** | PR-Chip in Summary |
+| FR-A5 | **[x]** domain | FormQuality + Coaching-Hinweise |
+| FR-A8 | **[x]** shadow | Magnitude shadow + report buffer |
+| FR-B12 | **[x]** | `ShadowReportLine` JSONL |
+| FR-A7 | **[~]** | Offline RuleCoaching only (kein LLM) |
+| FR-A4 | **[~]** | Heuristic + Vorschlag-UI; kein TFLite |
+| FR-A9 | **[x]** tool | `tools/ml/loso_eval.py` |
+| FR-A3 | **[~]** | App Idle-Disconnect; FW Deep-Sleep offen |
+| FR-A6 | **[~]** | Doc 14 Overlay already; extra Form-CV deferred |
+| FR-A10 | **[ ]** | Calib/Nudge exist; Multi-Preset UX offen |

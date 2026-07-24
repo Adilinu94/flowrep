@@ -12,8 +12,13 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
+import '../../data/services/export_service.dart';
 import '../../data/services/foreground_service_manager.dart';
 import '../../domain/config/engine_constants.dart';
+import '../../domain/exercises/exercise_targets.dart';
+import '../../domain/metrics/form_quality.dart';
+import '../../domain/metrics/velocity_metrics.dart';
+import '../../domain/ml/exercise_classifier.dart';
 import '../../domain/models/exercise_profile.dart';
 import '../../domain/models/workout_models.dart';
 import '../../domain/repositories/i_workout_repository.dart';
@@ -83,6 +88,17 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   // Session-Tracking (Phase 5.2)
   DateTime? _sessionStartedAt;
   final List<ExerciseSet> _completedSets = [];
+  /// Snapshot for summary dialog after [endSession] clears live sets.
+  List<ExerciseSet> _lastSessionSets = const [];
+  bool _lastSessionHadPr = false;
+  final ExerciseTargets _targets = ExerciseTargets();
+  final ExerciseClassifier _classifier = HeuristicExerciseClassifier();
+  final List<double> _imuWindowBuf = <double>[];
+  static const int _imuWindowMax = 104; // ~2 s @ 52 Hz
+  Timer? _idleDisconnectTimer;
+  static const Duration _idleDisconnectAfter = Duration(minutes: 15);
+  bool _adaptiveRestEnabled = true;
+  bool _vbtEnabled = true;
 
   StreamSubscription<dynamic>? _samplesSub;
   StreamSubscription<dynamic>? _eventsSub;
@@ -103,6 +119,11 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   bool get isMock => _sensorProvider is MockSensorProvider;
   WorkoutEngine get engine => _engine;
   ISensorProvider get sensorProvider => _sensorProvider;
+  List<ExerciseSet> get lastSessionSets => List.unmodifiable(_lastSessionSets);
+  bool get lastSessionHadPr => _lastSessionHadPr;
+  ExerciseTargets get targets => _targets;
+  bool get adaptiveRestEnabled => _adaptiveRestEnabled;
+  bool get vbtEnabled => _vbtEnabled;
 
   void _bind() {
     _samplesSub = _sensorProvider.samples.listen(_onSampleGated);
@@ -121,19 +142,79 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Verhindert „App zählt permanent bei Alltagsbewegung“.
   void _onSampleGated(dynamic sample) {
     if (!state.isCountingActive) return;
+    if (sample is! SensorSample) return;
     _engine.processSample(sample);
+    _noteActivity();
+    _pushImuWindow(sample);
+    // Refresh ghost / diag flags periodically cheaply each sample.
+    if (_engine.ghostGatePaused != state.ghostGatePaused ||
+        state.diagnoseOverlayEnabled) {
+      state = state.copyWith(
+        ghostGatePaused: _engine.ghostGatePaused,
+        engineSampleCount: _engine.diagEngineSampleCount,
+        engineThreshold: _engine.diagGpThreshold ?? state.engineThreshold,
+        engineBaseline: _engine.baselineLevel,
+      );
+    }
+  }
+
+  void _pushImuWindow(SensorSample s) {
+    final mag = s.gyroMagnitude;
+    _imuWindowBuf.add(mag);
+    if (_imuWindowBuf.length > _imuWindowMax) {
+      _imuWindowBuf.removeRange(0, _imuWindowBuf.length - _imuWindowMax);
+    }
+    // Shadow suggestion ~every second once the buffer is full (FR-A4 heuristic).
+    if (_imuWindowBuf.length >= _imuWindowMax &&
+        _engine.diagEngineSampleCount % 50 == 0) {
+      unawaited(_maybeSuggestExercise());
+    }
+  }
+
+  Future<void> _maybeSuggestExercise() async {
+    final suggestion = await _classifier.classify(
+      ImuWindow(
+        samples: List<double>.from(_imuWindowBuf),
+        sampleRateHz: 50,
+        endedAt: DateTime.now(),
+      ),
+    );
+    if (suggestion == null) return;
+    if (suggestion.exerciseId == state.selectedExerciseId) return;
+    if (suggestion.confidence < 0.6) return;
+    state = state.copyWith(
+      exerciseSuggestion: suggestion.exerciseId,
+      exerciseSuggestionConfidence: suggestion.confidence,
+    );
+  }
+
+  void acceptExerciseSuggestion() {
+    final id = state.exerciseSuggestion;
+    if (id == null) return;
+    selectExercise(id);
+    state = state.copyWith(clearExerciseSuggestion: true);
+  }
+
+  void dismissExerciseSuggestion() {
+    state = state.copyWith(clearExerciseSuggestion: true);
   }
 
   /// Startet das Zählen (Engine erhält ab jetzt Samples).
   void startCounting() {
     if (state.isCountingActive) return;
     _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
+    _engine.resetGhostGate();
+    _imuWindowBuf.clear();
     // Re-apply profile so gP/gyroMag thresholds are live even if connect
     // raced handleReconnect before the first load finished.
     unawaited(_loadCalibration());
     // P0-5: keep BLE alive under screen lock (Android connectedDevice FGS)
     unawaited(_fgService.start());
-    state = state.copyWith(isCountingActive: true);
+    _cancelIdleDisconnect();
+    state = state.copyWith(
+      isCountingActive: true,
+      ghostGatePaused: false,
+    );
   }
 
   /// Stoppt das Zählen und setzt die Engine zurück auf idle.
@@ -305,14 +386,27 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Startet den Pausen-Timer nach Satzende / Korrektur-Dialog.
   void _startRestTimer() {
     _restTimer?.cancel();
+    var seconds = _restDurationSeconds;
+    if (_adaptiveRestEnabled && state.lastSetVelocityLossPct != null) {
+      seconds = VelocityMetrics.adaptiveRestSeconds(
+        baseSeconds: _restDurationSeconds,
+        velocityLossPct: state.lastSetVelocityLossPct,
+      );
+    }
     state = state.copyWith(
       isRestTimerActive: true,
-      restTimerSecondsRemaining: _restDurationSeconds,
+      restTimerSecondsRemaining: seconds,
     );
+    if (state.blindModeEnabled) {
+      unawaited(_feedbackService.onSetCompleted(repCount: 0));
+    }
     _restTimer = Timer.periodic(const Duration(seconds: 1), (_) {
       final remaining = state.restTimerSecondsRemaining - 1;
       if (remaining <= 0) {
         _stopRestTimer();
+        if (state.blindModeEnabled) {
+          unawaited(_feedbackService.onRepCounted());
+        }
       } else {
         state = state.copyWith(restTimerSecondsRemaining: remaining);
       }
@@ -346,6 +440,64 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   void setFeedback({bool? haptic, bool? audio}) {
     if (haptic != null) _feedbackService.enableHaptic = haptic;
     if (audio != null) _feedbackService.enableAudio = audio;
+  }
+
+  void setDiagnoseOverlayEnabled(bool enabled) {
+    state = state.copyWith(diagnoseOverlayEnabled: enabled);
+  }
+
+  void setVbtMetricsEnabled(bool enabled) {
+    _vbtEnabled = enabled;
+    state = state.copyWith(vbtMetricsEnabled: enabled);
+  }
+
+  void setAdaptiveRestEnabled(bool enabled) {
+    _adaptiveRestEnabled = enabled;
+  }
+
+  void setBlindModeEnabled(bool enabled) {
+    state = state.copyWith(blindModeEnabled: enabled);
+    if (enabled) {
+      _feedbackService.enableAudio = true;
+      _feedbackService.enableHaptic = true;
+    }
+  }
+
+  void setGhostGateEnabled(bool enabled) {
+    _engine.ghostGateEnabled = enabled;
+  }
+
+  void setExerciseTarget({required int sets, required int reps}) {
+    _targets.set(state.selectedExerciseId, sets: sets, reps: reps);
+    state = state.copyWith(targetSets: sets, targetReps: reps);
+  }
+
+  void clearExerciseTarget() {
+    _targets.clear(state.selectedExerciseId);
+    state = state.copyWith(clearTargets: true);
+  }
+
+  /// FR-B2/B15: export all history via OS share sheet.
+  Future<void> exportHistory() async {
+    final repo = _repository;
+    if (repo == null) return;
+    final history = await repo.getHistory();
+    await ExportService.exportAndShare(history);
+  }
+
+  void _noteActivity() {
+    _idleDisconnectTimer?.cancel();
+    if (!state.isConnected || state.isCountingActive) return;
+    _idleDisconnectTimer = Timer(_idleDisconnectAfter, () {
+      if (!state.isCountingActive && state.isConnected) {
+        unawaited(disconnect());
+      }
+    });
+  }
+
+  void _cancelIdleDisconnect() {
+    _idleDisconnectTimer?.cancel();
+    _idleDisconnectTimer = null;
   }
 
   /// DSGVO: clear workout DB + calibration profiles (P1-3).
@@ -444,7 +596,22 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
         ? DateTime.now().difference(_sessionStartedAt!)
         : null;
 
+    _lastSessionSets = List.unmodifiable(_completedSets);
+    _lastSessionHadPr = false;
     final repo = _repository;
+    List<WorkoutSession> prior = const [];
+    if (repo != null) {
+      try {
+        prior = await repo.getHistory();
+      } catch (_) {}
+    }
+    for (final set in _lastSessionSets) {
+      if (PersonalRecords.isRepsPr(set: set, priorSessions: prior)) {
+        _lastSessionHadPr = true;
+        break;
+      }
+    }
+
     if (repo != null &&
         _sessionStartedAt != null &&
         _completedSets.isNotEmpty) {
@@ -469,6 +636,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       sessionTotalSets: totalSets,
       sessionTotalReps: totalReps,
       sessionDuration: duration,
+      completedSetsTowardTarget: 0,
     );
 
     _sessionStartedAt = null;
@@ -557,10 +725,16 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (exerciseId == state.selectedExerciseId) return;
     // Zählen stoppen falls aktiv
     if (state.isCountingActive) stopCounting();
+    final t = _targets.of(exerciseId);
     state = state.copyWith(
       selectedExerciseId: exerciseId,
       hasCalibration: false,
       calibratedThreshold: null,
+      targetSets: t?.targetSets,
+      targetReps: t?.targetReps,
+      clearTargets: t == null,
+      clearExerciseSuggestion: true,
+      completedSetsTowardTarget: 0,
     );
     // Kalibrierung für neue Übung laden
     _loadCalibration();
@@ -747,6 +921,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Satz abgeschlossen: persistieren (Phase 5.2).
   void _onSetCompleted(ExerciseSet completedSet) {
     _completedSets.add(completedSet);
+    final loss = VelocityMetrics.setVelocityLossPct(completedSet.reps);
+    final toward = state.completedSetsTowardTarget + 1;
+    state = state.copyWith(
+      lastSetVelocityLossPct: loss,
+      completedSetsTowardTarget: toward,
+    );
     _saveSession();
   }
 
@@ -806,7 +986,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   Future<void> _refreshBattery() async {
     try {
       final percent = await _sensorProvider.readBatteryPercent();
-      state = state.copyWith(batteryPercent: percent);
+      final low = percent > 0 && percent < 15;
+      state = state.copyWith(
+        batteryPercent: percent,
+        // Sticky until reconnect — UI shows snackbar once via home listener.
+        lowBatteryWarned: low ? true : state.lowBatteryWarned,
+      );
     } catch (e) {
       state = state.copyWith(errorText: 'Akku lesen fehlgeschlagen: $e');
     }
@@ -916,6 +1101,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _recordingSampleCountTimer?.cancel();
     _restTimer?.cancel();
     _restTimer = null;
+    _cancelIdleDisconnect();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _lifecycleObserver?.dispose();

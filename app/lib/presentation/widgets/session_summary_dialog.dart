@@ -1,5 +1,10 @@
 import 'package:flutter/material.dart';
 
+import '../../domain/coaching/rule_coaching.dart';
+import '../../domain/metrics/velocity_metrics.dart';
+import '../../domain/models/workout_models.dart';
+import 'rep_timeline.dart';
+
 /// Session-Zusammenfassung nach „Training beenden" (P0-3).
 class SessionSummaryDialog extends StatelessWidget {
   final int totalSets;
@@ -7,41 +12,125 @@ class SessionSummaryDialog extends StatelessWidget {
   final Duration? duration;
   final VoidCallback onDismiss;
 
+  /// Optional completed sets for VBT / timeline / coaching (Doc 15).
+  final List<ExerciseSet>? sets;
+
+  /// Prior history for PR detection (FR-B4).
+  final List<WorkoutSession>? priorSessions;
+
+  /// Whether a reps PR was set this session.
+  final bool showPrBadge;
+
+  final List<String>? coachingTips;
+
   const SessionSummaryDialog({
     super.key,
     required this.totalSets,
     required this.totalReps,
     required this.duration,
     required this.onDismiss,
+    this.sets,
+    this.priorSessions,
+    this.showPrBadge = false,
+    this.coachingTips,
   });
 
   @override
   Widget build(BuildContext context) {
+    final setList = sets ?? const <ExerciseSet>[];
+    double? avgLoss;
+    if (setList.isNotEmpty) {
+      final losses = setList
+          .map((s) => VelocityMetrics.setVelocityLossPct(s.reps))
+          .whereType<double>()
+          .toList();
+      if (losses.isNotEmpty) {
+        avgLoss = losses.reduce((a, b) => a + b) / losses.length;
+      }
+    }
+    final tips = coachingTips ??
+        (setList.isEmpty
+            ? const <String>[]
+            : RuleCoaching.tipsForSession(
+                WorkoutSession(
+                  id: 'summary',
+                  startedAt: DateTime.now(),
+                  sets: setList,
+                ),
+              ));
+
     return AlertDialog(
-      title: const Text('Training beendet'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
+      title: Row(
         children: [
-          _StatRow(
-            icon: Icons.fitness_center,
-            label: 'Sätze',
-            value: '$totalSets',
-          ),
-          const SizedBox(height: 8),
-          _StatRow(
-            icon: Icons.repeat,
-            label: 'Wiederholungen',
-            value: '$totalReps',
-          ),
-          if (duration != null) ...[
+          const Expanded(child: Text('Training beendet')),
+          if (showPrBadge)
+            const Chip(
+              label: Text('PR'),
+              visualDensity: VisualDensity.compact,
+              labelStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+            ),
+        ],
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _StatRow(
+              icon: Icons.fitness_center,
+              label: 'Sätze',
+              value: '$totalSets',
+            ),
             const SizedBox(height: 8),
             _StatRow(
-              icon: Icons.timer,
-              label: 'Dauer',
-              value: _formatDuration(duration!),
+              icon: Icons.repeat,
+              label: 'Wiederholungen',
+              value: '$totalReps',
             ),
+            if (duration != null) ...[
+              const SizedBox(height: 8),
+              _StatRow(
+                icon: Icons.timer,
+                label: 'Dauer',
+                value: _formatDuration(duration!),
+              ),
+            ],
+            if (avgLoss != null) ...[
+              const SizedBox(height: 8),
+              _StatRow(
+                icon: Icons.speed,
+                label: 'Velocity-Loss (rel.)',
+                value: '${avgLoss.toStringAsFixed(0)} %',
+              ),
+            ],
+            for (var i = 0; i < setList.length; i++) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Satz ${i + 1} — Peaks (rel. °/s-Proxy)',
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
+              const SizedBox(height: 4),
+              RepTimeline(reps: setList[i].reps, height: 40),
+              if (VelocityMetrics.setVelocityLossPct(setList[i].reps) != null)
+                Text(
+                  'Loss ${VelocityMetrics.setVelocityLossPct(setList[i].reps)!.toStringAsFixed(0)} %',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+            ],
+            if (tips.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text('Hinweise', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 4),
+              ...tips.take(4).map(
+                    (t) => Padding(
+                      padding: const EdgeInsets.only(bottom: 4),
+                      child: Text('• $t',
+                          style: Theme.of(context).textTheme.bodySmall),
+                    ),
+                  ),
+            ],
           ],
-        ],
+        ),
       ),
       actions: [
         FilledButton(
