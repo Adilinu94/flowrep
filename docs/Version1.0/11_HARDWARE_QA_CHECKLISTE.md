@@ -1,8 +1,8 @@
 # FlowRep 1.0 — Hardware-QA-Checkliste
 
-> **Stand**: 2026-07-23  
-> **Geräte-Referenz**: Xiaomi 21081111RG (`55j7xkiffixsyhxg`) + M5StickC Plus2 (COM3, MPU6886)  
-> **Detail-Logs**: `docs/hardware/sessions/2026-07-23/`, `../hardware/sessions/2026-07-23/HW_VALIDATION.md`, `CALIB_SESSION_ANALYSIS.md`  
+> **Stand**: 2026-07-24  
+> **Geräte-Referenz**: Xiaomi 21081111RG (`55j7xkiffixsyhxg`) + M5StickC Plus2  
+> **Detail-Logs**: `docs/hardware/sessions/2026-07-23/`, `2026-07-24/` (A1–A5 partial), `HW_VALIDATION.md`  
 > **Konsolidierte Offene Punkte**: [13_OFFENE_PUNKTE.md](13_OFFENE_PUNKTE.md)
 
 Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
@@ -38,13 +38,14 @@ Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
 
 ## E — Zählung (Legacy / Product-Pfad)
 
-> Product: `autoEndSetEnabled: false` — Satz endet **nur** über „Satz beenden“.
+> Product: `autoEndSetEnabled: false` — Satz endet **nur** über „Satz beenden“ (UI oder M5 BtnA).
 
-- [ ] E1: Zählen starten, 8–12 echte Curls → Anzeige plausibel
-- [ ] E2: bewusstes Wackeln / Alltagsbewegung → **keine** oder minimale Falsch-Reps
-- [ ] E3: „Satz beenden“ tippen → Korrektur-Dialog mit System-Count
-- [ ] E4: echte Reps eingeben → „Speichern & lernen“ → `correctedReps` / nächste Session θ-nudge
-- [ ] E5: „Training beenden“ → Summary / Persistenz
+- [~] E1: Zählen starten + Curls am Gerät (2026-07-24 „klappt besser“); **noch**: 8–12 mit App/Manuell-Zahl notieren — siehe `sessions/2026-07-24/HW_SESSION_A1_A5.md`
+- [~] E2: Ghost Idle Default 45 s (kurze Pause ok); **noch**: bewusstes Wackeln 5–10 s notieren
+- [~] E3: Satz beenden → Dialog (BtnA User-ok 2026-07-24); UI-Button gleichwertig
+- [ ] E4: echte Reps → „Speichern & lernen“ (einmalig bestätigen)
+- [ ] E5: „Training beenden“ → Summary (einmalig bestätigen)
+- [x] M5 BtnA: Start Zählen / Satz beenden (User 2026-07-24)
 - [x] Unit: Curl-Form zählt, kurzes Wackeln zählt nicht (`tool_count_sim_test.dart`)
 - [x] Unit: `autoEndSetEnabled false` + `endSetManually` (`tool_count_sim_test.dart`)
 
@@ -75,10 +76,11 @@ Markiere nur mit Evidence (Log, Screenshot, Unit-Test-Name). Keine Annahmen.
 ## Offener Kern-Pfad (DoD)
 
 ```
-[ ] Kalibrieren → [ ] Zählen (Curls) → [ ] Satz beenden → [ ] Korrigieren → [ ] Beenden
+[x] Verbinden → [x] Kalibrieren → [~] Zählen (Curls) → [~] Satz beenden → [ ] Korrigieren/Lernen → [ ] Training beenden
 ```
 
-Code+UI für alle Schritte vorhanden; **Bewegungs-E2E am Arm** ist der verbleibende Gate.
+Code+UI+BtnA da. **Rest:** ein sauberer Satz mit Zahlen + Learn + Summary + kurzer Wackel-Test  
+→ `docs/hardware/sessions/2026-07-24/HW_SESSION_A1_A5.md`.
 
 ---
 
@@ -86,5 +88,6 @@ Code+UI für alle Schritte vorhanden; **Bewegungs-E2E am Arm** ist der verbleibe
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | Session A1–A5 partial: Calib/Zählen/BtnA/Ghost/Kamera; E1–E3 [~], E4–E5 [ ] |
 | 2026-07-23 | Optional-B Env-Probe: Phone/App OK, M5/Motion fehlen → ehrliche [~] |
 | 2026-07-23 | Checkliste aus HW_VALIDATION + Protocol + Calib-Analyse + Product-Manual-End |

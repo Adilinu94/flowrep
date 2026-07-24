@@ -1,11 +1,11 @@
 # FlowRep 1.0 — Offene Punkte (konsolidiert)
 
-> **Stand**: 2026-07-23 (optional-goal final + Doc-15-Review)  
+> **Stand**: 2026-07-24 (HW-Session A1–A5 partial)  
 > **Git**: `main` = `origin/main`; RC-Tag `v1.0.0-rc.1`  
 > **Zweck**: eine Seite für „was ist fertig / was steht noch aus“ aus dem gesamten Ordner `docs/Version1.0/`.  
-> **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09 (Implementierungspläne), Product-Code-Stand.  
+> **Quellen**: 00, 10, 11, 12, HW_VALIDATION, 01–09, Session `docs/hardware/sessions/2026-07-24/`.  
 > **Dieses Ziel**: alle Optionals außer C1/C2/C4; B5 bleibt off; Motion-B* ehrlich env-deferred.  
-> **Post-1.0**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) — **nicht** vor A1–A5 starten.
+> **Post-1.0**: [15_VERBESSERUNGEN_EXTERNE_REPOS](15_VERBESSERUNGEN_EXTERNE_REPOS.md) — Code weitgehend da; A1–A5 physisch weiter Gate.
 
 ---
 
@@ -25,27 +25,32 @@
 
 ## 1. Priorität A — Release-Blocker (physisch am Gerät)
 
-Ohne diese Schritte kein Store-/RC-„fertig“. Code+UI sind da; Evidence fehlt.
+Code+UI da. Session 2026-07-24: großer Fortschritt, **formaler DoD-Abschluss noch 4 Kurzchecks**.  
+Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5.md).
 
 | # | Punkt | Doc-Ref | Status |
 |---|--------|---------|--------|
-| A1 | **Volle Session**: Kalibrieren → Zählen (echte Curls) → **Satz beenden** → echte Reps im Korrektur-Dialog → **Training beenden** | 00 DoD, 11 Kern-Pfad, 12 §Offen, HW_VALIDATION | **[ ] offen** |
-| A2 | **Zählen E1**: 8–12 Curls → Anzeige plausibel | 11 E1 | **[ ]** |
-| A3 | **Wackeln E2**: Alltags-/Wackelbewegung → keine wilden Falsch-Reps | 11 E2, 10 §5.4, 12 Wiggle HW | **[ ]** (Unit grün; User-HW-Retest nach Härtung) |
-| A4 | **E3–E5**: Satz beenden → Korrektur („Speichern & lernen“) → Session-Ende/Summary | 11 E3–E5 | **[ ]** |
-| A5 | Pre-Release-Smoke §5 Punkte 3–4 grün | 10_RELEASE | **[ ]** → blockiert finalen RC |
+| A1 | **Volle Session**: Calib → Zählen → Satz beenden → Korrektur → Training beenden | 00 DoD, 11, HW_SESSION_2026-07-24 | **[~]** Calib+Zählen+BtnA-Satzende belegt; Training-beenden/Summary + Learn-Klick noch notieren |
+| A2 | **Zählen E1**: 8–12 Curls → Anzeige plausibel | 11 E1 | **[~]** Zählen am Gerät ok („klappt besser“); App vs. manuell-Zahl noch einmal notieren |
+| A3 | **Wackeln E2**: keine wilden Falsch-Reps | 11 E2, Ghost 45s | **[~]** Unit grün; Ghost Idle 45s/Settings; bewusstes Wackeln 5–10 s noch notieren |
+| A4 | **E3–E5**: Satz beenden → Speichern & lernen → Session-Ende | 11 E3–E5 | **[~]** BtnA → Satz beenden User-ok; Learn + Training beenden noch abhaken |
+| A5 | Pre-Release-Smoke §5 Punkte 3–4 | 10_RELEASE | **[~]** Install/Connect/Calib/Count-Pfad in Session; formaler Smoke-Pass nach 1–4 |
 
-### Empfohlener manueller Ablauf (Adi + Phone + M5)
+### Rest-Checkliste (≈ 3 Min — einmalig, dann A1–A5 → [x])
 
-1. App installieren (Debug-APK), BLE verbinden.  
-2. Guided Calib durchlaufen (Profil gP speichern).  
-3. **Zählen starten** → 8–12 echte Bizeps-Curls.  
-4. **Nicht** auf Auto-Ende warten → **„Satz beenden“**.  
-5. Im Dialog echte Anzahl einstellen → **„Speichern & lernen“**.  
-6. Optional Pause / zweiter Satz.  
-7. **„Training beenden“** → Summary prüfen.  
-8. Kurz wackeln (kein Curl) und prüfen: Zähler bleibt stabil.  
-9. Ergebnis in `11_HARDWARE_QA_CHECKLISTE.md` und hier abhaken + kurzer Log/Screenshot-Hinweis.
+1. [ ] 8–12 Curls: `App=__` / `Manuell=__`  
+2. [ ] Satz beenden → echte Zahl → **Speichern & lernen**  
+3. [ ] **Training beenden** → Summary ok  
+4. [ ] 5–10 s wackeln/ablegen → Falsch-Reps: `0 / wenige / viele`  
+
+### Bereits erledigt in Session 2026-07-24 (nicht erneut bauen)
+
+- [x] BLE verbinden, Akku-Anzeige  
+- [x] Guided Calib + gP-Profil geladen  
+- [x] Zählen starten (UI; Samples an Engine)  
+- [x] M5 **BtnA**: Start Zählen / Satz beenden (+ Feedback-Settings)  
+- [x] Ghost-Pause Default 45 s (kurze Satz-Pause friert nicht mehr)  
+- [x] Kamera-Session: Pose sichtbar; Front/Rück umschaltbar
 
 ---
 
@@ -158,6 +163,7 @@ Aus 00 / 12 / HW_VALIDATION / Code:
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | A1–A5 → [~] nach HW-Session; Rest-Checkliste 4 Punkte; Evidence HW_SESSION_A1_A5 |
 | 2026-07-23 | Doc 15 verlinkt: Post-1.0 Gate, §6b Already, Datei-Index + 1.0-DoD Punkt 6 |
 | 2026-07-23 | B* env-probe + ehrliche Deferrals; D3 headless Webcam; D4 kein AVD |
 | 2026-07-23 | C3: Semver `1.0.0-rc.1+1`, CHANGELOG, tag `v1.0.0-rc.1`; C1/C2/C4 out of scope |

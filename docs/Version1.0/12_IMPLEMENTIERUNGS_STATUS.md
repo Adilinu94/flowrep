@@ -109,13 +109,14 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 ## Offene 1.0-Punkte (ehrlich)
 
-> Vollständige Liste mit Prioritäten A–D: **[13_OFFENE_PUNKTE.md](13_OFFENE_PUNKTE.md)**.
+> Vollständige Liste mit Prioritäten A–D: **[13_OFFENE_PUNKTE.md](13_OFFENE_PUNKTE.md)**.  
+> Session 2026-07-24: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5.md).
 
-1. **[ ]** Volle physische Session: Kalibrieren → Zählen (Curls) → **Satz beenden** → echte Reps eingeben → Training beenden  
-2. **[~]** Wiggle-Resistenz am Gerät (Unit grün; User meldete Rest-Wackeln → weitere Gates gelandet, HW-Retest)  
-3. **[ ]** Phase E–H Hardware-Protokoll (Zähl-DoD G5/G6, Shadow G7) — siehe Doc 11  
-4. Optional: CSV-Export Kalibrier-Puffer, Webcam-Live-Session  
-5. Store/Admin: iOS Archive (C1), Play Signing (C2), Store-Listing (C4) — out of scope; **C3** Semver-Tag `v1.0.0-rc.1` erledigt
+1. **[~]** Volle physische Session — Calib/Zählen/BtnA-Satzende belegt; **noch** Learn + Training beenden + Curl-Zahlen notieren  
+2. **[~]** Wiggle am Gerät — Unit + Ghost 45s; **noch** 5–10 s bewusster Wackel-Test  
+3. **[~]** G5/G6 am Gerät (Motion); G7 Pipeline **false**  
+4. Optional: CV physisch (Preview/Pose [x] Session; Webcam nicht nötig)  
+5. Store/Admin: C1/C2/C4 out of scope; **C3** `v1.0.0-rc.1` erledigt
 
 ---
 
@@ -130,7 +131,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 | **V2.0** | History-Trends, A5/A8/A9, A4 heuristic | **[~]** Trends+domain; TFLite offen |
 | **V3.0** | LLM / Teachable-Presets | **[~]** RuleCoaching offline; A10 offen |
 
-**Gate:** physische Doc-13 A1–A5 weiter **[ ]** — Feature-Code blockiert Release nicht.
+**Gate:** physische Doc-13 A1–A5 **[~]** (4 Kurzchecks) — Feature-Code blockiert Release nicht.
 
 ---
 
@@ -138,6 +139,7 @@ Siehe auch: [00_UEBERSICHT](00_UEBERSICHT.md) · [10_RELEASE](10_RELEASE_VORBERE
 
 | Datum | Änderung |
 |-------|----------|
+| 2026-07-24 | A1–A5 Session partial; BtnA/Ghost/Kamera; Rest-Checkliste 4 Punkte |
 | 2026-07-23 | Post-1.0 Abschnitt Doc 15 (V1.1 schlank, A2 DONE, Already) |
 | 2026-07-23 | Optional-goal final: 375 tests, C3 tag, B*/D* living status |
 | 2026-07-23 | CV-07: 401+ tests; no-pose stream + FileLandmarkSink; CHANGELOG entry |
