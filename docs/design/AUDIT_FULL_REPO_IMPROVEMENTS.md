@@ -800,3 +800,17 @@ Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
 | **UUIDs** | Unchanged (`fee0`…) — identity is UUID + dual name |
 | **UI copy** | Connect / errors say FlowRep-Sensor; mention both names in not-found text |
 | **Diagnose** | Extra line `health=` / `place=` for sensor + placement monitors |
+
+---
+
+## Appendix I — Vision agreement badge (2026-07-24)
+
+| | |
+|--|--|
+| **Goal** | Product honesty: optional pose confirmation during set, never replaces IMU count |
+| **API** | `FusionEngine.agreementLabel` / `agreementRatio` / `imuDecidedReps` |
+| **Decision path** | After each IMU rep (when camera enabled): `onImuRep` + immediate `getDecision` so counters advance without Form-Check frame poll |
+| **Active Set** | Compact `VisionAgreementBadge` — „Pose bestätigt X/Y“ (X=fused, Y=fused+imuOnly) |
+| **Setup** | `FusionStatusBadge` title uses same product copy + subtitle „IMU zählt — Pose bestätigt optional“ |
+| **Does not** | Override `countedReps`, enable `_useNewPipeline`, or auto-start camera during set |
+| **Tests** | `fusion_engine_test` agreement; `fusion_badge_test` compact badge |

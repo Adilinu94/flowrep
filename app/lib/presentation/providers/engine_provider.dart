@@ -1019,9 +1019,13 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     if (event.repsInCurrentSet > state.repsInCurrentSet) {
       _feedbackService.onRepCounted(qualityScore: state.lastQualityScore);
       // CV-04: notify fusion for stats only — IMU remains authoritative.
-      _fusionEngine.onImuRep(
-        timestampMs: DateTime.now().millisecondsSinceEpoch,
-      );
+      // getDecision right after onImuRep so agreement counters advance even
+      // when Form-Check is not polling frames (camera window may still match).
+      final ts = DateTime.now().millisecondsSinceEpoch;
+      _fusionEngine.onImuRep(timestampMs: ts);
+      if (_cameraEnabled) {
+        _fusionEngine.getDecision(currentTimestampMs: ts);
+      }
     }
 
     // Satz abgeschlossen → Feedback + Persistence + Korrektur-Dialog

@@ -78,6 +78,12 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 
 - [x] Dual-Scan FlowRep + GymTracker (App)  
 - [x] Firmware `DEVICE_NAME` → FlowRep (Re-Flash nötig für neuen Namen)  
+
+### Vision agreement (Appendix I)
+
+- [x] Active-Set Badge „Pose bestätigt X/Y“ (UI-only, IMU authoritative)  
+- [x] Fusion `getDecision` nach IMU-Rep wenn Kamera an  
+- [x] `FusionStatusBadge` product copy 
 - [ ] Operator: optional reflash; unflashed stick bleibt GymTracker und verbindet weiter
 
 ---

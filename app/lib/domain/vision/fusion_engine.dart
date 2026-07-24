@@ -71,6 +71,24 @@ class FusionEngine {
   int get cameraOnlyReps => _cameraOnlyReps;
   int get rejectedCameraReps => _rejectedCameraReps;
 
+  /// IMU-side decisions so far (`both` + `imuOnly`). Camera-only does not count.
+  int get imuDecidedReps => _fusedReps + _imuOnlyReps;
+
+  /// Share of IMU reps that pose also confirmed in the fusion window.
+  /// Null when no IMU decision yet.
+  double? get agreementRatio {
+    final d = imuDecidedReps;
+    if (d == 0) return null;
+    return _fusedReps / d;
+  }
+
+  /// Product copy: „Pose bestätigt 7/10“ (fused / IMU-decided).
+  String get agreementLabel {
+    final d = imuDecidedReps;
+    if (d == 0) return 'Pose bereit';
+    return 'Pose bestätigt $_fusedReps/$d';
+  }
+
   void onImuRep({required int timestampMs}) {
     _totalImuReps++;
     _lastImuRepTimestamp = timestampMs;

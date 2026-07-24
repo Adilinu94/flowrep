@@ -113,6 +113,30 @@ void main() {
         isFalse,
       );
     });
+
+    test('agreementLabel and ratio for product badge', () {
+      expect(fusion.agreementRatio, isNull);
+      expect(fusion.agreementLabel, 'Pose bereit');
+      expect(fusion.imuDecidedReps, 0);
+
+      // 2 both + 1 imuOnly → Pose bestätigt 2/3
+      fusion.onImuRep(timestampMs: 1000);
+      fusion.onCameraRep(timestampMs: 1050, confidence: 0.9);
+      fusion.getDecision(currentTimestampMs: 1100);
+
+      fusion.onImuRep(timestampMs: 2000);
+      fusion.onCameraRep(timestampMs: 2050, confidence: 0.9);
+      fusion.getDecision(currentTimestampMs: 2100);
+
+      fusion.onImuRep(timestampMs: 3000);
+      fusion.getDecision(currentTimestampMs: 3100);
+
+      expect(fusion.fusedReps, 2);
+      expect(fusion.imuOnlyReps, 1);
+      expect(fusion.imuDecidedReps, 3);
+      expect(fusion.agreementRatio, closeTo(2 / 3, 1e-9));
+      expect(fusion.agreementLabel, 'Pose bestätigt 2/3');
+    });
   });
 
   group('EngineNotifier CV-04 hooks', () {

@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import '../../domain/vision/fusion_engine.dart';
 
 /// Compact badge showing last fusion source / camera status (CV-04 UI).
+///
+/// Product line uses „Pose bestätigt X/Y“; chips remain for diagnose.
 class FusionStatusBadge extends StatelessWidget {
   final bool cameraEnabled;
   final int imuOnlyReps;
@@ -23,14 +25,17 @@ class FusionStatusBadge extends StatelessWidget {
     this.diagnostic,
   });
 
+  int get _imuDecided => fusedReps + imuOnlyReps;
+
+  String get _agreementLabel {
+    if (!cameraEnabled) return 'IMU only';
+    if (_imuDecided == 0) return 'Pose bereit';
+    return 'Pose bestätigt $fusedReps/$_imuDecided';
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final sourceLabel = !cameraEnabled
-        ? 'IMU only'
-        : fusedReps > 0
-            ? 'IMU + Kamera'
-            : 'IMU + Kamera bereit';
 
     return Card(
       color: theme.colorScheme.surfaceContainerHighest,
@@ -51,7 +56,7 @@ class FusionStatusBadge extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Fusion: $sourceLabel',
+                    _agreementLabel,
                     style: theme.textTheme.titleSmall,
                   ),
                 ),
@@ -62,6 +67,15 @@ class FusionStatusBadge extends StatelessWidget {
                 _chip(theme, 'cam $poseReps', Colors.teal),
               ],
             ),
+            if (cameraEnabled) ...[
+              const SizedBox(height: 4),
+              Text(
+                'IMU zählt — Pose bestätigt optional',
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ],
             if (lastElbowAngle != null) ...[
               const SizedBox(height: 6),
               Text(

@@ -27,11 +27,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - Tests: `app/test/sensor_health_and_quality_test.dart`
 - **Slow-rep searchback shadow** (Audit C-06): near-miss gP excursions under product peak gate are logged only (`slowRepShadowCount` / diagnose `slowShadow=`); live counts unchanged
 - **BLE dual-name scan** (Audit F-03): App finds `FlowRep` **or** legacy `GymTracker`; firmware advertise default `FlowRep` (reflash to apply); diagnose line `health=` / `place=`
+- **Vision agreement badge** (Audit U-02): Active-Set chip „Pose bestätigt X/Y“ when camera enabled; `FusionEngine.agreementLabel` / ratio; IMU still authoritative (no count override)
 
 ### Docs
 
 - Audit Appendix G: slow-rep shadow
 - Audit Appendix H: BLE dual-name
+- Audit Appendix I: vision agreement badge
 - `protocol.yaml` advertise_names
 
 ### Changed

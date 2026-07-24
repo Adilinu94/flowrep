@@ -18,6 +18,7 @@ import '../widgets/session_summary_dialog.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import '../widgets/fusion_status_badge.dart';
+import '../widgets/vision_agreement_badge.dart';
 import 'calibration/calibration_wizard_screen.dart';
 import 'camera_session_screen.dart';
 import 'history_screen.dart';
@@ -159,6 +160,15 @@ class HomeScreen extends ConsumerWidget {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
+        if (uiState.cameraEnabled) ...[
+          const SizedBox(height: 8),
+          VisionAgreementBadge(
+            cameraEnabled: true,
+            fusedReps: notifier.fusionEngine.fusedReps,
+            imuOnlyReps: notifier.fusionEngine.imuOnlyReps,
+            compact: true,
+          ),
+        ],
         const SizedBox(height: 12),
         ..._healthBanners(context, uiState, notifier),
         RepCounterDisplay(
