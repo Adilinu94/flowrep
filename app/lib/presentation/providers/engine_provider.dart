@@ -12,6 +12,7 @@ import '../../data/providers/ble_sensor_provider.dart';
 import '../../data/providers/sensor_provider.dart';
 import '../../data/repositories/csv_session_recorder.dart';
 import '../../data/security/calibration_store.dart';
+import '../../data/security/user_prefs_store.dart';
 import '../../data/services/export_service.dart';
 import '../../data/services/foreground_service_manager.dart';
 import '../../domain/config/engine_constants.dart';
@@ -51,9 +52,11 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     required ISensorProvider sensorProvider,
     required WorkoutEngine engine,
     IWorkoutRepository? repository,
+    UserPrefsStore? userPrefs,
   })  : _sensorProvider = sensorProvider,
         _engine = engine,
         _repository = repository,
+        _userPrefs = userPrefs ?? UserPrefsStore(),
         super(const WorkoutUiState());
 
   /// Factory: erstellt den Notifier und bindet alle Streams.
@@ -61,15 +64,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     required ISensorProvider sensorProvider,
     required WorkoutEngine engine,
     IWorkoutRepository? repository,
+    UserPrefsStore? userPrefs,
   }) {
     final notifier = EngineNotifier._(
       sensorProvider: sensorProvider,
       engine: engine,
       repository: repository,
+      userPrefs: userPrefs,
     );
     notifier._bind();
     notifier._feedbackService.init();
     notifier._initLifecycleObserver();
+    // Fire-and-forget: restore UX toggles (default on if missing / test env).
+    unawaited(notifier._loadUserPrefs());
     return notifier;
   }
 
@@ -77,6 +84,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   final WorkoutEngine _engine;
   final IWorkoutRepository? _repository;
   final CalibrationStore _calibrationStore = CalibrationStore();
+  final UserPrefsStore _userPrefs;
   final CsvSessionRecorder _recorder = CsvSessionRecorder();
   final FeedbackService _feedbackService = FeedbackService();
   final ForegroundServiceManager _fgService = ForegroundServiceManager();
@@ -119,6 +127,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   bool _m5ButtonControlEnabled = true;
   /// After successful calib reload, auto-start counting (Audit QW-2). Default on.
   bool _autoArmAfterCalib = true;
+  /// True after user toggles — late [_loadUserPrefs] must not clobber.
+  bool _autoArmUserSet = false;
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
@@ -546,8 +556,34 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   bool get autoArmAfterCalib => _autoArmAfterCalib;
 
-  void setAutoArmAfterCalib(bool enabled) {
+  /// Toggle + persist (survives app restart). Default remains on when unset.
+  Future<void> setAutoArmAfterCalib(bool enabled) async {
+    _autoArmUserSet = true;
     _autoArmAfterCalib = enabled;
+    try {
+      await _userPrefs.saveAutoArmAfterCalib(enabled);
+    } catch (_) {
+      // Platform channel missing in unit tests — in-memory value still applies.
+    }
+  }
+
+  Future<void> _loadUserPrefs() async {
+    try {
+      final stored = await _userPrefs.loadAutoArmAfterCalib();
+      // Ignore late load if the user already changed the toggle this session.
+      if (!_autoArmUserSet) {
+        _autoArmAfterCalib = stored;
+      }
+    } catch (_) {
+      // Keep constructor default (true).
+    }
+  }
+
+  /// Test hook: re-read prefs (forces apply even after a prior toggle).
+  @visibleForTesting
+  Future<void> reloadUserPrefsForTest() async {
+    _autoArmUserSet = false;
+    await _loadUserPrefs();
   }
 
   void setButtonFeedback({bool? haptic, bool? audio}) {

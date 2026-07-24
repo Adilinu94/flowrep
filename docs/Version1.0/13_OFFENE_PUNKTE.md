@@ -83,7 +83,11 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 
 - [x] Active-Set Badge „Pose bestätigt X/Y“ (UI-only, IMU authoritative)  
 - [x] Fusion `getDecision` nach IMU-Rep wenn Kamera an  
-- [x] `FusionStatusBadge` product copy 
+- [x] `FusionStatusBadge` product copy  
+
+### Settings persistence
+
+- [x] Auto-Arm nach Calib in `UserPrefsStore` (secure storage, Default an) 
 - [ ] Operator: optional reflash; unflashed stick bleibt GymTracker und verbindet weiter
 
 ---

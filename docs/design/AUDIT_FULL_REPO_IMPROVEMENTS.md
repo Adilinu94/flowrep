@@ -814,3 +814,15 @@ Still operator-only: formal A1–A5 numbers, labeled 20-set corpus, Shadow G7.
 | **Setup** | `FusionStatusBadge` title uses same product copy + subtitle „IMU zählt — Pose bestätigt optional“ |
 | **Does not** | Override `countedReps`, enable `_useNewPipeline`, or auto-start camera during set |
 | **Tests** | `fusion_engine_test` agreement; `fusion_badge_test` compact badge |
+
+---
+
+## Appendix J — Auto-arm prefs persistence (2026-07-24)
+
+| | |
+|--|--|
+| **Problem** | `autoArmAfterCalib` was in-memory only — toggle reset after kill |
+| **Store** | `UserPrefsStore` (`pref_auto_arm_after_calib`) via FlutterSecureStorage |
+| **Load** | `EngineNotifier.create` → async `_loadUserPrefs` (default **true**) |
+| **Save** | `setAutoArmAfterCalib` writes immediately |
+| **Tests** | `user_prefs_store_test.dart` with fake secure storage |

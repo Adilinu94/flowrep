@@ -92,9 +92,9 @@ void main() {
 
     tearDown(() => notifier.dispose());
 
-    test('autoArmAfterCalib default true and toggleable', () {
+    test('autoArmAfterCalib default true and toggleable', () async {
       expect(notifier.autoArmAfterCalib, isTrue);
-      notifier.setAutoArmAfterCalib(false);
+      await notifier.setAutoArmAfterCalib(false);
       expect(notifier.autoArmAfterCalib, isFalse);
     });
 
