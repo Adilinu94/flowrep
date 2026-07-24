@@ -62,6 +62,35 @@ void main() {
       }
       expect(gate.isPaused, isFalse);
     });
+
+    test('short rest does not pause with default-like long threshold', () {
+      final gate = GhostRepGate(
+        windowSize: 10,
+        minIdleWindowsToPause: 45,
+        minActiveWindowsToResume: 1,
+        idleMeanMax: 15,
+        idleVarianceMax: 5,
+        activeMeanMin: 40,
+      );
+      // ~5 s idle (5 windows) — must still allow counting.
+      for (var w = 0; w < 5; w++) {
+        for (var i = 0; i < 10; i++) {
+          gate.push(5);
+        }
+      }
+      expect(gate.isPaused, isFalse);
+    });
+
+    test('setIdlePauseSeconds(0) never auto-pauses', () {
+      final gate = GhostRepGate(windowSize: 5, minIdleWindowsToPause: 2);
+      gate.setIdlePauseSeconds(0);
+      for (var w = 0; w < 20; w++) {
+        for (var i = 0; i < 5; i++) {
+          gate.push(1);
+        }
+      }
+      expect(gate.isPaused, isFalse);
+    });
   });
 
   group('FormQuality / PRs / Correction (FR-A5/B4/B13)', () {

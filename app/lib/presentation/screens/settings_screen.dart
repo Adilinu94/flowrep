@@ -198,13 +198,41 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ),
           SwitchListTile(
             title: const Text('Ghost-Rep-Watchdog'),
-            subtitle: const Text('Pausiert Zählung bei Ablegen/Inaktivität'),
+            subtitle: const Text(
+              'Pausiert Zählung nur nach längerer Ruhe (Ablegen), '
+              'nicht nach kurzen Pausen zwischen Reps',
+            ),
             value: notifier.engine.ghostGateEnabled,
             onChanged: (v) {
               notifier.setGhostGateEnabled(v);
               setState(() {});
             },
           ),
+          if (notifier.engine.ghostGateEnabled) ...[
+            Text(
+              'Ghost-Pause nach Inaktivität',
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            const SizedBox(height: 8),
+            SegmentedButton<int>(
+              segments: const [
+                ButtonSegment(value: 30, label: Text('30s')),
+                ButtonSegment(value: 45, label: Text('45s')),
+                ButtonSegment(value: 90, label: Text('90s')),
+                ButtonSegment(value: 0, label: Text('Aus')),
+              ],
+              selected: {notifier.ghostIdlePauseSeconds},
+              onSelectionChanged: (s) {
+                notifier.setGhostIdlePauseSeconds(s.first);
+                setState(() {});
+              },
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Default 45 s — kurze Satz-Pausen zählen weiter.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
           const Divider(),
           Text('Datenschutz & Export', style: Theme.of(context).textTheme.titleSmall),
           ListTile(

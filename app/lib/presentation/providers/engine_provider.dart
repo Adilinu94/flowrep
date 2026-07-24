@@ -467,6 +467,13 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _engine.ghostGateEnabled = enabled;
   }
 
+  /// Idle seconds before ghost-pause freezes counting (0 = off). Default 45.
+  void setGhostIdlePauseSeconds(int seconds) {
+    _engine.ghostIdlePauseSeconds = seconds;
+  }
+
+  int get ghostIdlePauseSeconds => _engine.ghostIdlePauseSeconds;
+
   void setExerciseTarget({required int sets, required int reps}) {
     _targets.set(state.selectedExerciseId, sets: sets, reps: reps);
     state = state.copyWith(targetSets: sets, targetReps: reps);

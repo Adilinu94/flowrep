@@ -9,12 +9,14 @@ import 'dart:math';
 /// rests between curls do not immediately freeze counting.
 class GhostRepGate {
   GhostRepGate({
-    this.windowSize = 50, // ~1 s @ 50 Hz
+    this.windowSize = 50, // ~1 s @ 50 Hz when product path ~50 Hz gP samples
     // |gP| °/s scale (product path only).
     this.idleVarianceMax = 40.0,
     this.idleMeanMax = 18.0,
     this.activeMeanMin = 35.0,
-    this.minIdleWindowsToPause = 5, // ~5 s continuous idle while active
+    /// Default ~45 s — short rests between curls must NOT freeze counting.
+    /// Configurable via [setIdlePauseSeconds] / Settings.
+    this.minIdleWindowsToPause = 45,
     this.minActiveWindowsToResume = 2,
   });
 
@@ -22,8 +24,19 @@ class GhostRepGate {
   final double idleVarianceMax;
   final double idleMeanMax;
   final double activeMeanMin;
-  final int minIdleWindowsToPause;
+  /// Number of consecutive idle windows (~1 s each) before pause.
+  int minIdleWindowsToPause;
   final int minActiveWindowsToResume;
+
+  /// Configure idle duration before ghost-pause. `0` or negative = never auto-pause.
+  void setIdlePauseSeconds(int seconds) {
+    if (seconds <= 0) {
+      minIdleWindowsToPause = 1 << 30; // effectively never
+      return;
+    }
+    // One evaluation window ≈ 1 s at windowSize samples @ ~50 Hz product path.
+    minIdleWindowsToPause = seconds.clamp(5, 600);
+  }
 
   final List<double> _buf = <double>[];
   int _idleStreak = 0;

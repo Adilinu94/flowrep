@@ -518,6 +518,14 @@ class WorkoutEngine {
     if (!value) _ghostGate.reset();
   }
 
+  /// Seconds of continuous idle before ghost-pause (0 = never). Settings-driven.
+  int _ghostIdlePauseSeconds = 45;
+  int get ghostIdlePauseSeconds => _ghostIdlePauseSeconds;
+  set ghostIdlePauseSeconds(int seconds) {
+    _ghostIdlePauseSeconds = seconds;
+    _ghostGate.setIdlePauseSeconds(seconds);
+  }
+
   /// Latest envelope / signal snapshot for diagnose overlay (FR-B10).
   double get diagEnvelope => _lastEnvelope;
   double? get diagGpAbs => _lastGpAbs;
