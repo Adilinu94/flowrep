@@ -43,6 +43,9 @@ Evidence: [HW_SESSION_A1_A5.md](../hardware/sessions/2026-07-24/HW_SESSION_A1_A5
 3. [ ] **Training beenden** → Summary ok  
 4. [ ] 5–10 s wackeln/ablegen → Falsch-Reps: `0 / wenige / viele`  
 
+**Vollständiger aktueller Plan (P0–P3, Setup, Prefs, BLE):**  
+[`docs/hardware/PLAN_HW_TEST_AKTUELL.md`](../hardware/PLAN_HW_TEST_AKTUELL.md)
+
 ### Bereits erledigt in Session 2026-07-24 (nicht erneut bauen)
 
 - [x] BLE verbinden, Akku-Anzeige  
