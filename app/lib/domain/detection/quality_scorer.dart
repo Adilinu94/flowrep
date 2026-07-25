@@ -66,7 +66,12 @@ class QualityScorer {
   ///
   /// [expectedProminence]: Erwartete Peak-Prominenz (aus Kalibrierung).
   /// [expectedDurationSamples]: Erwartete Rep-Dauer in Samples (z.B. 50 = 1s bei 50Hz).
-  /// [minScore]: Minimale Score für Akzeptanz (Standard: 0.4).
+  /// [minScore]: Minimale Score für Akzeptanz (Standard: 0.55 - angehoben
+  /// 2026-07-25 laut Product-Owner-Policy "Überzählen > Unterzählen": diese
+  /// Pipeline läuft noch hinter `_useNewPipeline=false` nur im Shadow-Modus,
+  /// die Anhebung hat also KEIN Live-Risiko. Startwert für spätere G7-
+  /// Shadow-DoD-Tuning gegen echte Aufnahmen, kein final validierter Wert -
+  /// dafür fehlen aktuell reale Golden-CSV-Daten, siehe Audit C-02).
   QualityScorer({
     double expectedProminence = 50.0,
     double expectedDurationSamples = 50.0,
@@ -74,7 +79,7 @@ class QualityScorer {
     this.weightRom = 0.25,
     this.weightTempo = 0.20,
     this.weightSymmetry = 0.15,
-    this.minScore = 0.4,
+    this.minScore = 0.55,
   })  : _expectedProminence = expectedProminence,
         _expectedDurationSamples = expectedDurationSamples;
 
