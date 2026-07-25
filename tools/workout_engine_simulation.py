@@ -331,6 +331,194 @@ class WorkoutEngineSim:
 
 
 # ============================================================
+# GpEngineSim — Portierung des AKTUELLEN Produktpfads
+# (WorkoutEngine._detectPeakSigned + _commitRep, workout_engine.dart
+#  Zeilen ~1007-1088; SlowRepShadow.shouldFlag, slow_rep_shadow.dart
+#  komplett). Stand 2026-07-25.
+#
+# WorkoutEngineSim oben bleibt unveraendert (combined magnitude, Stand
+# 2026-07-12/17 - siehe deren Klassenkommentar). Seit 2026-07-19 ist im
+# echten Code aber NICHT MEHR combined das autoritative Signal fuer ein
+# Profil mit chosenSignal=gP, sondern exakt die hier portierte Logik
+# (WorkoutEngine._gpIsAuthoritative). Wer die App-Zaehlung von HEUTE
+# simulieren will, nutzt GpEngineSim, nicht WorkoutEngineSim.
+#
+# Wiederverwendet, unveraendert: kandidaten_signale()/make_persona_6achsen()
+# weiter unten liefern g_p schon fertig berechnet (gleiche Formel wie
+# GpProjection.project() in app/lib/domain/filters/gp_projection.dart) -
+# hier kommt nur die LIVE-ENTSCHEIDUNGSLOGIK auf einem gegebenen
+# g_p-Signal dazu, keine doppelte Signalerzeugung.
+# ============================================================
+
+class GpEngineSim:
+    """1:1-Portierung der Live-Zaehlentscheidung, NICHT der Kalibrierung
+    selbst (siehe threshold_from_calibration()-Docstring unten fuer die
+    Abgrenzung). threshold/gp_direction/gp_use_abs sind hier FESTE
+    Parameter, wie ein bereits geladenes ExerciseProfile."""
+
+    # workout_engine.dart Zeile 959/962/1022 (falling ratio 0.3 ist dort
+    # ein Literal in _detectPeakSigned, keine eigene benannte Konstante).
+    MIN_GP_SAMPLES_ABOVE = 15
+    GP_PEAK_OVER_THRESHOLD = 1.2
+    FALLING_RATIO = 0.3
+
+    # workout_engine.dart Zeile 1524: `_gpThreshold = max(50.0, peakThreshold * 0.70);`
+    THETA_FLOOR = 50.0
+    THETA_CALIB_RATIO = 0.70
+
+    # slow_rep_shadow.dart: peakRatioOfTheta / minSamplesAbove
+    SHADOW_PEAK_RATIO = 0.85
+    SHADOW_MIN_SAMPLES = 10
+
+    @staticmethod
+    def threshold_from_calibration(calib_peak):
+        """workout_engine.dart Zeile 1524. calib_peak = ein Peak-Proxy aus
+        der Guided Calibration. HINWEIS: dies ist NICHT GuidedCalibrationSim
+        (unten, eigene Klasse fuer den kompletten Kalibrierungs-Ablauf
+        inkl. Plateau-Fix) - hier wird nur die Schwellen-HAERTUNG auf einen
+        gegebenen Peak-Wert angewendet, zum Testen der Live-Gates."""
+        return max(GpEngineSim.THETA_FLOOR, calib_peak * GpEngineSim.THETA_CALIB_RATIO)
+
+    def __init__(self, threshold, gp_direction=1, gp_use_abs=False,
+                 min_rep_interval_samples=35):
+        # min_rep_interval_samples-Default 35: workout_engine.dart Zeile 1571,
+        # max(minRepIntervalSamples, round(0.7*1000/20)) sobald ein echtes
+        # Profil geladen ist (20ms/Sample -> 35 Samples = 0.7s).
+        self.threshold = threshold
+        self.gp_direction = gp_direction
+        self.gp_use_abs = gp_use_abs
+        self.min_rep_interval_samples = min_rep_interval_samples
+
+        self.sample_count = 0
+        self._above = False
+        self._samples_above = 0
+        self._peak_in_excursion = 0.0
+
+        self.gp_rep_count = 0    # zaehlt IMMER (Diagnose) - workout_engine.dart Zeile 1061
+        self.counted_reps = 0    # == countedReps, nur wenn productOk UND nicht in Sperrzeit
+        self._last_counted_rep_sample = None
+        self.shadow_slow_rep_count = 0
+        self.rep_events = []     # [(sample_index, peak), ...]
+        self.shadow_events = []  # [(sample_index, peak, samples_above), ...]
+
+    def process_sample(self, gp_raw):
+        """gp_raw: bereits bias-korrigiertes, signiertes g_p-Sample (Grad/s) -
+        z.B. aus kandidaten_signale(...)['g_p']."""
+        self.sample_count += 1
+        value = abs(gp_raw) if self.gp_use_abs else gp_raw * self.gp_direction
+
+        if not self._above and value > self.threshold:
+            self._above = True
+            self._samples_above = 1
+            self._peak_in_excursion = value
+        elif self._above:
+            if value > self.threshold:
+                self._samples_above += 1
+                self._peak_in_excursion = max(self._peak_in_excursion, value)
+            elif value < self.threshold * self.FALLING_RATIO:
+                long_enough = self._samples_above >= self.MIN_GP_SAMPLES_ABOVE
+                strong_enough = self._peak_in_excursion >= self.threshold * self.GP_PEAK_OVER_THRESHOLD
+                samples_above = self._samples_above
+                peak = self._peak_in_excursion
+                self._above = False
+                self._samples_above = 0
+                self._peak_in_excursion = 0.0
+
+                if long_enough and strong_enough:
+                    self.gp_rep_count += 1
+                    self._commit_rep(peak)
+                else:
+                    self._maybe_shadow_flag(peak, samples_above)
+
+    def _commit_rep(self, peak):
+        in_refractory = (
+            self._last_counted_rep_sample is not None
+            and (self.sample_count - self._last_counted_rep_sample) < self.min_rep_interval_samples
+        )
+        if in_refractory:
+            return
+        self.counted_reps += 1
+        self._last_counted_rep_sample = self.sample_count
+        self.rep_events.append((self.sample_count, peak))
+
+    def _maybe_shadow_flag(self, peak, samples_above):
+        if samples_above < self.SHADOW_MIN_SAMPLES:
+            return
+        if peak >= self.threshold * self.SHADOW_PEAK_RATIO:
+            self.shadow_slow_rep_count += 1
+            self.shadow_events.append((self.sample_count, peak, samples_above))
+
+    def run(self, gp_signal):
+        for v in gp_signal:
+            self.process_sample(float(v))
+        return self.counted_reps
+
+
+def run_gp_engine_sim_validation(hz=50):
+    """Validiert GpEngineSim (Stand 2026-07-25) gegen die bestehenden
+    PERSONA_PROFILES weiter unten in dieser Datei. Nutzt kandidaten_signale()
+    und make_persona_6achsen() unveraendert wieder. Ersetzt NICHT die
+    echten A1-A5-HW-Checks (docs/hardware/PLAN_HW_TEST_AKTUELL.md) -
+    zeigt nur, ob die aktuelle Gate-Logik auf plausiblen synthetischen
+    Signalen das tut, was sie laut Code tun soll."""
+    print("\n" + "=" * 70)
+    print("GpEngineSim-Validierung (Stand 2026-07-25) — kein Ersatz fuer A1-A5")
+    print("=" * 70)
+
+    ergebnisse = []
+
+    def kalibriere(persona, seed, hz):
+        """Vereinfachter Kalibrierungs-Proxy fuer diesen Test (NICHT
+        GuidedCalibrationSim): 3 saubere Reps derselben Persona, Median
+        von |g_p| oberhalb 30% des Maximums als Peak-Schaetzung."""
+        profil = PERSONA_PROFILES[persona]
+        achse = np.array(profil["achse"], dtype=float)
+        achse /= np.linalg.norm(achse)
+        _, acc_c, gyro_c, _ = make_persona_6achsen(persona, n_reps=3, hz=hz, seed=seed,
+                                                     ruhe_vor_s=0.3, ruhe_nach_s=0.3)
+        sig_c = kandidaten_signale(acc_c, gyro_c, achse=achse, gyro_bias=GYRO_BIAS_VEKTOR)
+        abs_gp = np.abs(sig_c["g_p"])
+        ueber_schwelle = abs_gp[abs_gp > 0.3 * np.max(abs_gp)]
+        calib_peak = float(np.median(ueber_schwelle))
+        return achse, GpEngineSim.threshold_from_calibration(calib_peak)
+
+    def teste(label, persona, n, seed, erwartet, halb_rep_p=0.0, tempo="normal",
+              calib_persona=None, calib_seed=None):
+        cp = calib_persona or persona
+        cs = calib_seed if calib_seed is not None else seed + 500
+        achse, threshold = kalibriere(cp, cs, hz)
+
+        t, acc, gyro, n_halb = make_persona_6achsen(persona, n_reps=n, hz=hz, seed=seed,
+                                                      tempo=tempo, halb_rep_p=halb_rep_p)
+        sig = kandidaten_signale(acc, gyro, achse=achse, gyro_bias=GYRO_BIAS_VEKTOR)
+
+        sim = GpEngineSim(threshold=threshold)
+        sim.run(sig["g_p"])
+
+        ok = abs(sim.counted_reps - erwartet) <= 1
+        ergebnisse.append(ok)
+        print(f"  {label:52s} theta={threshold:6.1f}  "
+              f"gezaehlt={sim.counted_reps:2d}/{erwartet:<2d}  "
+              f"shadow_slow={sim.shadow_slow_rep_count:2d}  "
+              f"{'OK' if ok else 'ABWEICHUNG'}")
+        return sim
+
+    teste("clean, 10 saubere Reps", "clean", 10, seed=1, erwartet=10)
+    teste("double_bump, 10 Reps (Doppel-Hub-Struktur-Check)", "double_bump", 10, seed=2, erwartet=10)
+    teste("weak, 10 Reps (eigenkalibriert)", "weak", 10, seed=3, erwartet=10)
+    teste("slow, 8 Reps (eigenkalibriert)", "slow", 8, seed=4, erwartet=8)
+    teste("slow, 8 Reps nach clean-Kalibrierung (Ermuedungsfall, Audit C-06)",
+          "slow", 8, seed=5, erwartet=8, calib_persona="clean", calib_seed=105)
+    teste("inconsistent, 10 Reps mit 20% Halb-Reps", "inconsistent", 10, seed=6,
+          erwartet=10, halb_rep_p=0.2)
+
+    n_ok = sum(ergebnisse)
+    print(f"\n  {n_ok}/{len(ergebnisse)} Szenarien innerhalb Toleranz (+-1 Rep).")
+    print("  Kein Ersatz fuer A1-A5 (echte HW) — zeigt nur synthetische Plausibilitaet.")
+    return ergebnisse
+
+
+# ============================================================
 # GuidedCalibrationSim — Portierung von WorkoutState.guidedCalibration
 # (bisher komplett unportiert). 1:1 aus workout_engine.dart, Stand
 # 2026-07-12, EINSCHLIESSLICH des unten dokumentierten Plateau-Verhaltens.
