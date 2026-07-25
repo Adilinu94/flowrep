@@ -928,6 +928,151 @@ void main() {
     });
 
     test(
+        'ROM-Gate (prominenceMin): a below-floor excursion that still '
+        'clears the existing strongEnough gate is rejected - only full '
+        'ROM counts (Product-Owner-Entscheidung 2026-07-25)', () async {
+      // prominenceMin=180 sits ABOVE the existing strongEnough floor
+      // (peakThreshold*0.70*1.2 = 126) so this isolates the NEW gate,
+      // not the pre-existing one.
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.applyCalibration(
+        peakThreshold: 150.0,
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+        prominenceMin: 180.0,
+      );
+
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      // Partial rep: peak ~140 deg/s clears strongEnough (126) but not
+      // prominenceMin (180).
+      for (var rep = 0; rep < 5; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * 2 * pi;
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 0, az: 0,
+            gx: 0, gy: 0, gz: 5.0 + 140.0 * sin(phase),
+          ));
+        }
+        for (var i = 0; i < 15; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+        }
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, 0,
+          reason: 'Peak ~140 clears the pre-existing strongEnough gate '
+              '(126) but must be rejected by the new prominenceMin floor '
+              '(180) - if this is >0, the ROM gate is not wired or the '
+              'units do not match g_p.');
+    });
+
+    test(
+        'ROM-Gate (prominenceMin): a full-ROM excursion above the floor '
+        'still counts normally', () async {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.applyCalibration(
+        peakThreshold: 150.0,
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+        prominenceMin: 180.0,
+      );
+
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      for (var rep = 0; rep < 5; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * 2 * pi;
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 0, az: 0,
+            gx: 0, gy: 0, gz: 5.0 + 220.0 * sin(phase),
+          ));
+        }
+        for (var i = 0; i < 15; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+        }
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(5, 1),
+          reason: 'Peak ~220 clears prominenceMin=180 - the ROM gate '
+              'must not reject legitimate full-ROM reps.');
+    });
+
+    test(
+        'ROM-Gate: prominenceMin omitted (no profile value) leaves '
+        'behaviour unchanged - backward compatible', () async {
+      final engine = WorkoutEngine(exerciseId: 'bicep_curl');
+      engine.applyCalibration(
+        peakThreshold: 150.0,
+        minThresholdAboveBaseline: 0.10,
+        chosenSignal: ChosenSignal.gP,
+        rotationAxis: [0, 0, 1],
+        gyroBias: [0, 0, 5.0],
+        // prominenceMin omitted entirely, like every call site before
+        // the ROM gate existed.
+      );
+
+      var t = DateTime(2026, 1, 1);
+      ExerciseSet? finishedSet;
+      engine.events.listen((e) {
+        if (e.completedSet != null) finishedSet = e.completedSet;
+      });
+      // Same 140-peak partial rep that the floor test above rejects -
+      // without a profile prominenceMin, only the pre-existing
+      // strongEnough gate (126) applies, so this MUST still count.
+      for (var rep = 0; rep < 5; rep++) {
+        for (var i = 0; i < 60; i++) {
+          final phase = (i / 60) * 2 * pi;
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(
+            timestamp: t, ax: 0, ay: 0, az: 0,
+            gx: 0, gy: 0, gz: 5.0 + 140.0 * sin(phase),
+          ));
+        }
+        for (var i = 0; i < 15; i++) {
+          t = t.add(const Duration(milliseconds: 20));
+          engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+        }
+      }
+      for (var i = 0; i < 250; i++) {
+        t = t.add(const Duration(milliseconds: 20));
+        engine.processSample(SensorSample(timestamp: t, ax: 0, ay: 0, az: 0, gx: 0, gy: 0, gz: 5.0));
+      }
+      engine.dispose();
+
+      expect(finishedSet, isNotNull);
+      expect(finishedSet!.countedReps, closeTo(5, 1),
+          reason: 'No prominenceMin means romOk must default to true - '
+              'this guards against the gate ever becoming active for '
+              'existing profiles/self-calibration that never set it.');
+    });
+
+    test(
         'a reconnect preserves a profile-set g_p calibration instead of '
         'discarding it and forcing placeholder relearning', () async {
       // Found and fixed alongside the routing test above: reset() used to

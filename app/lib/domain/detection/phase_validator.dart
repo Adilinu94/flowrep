@@ -56,12 +56,15 @@ class PhaseValidator {
 
   /// Erstellt den PhaseValidator.
   ///
-  /// [minDurationRatio]: Min. Anteil der positiven Phase (Standard: 0.05).
-  /// [maxDurationRatio]: Max. Anteil der positiven Phase (Standard: 0.99).
+  /// [minDurationRatio]: Min. Anteil der positiven Phase (Standard: 0.15 -
+  /// verengt 2026-07-25, Policy "Überzählen > Unterzählen"; war 0.05, ließ
+  /// praktisch jede Schräglage durch). Shadow-Pipeline, kein Live-Risiko.
+  /// [maxDurationRatio]: Max. Anteil der positiven Phase (Standard: 0.85 -
+  /// war 0.99, gleicher Grund).
   /// [minPhaseSamples]: Min. Samples pro Phase (Standard: 2).
   PhaseValidator({
-    this.minDurationRatio = 0.05,
-    this.maxDurationRatio = 0.99,
+    this.minDurationRatio = 0.15,
+    this.maxDurationRatio = 0.85,
     this.minPhaseSamples = 2,
   });
 

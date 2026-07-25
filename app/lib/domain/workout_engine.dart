@@ -1023,12 +1023,31 @@ class WorkoutEngine {
         final longEnough = _gpSamplesAbove >= _minGpSamplesAbove;
         final strongEnough =
             _gpPeakInExcursion >= threshold * _gpPeakOverThreshold;
+        // ROM-Gate (2026-07-25, Product-Owner-Entscheidung: "nur volle ROM
+        // zählt", Überzählen > Unterzählen als Fehlerbild-Policy): zusätzlicher
+        // harter Floor aus dem kalibrierten Profil, falls vorhanden.
+        // _prominenceOverride kommt aus ExerciseProfile.prominenceMin, das im
+        // selben Known-Count-Sweep wie chosenSignal berechnet wird (siehe
+        // CalibrationController) - bei chosenSignal=gP (dem einzigen Fall, in
+        // dem _gpThreshold über applyCalibration gesetzt wird) ist es also
+        // bereits in gP-Einheiten (°/s), keine Einheiten-Kollision mit dem
+        // alten kombinierten Pfad. Bewusst als ABSOLUTER Peak-Floor auf
+        // _gpPeakInExcursion umgesetzt statt als Tal-relative "true
+        // prominence" (peak - preceding valley, wie im alten kombinierten
+        // Pfad) - diese Methode trackt keinen Vor-Exkursions-Talwert, ein
+        // absoluter Floor lehnt zu flache Excursions (Partial-Reps) ohne
+        // neuen State exakt so ab, wie die Policy es verlangt. Nur aktiv,
+        // wenn ein Profil einen Wert > 0 kalibriert hat (0.0 = "aus",
+        // ExerciseProfile-Default sowie Selbst-Kalibrierung ohne Profil).
+        final romOk = _prominenceOverride == null ||
+            _prominenceOverride! <= 0.0 ||
+            _gpPeakInExcursion >= _prominenceOverride!;
         _gpAboveThreshold = false;
         final samplesAbove = _gpSamplesAbove;
         final peak = _gpPeakInExcursion;
         _gpSamplesAbove = 0;
         _gpPeakInExcursion = 0.0;
-        final productOk = longEnough && strongEnough;
+        final productOk = longEnough && strongEnough && romOk;
         // Reject short flicks and weak threshold grazes (wiggle).
         if (!productOk) {
           // Shadow searchback: near-miss slow curls (does NOT count live).
