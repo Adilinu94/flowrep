@@ -14,15 +14,17 @@
 - **Entscheidung:** `flutter_blue_plus`, begründet durch stärkere Community-Adoption und aktivere Wartung laut aktuellem Vergleich (2026).
 - **Konsequenz:** `flutter_reactive_ble` wird nicht parallel eingebunden. Sollte `flutter_blue_plus` in der konkret eingesetzten Flutter-Version Probleme zeigen (siehe `00_ENTSCHEIDUNGEN_ERFORDERLICH.md`, Abschnitt C), ist das ein Eskalationsfall, kein Anlass für die KI, eigenständig zurück auf `flutter_reactive_ble` zu wechseln.
 
-### ADR-003: Kalibrierung entfällt als separater Schritt
+### ADR-003: Kalibrierung entfällt als separater Schritt — **Ersetzt durch ADR-011**
 - **Kontext:** Spannung zwischen "Magic Moment" (sofortige erste Zahl) und der technischen Notwendigkeit, Schwellenwerte zu kalibrieren.
 - **Entscheidung:** Der erste echte Satz dient gleichzeitig als Kalibrierung (siehe `WorkoutState.calibrating`).
 - **Konsequenz:** Kein UI-Schritt "Mach 3 Kalibrierungs-Reps" existiert. Die ersten 2–3 Wiederholungen werden bereits angezeigt.
+- **Status (2026-07-25):** Überholt. Mit Guided Calibration 2.0 gibt es genau diesen UI-Schritt wieder, siehe ADR-011.
 
-### ADR-004: Zählalgorithmus — adaptiver, relativer Schwellenwert statt fixer absoluter Wert
+### ADR-004: Zählalgorithmus — adaptiver, relativer Schwellenwert statt fixer absoluter Wert — **Ersetzt durch ADR-012**
 - **Kontext:** Vergleichbare Referenzprojekte (u. a. drei unabhängige Implementierungen desselben Tutorial-Datensatzes) nutzen einen fixen, pro Übung von Hand justierten Cutoff. Das RecoFit-Paper zeigt, dass ein relativer, an der Perzentil-Verteilung der eigenen Satz-Peaks orientierter Schwellenwert robuster ist als ein absoluter.
 - **Entscheidung:** Envelope-Following mit relativer Perzentil-Filterung (siehe Architekturdokument Abschnitt 5.1.2).
 - **Konsequenz:** Höherer Implementierungsaufwand als ein simpler Fixwert, aber begründet durch Vergleichsdaten aus externen Quellen.
+- **Status (2026-07-25):** Überholt. Magnitude/Envelope ist nur noch Fallback-Pfad; Produktpfad ist die signierte gP-Projektion, siehe ADR-012.
 
 ### ADR-005: Fehler-State-Messaging — kein "Die KI lernt dazu" in V1
 - **Kontext:** V1 enthält keine ML-Komponente, die live nachlernt.
@@ -54,3 +56,15 @@
 - **Kontext:** Der EuGH hat 2022 (Rs. C-184/20) eine weite Auslegung von Art. 9 DSGVO bestätigt: auch Daten, aus denen sich Gesundheitsinformationen nur indirekt ableiten lassen, können darunterfallen. Bewegungs-/IMU-Rohdaten aus einem Trainings-Tracker lassen über die Zeit Rückschlüsse auf Fitnesslevel und ggf. gesundheitliche Zustände zu.
 - **Entscheidung:** Bis zur rechtlichen Prüfung (siehe `00_ENTSCHEIDUNGEN_ERFORDERLICH.md`) wird vorsorglich die strengere Einwilligungslogik nach Art. 9 Abs. 2 lit. a DSGVO angenommen (ausdrückliche, gesonderte Einwilligung), nicht die allgemeine Rechtsgrundlage nach Art. 6.
 - **Konsequenz:** Die Einwilligungs-UI muss eine separate, explizite Bestätigung vorsehen, nicht in die allgemeinen AGB eingebettet sein. Diese ADR ersetzt keine anwaltliche Prüfung.
+
+### ADR-011: Kalibrierung — expliziter separater Schritt (Guided Calibration 2.0)
+- **Kontext:** ADR-003 ließ den ersten Satz gleichzeitig als Kalibrierung zählen, um den "Magic Moment" zu erhalten. In der Praxis erwies sich Achse/Bias/θ aus nur 2–3 unkontrollierten ersten Reps als zu unzuverlässig (siehe `RECHERCHE_ZAEHLROBUSTHEIT.md`, Abschnitt S7).
+- **Entscheidung:** Guided Calibration 2.0 — ein expliziter, geführter Schritt mit bekannter Wiederholungszahl VOR dem ersten gezählten Satz. Ergebnis ist ein persistiertes `ExerciseProfile` (Achse, Bias, θ, Qualität).
+- **Konsequenz:** Der "Magic Moment" verschiebt sich vom allerersten Satz auf den ersten Satz nach der Calibration — bewusster Trade-off zugunsten von Zuverlässigkeit. `WorkoutState.calibrating` bezeichnet jetzt diesen separaten Flow, nicht mehr den ersten Satz selbst.
+- **Ersetzt:** ADR-003.
+
+### ADR-012: Zählalgorithmus — vorzeichenbehaftete Gyro-Projektion (gP) mit gehärteten Gates
+- **Kontext:** Envelope-Following mit relativer Perzentil-Schwelle (ADR-004) nutzte nur den Signalbetrag (`|a| + |g|·w`) und verlor damit Richtungsinformation — anfällig für Doppel-Peaks und Wiggle-False-Positives (siehe `RECHERCHE_ZAEHLROBUSTHEIT.md`, Abschnitt S8).
+- **Entscheidung:** Signierte Projektion des Gyrosignals auf die in der Calibration gelernte Rotationsachse (gP), gehärtet mit θ-Floor 50, 0,70×θ-Fallschwelle, Mindestdauer ≥ 15 Samples, Peak ≥ 1,2×θ und `minRepIntervalSamples`-Refraktärzeit.
+- **Konsequenz:** Der Magnitude-Pfad bleibt nur als Fallback, wenn gP nicht autoritativ ist (kein Profil vorhanden). Höherer Rechenaufwand pro Sample als reines Envelope-Following, aber direktionsbewusst und laut `docs/design/AUDIT_FULL_REPO_IMPROVEMENTS.md` strukturell robuster gegen Doppel-Peaks.
+- **Ersetzt:** ADR-004.
