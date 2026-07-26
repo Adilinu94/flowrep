@@ -2128,6 +2128,111 @@ def run_known_count_calibration_suite(alt_ergebnisse):
     return n_ok == len(ergebnisse)
 
 
+# =====================================================================
+# GpCountingSim - Portierung des g_p-Zaehlpfads fuer tools/golden_csv_
+# harness.py (2026-07-26, gegen workout_engine.dart _detectPeakSigned +
+# applyCalibration ChosenSignal.gP-Zweig gegengelesen). Anders als die
+# obigen pruefe_*()-Funktionen (die g_p nur punktuell fuer einzelne
+# Struktur-Beweise nutzen) ist dies ein vollstaendiger, eigenstaendiger
+# Zaehlpfad-Port, gedacht fuer beliebige rohe 3-Achsen-Gyro-Zeitreihen.
+# =====================================================================
+
+class GpCountingSim:
+    """Portierung von workout_engine.dart: _detectPeakSigned() plus dem
+    applyCalibration()-Zweig fuer chosenSignal=ChosenSignal.gP (die
+    Guided-Calibration-2.0-Profil-Situation - NICHT der separate,
+    Self-Calibration-Fallback ohne Profil, der ein anderes Vorzeichen-
+    Verhalten hat, siehe dessen Kommentar in workout_engine.dart Zeile
+    ~594-623). Fuer genau diesen Fall gilt |g_p| (gpUseAbsProjection=true)
+    statt vorzeichenbehaftet, und der combined-Pfad wird auf einen
+    Sentinel geparkt (zaehlt nicht mehr mit) - hier entsprechend
+    weggelassen, da GpCountingSim ohnehin nur den g_p-Pfad abbildet.
+
+    NICHT abgedeckt (bewusste Grenze, wie bei WorkoutEngineSim oben):
+    - Ghost-Rep-Gate (separates, State-unabhaengiges Gate um _commitRep,
+      siehe ghost_rep_gate.dart) - ein real abgelegtes Geraet wuerde in
+      der echten App zusaetzlich durch dieses Gate gefiltert, hier nicht.
+    - SignalProcessor.observeForAxisLearning (Online-Achsenlernen OHNE
+      bekanntes Profil) - hier wird immer von einer BEKANNTEN,
+      kalibrierten Achse ausgegangen (rotation_axis/gyro_bias als
+      Konstruktor-Parameter), wie sie ein echtes Guided-Calibration-2.0-
+      Profil liefert, nicht online zur Laufzeit gelernt.
+    """
+
+    MIN_GP_SAMPLES_ABOVE = 15  # ~300ms @ 50Hz, feste Dart-Konstante
+    GP_PEAK_OVER_THRESHOLD = 1.2
+
+    def __init__(self, rotation_axis, gyro_bias, theta_deg_per_s,
+                 min_rep_interval_seconds=None, hz=50.0):
+        axis = np.asarray(rotation_axis, dtype=float)
+        norm = np.linalg.norm(axis)
+        self.axis = axis / norm if norm > 1e-10 else np.array([1.0, 0.0, 0.0])
+        self.bias = np.asarray(gyro_bias, dtype=float)
+        # applyCalibration, case ChosenSignal.gP:
+        #   gpThreshold = max(50.0, theta * 0.70); direction = 1;
+        #   gpUseAbsProjection = true
+        self.gp_threshold = max(50.0, theta_deg_per_s * 0.70)
+        self.gp_direction = 1
+        self.gp_use_abs_projection = True
+        # |g_p|-Modus erzwingt einen Refraktaer-Boden von 0.7s (Doppel-
+        # Buckel-Schutz), unabhaengig von einem evtl. kuerzeren Profilwert.
+        floor_samples = round(0.7 * hz)
+        if min_rep_interval_seconds is not None:
+            self.min_rep_interval_samples = max(
+                round(min_rep_interval_seconds * hz), floor_samples)
+        else:
+            self.min_rep_interval_samples = floor_samples
+
+        self.above_threshold = False
+        self.samples_above = 0
+        self.peak_in_excursion = 0.0
+        self.last_counted_rep_sample = None
+        self.reps = []  # Sample-Indizes gezaehlter Reps
+
+    def project(self, gx, gy, gz):
+        """g_p = (gyro - bias) . achse (gp_projection.dart project())."""
+        return float(np.dot(np.array([gx, gy, gz]) - self.bias, self.axis))
+
+    def process_sample(self, sample_index, gx, gy, gz):
+        """Ein Rohsample (3-Achsen-Gyro in Grad/s) verarbeiten."""
+        gp = self.project(gx, gy, gz)
+        value = abs(gp) if self.gp_use_abs_projection else gp * self.gp_direction
+        threshold = self.gp_threshold
+
+        if not self.above_threshold and value > threshold:
+            self.above_threshold = True
+            self.samples_above = 1
+            self.peak_in_excursion = value
+            return
+        if not self.above_threshold:
+            return
+        if value > threshold:
+            self.samples_above += 1
+            if value > self.peak_in_excursion:
+                self.peak_in_excursion = value
+            return
+        if value >= threshold * 0.3:
+            return  # Totzone: Exkursion bleibt offen, nichts aendert sich
+
+        # Exkursion schliesst (value < threshold * 0.3).
+        long_enough = self.samples_above >= self.MIN_GP_SAMPLES_ABOVE
+        strong_enough = self.peak_in_excursion >= threshold * self.GP_PEAK_OVER_THRESHOLD
+        self.above_threshold = False
+        self.samples_above = 0
+        self.peak_in_excursion = 0.0
+        if not (long_enough and strong_enough):
+            return
+
+        # _commitRep(): gemeinsames Refraktaer-Gate ueber Sample-Index.
+        in_refractory = (self.last_counted_rep_sample is not None and
+                          (sample_index - self.last_counted_rep_sample) <
+                          self.min_rep_interval_samples)
+        if in_refractory:
+            return
+        self.reps.append(sample_index)
+        self.last_counted_rep_sample = sample_index
+
+
 if __name__ == "__main__":
     print("=== FlowRep Workout-Engine-Simulation ===\n")
 

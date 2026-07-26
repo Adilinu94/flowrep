@@ -31,6 +31,34 @@ Aufnahmen im Repo (per 2026-07-25 gezielt geprueft: keine vorhanden).
 Bei `wiggle` (Handy/M5 nur bewegt, kein echtes Training) entfaellt
 `known_active_reps` - Erwartung ist dort immer 0 gezaehlte Reps.
 
+## Optional: g_p-Zaehlpfad mitpruefen (gp_profile)
+
+Wurde die Aufnahme mit einem echten, bereits kalibrierten Guided-
+Calibration-2.0-Profil (chosenSignal=gP) gemacht, kann das Manifest
+zusaetzlich einen `gp_profile`-Block bekommen - dann wird dieselbe
+Aufnahme AUCH durch den g_p-Zaehlpfad (GpCountingSim in
+workout_engine_simulation.py) wiedergegeben, direkt neben combined:
+
+```json
+{
+  "recording": "...",
+  "exercise_id": "bicep_curl",
+  "scenario": "normal",
+  "known_active_reps": [12],
+  "gp_profile": {
+    "rotation_axis": [0.98, 0.1, 0.05],
+    "gyro_bias": [1.5, -1.0, 0.8],
+    "theta_deg_per_s": 120.0
+  }
+}
+```
+
+`rotation_axis`/`gyro_bias`/`theta_deg_per_s` entsprechen 1:1 den
+`ExerciseProfile`-Feldern `rotationAxis`/`gyroBias`/`theta` (siehe
+`app/lib/domain/models/exercise_profile.dart`) - am einfachsten aus dem
+Profil zu entnehmen, mit dem die Aufnahme tatsaechlich gemacht wurde.
+Ohne `gp_profile` wird nur combined geprueft (wie bisher).
+
 ## Ausfuehren
 
 ```bash
@@ -47,12 +75,14 @@ python3 tools/golden_csv_harness.py \
 
 ## Bekannte Einschraenkung
 
-Der Replay-Check in `golden_csv_harness.py` nutzt `WorkoutEngineSim`
-(combined-Signal-Pfad, `tools/workout_engine_simulation.py`) - das prueft
-den Pfad, der aktuell greift, wenn `useSignedProjectionCounting=false`
-UND kein Profil mit `chosenSignal == gP` geladen ist (siehe
-`workout_engine.dart`, Zeile ~587/981). Fuer Sessions mit einem echten
-gP-Profil (nach erfolgreicher Guided-Calibration-2.0) bildet der Replay
-NICHT den tatsaechlich verwendeten Zaehlpfad ab - dafuer fehlt noch eine
-Python-Portierung der g_p-Projektion inkl. Rotationsachse. Siehe FENCE
-REPORT der Session, die dieses Tool angelegt hat, fuer Details.
+Beide Replays (`WorkoutEngineSim` fuer combined, `GpCountingSim` fuer
+g_p) sind Kaltstart-Replays der Referenz-Engines auf den rohen
+Bewegungsdaten, KEINE Rekonstruktion des exakten Live-Kalibrierungs-
+zustands der echten Session. Ausserdem nicht abgedeckt:
+- Ghost-Rep-Gate (separates State-unabhaengiges Gate um `_commitRep`,
+  siehe `ghost_rep_gate.dart`) - in der echten App zusaetzlich aktiv.
+- `SignalProcessor.observeForAxisLearning` (Online-Achsenlernen OHNE
+  bekanntes Profil) - `gp_profile` geht immer von einer bereits
+  bekannten, kalibrierten Achse aus.
+Siehe Klassendocstring von `GpCountingSim` in
+`tools/workout_engine_simulation.py` fuer Details.

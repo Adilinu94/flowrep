@@ -30,7 +30,11 @@ Zwei unabhaengige Datenquellen:
    validierte, mit workout_engine.dart synchron gehaltene Referenz
    (NICHT UnifiedEngineSim: das ist eine schmalere Klasse nur fuer den
    Settle-Gate-Regressionstest, ohne Refractory/Prominence/Adaptive-
-   Threshold-Logik und ohne Satzgrenzen).
+   Threshold-Logik und ohne Satzgrenzen). Traegt ein Manifest zusaetzlich
+   einen "gp_profile"-Block, wird dieselbe Aufnahme AUSSERDEM durch
+   GpCountingSim (Portierung von _detectPeakSigned + applyCalibration
+   ChosenSignal.gP, ebenfalls in workout_engine_simulation.py) wiedergegeben
+   - direkter combined-vs-g_p-Vergleich auf derselben echten Aufnahme.
 
    WICHTIGE EINSCHRAENKUNG: das ist ein Kaltstart-Replay der
    Referenz-Engine auf den rohen Bewegungsdaten, KEINE Rekonstruktion des
@@ -54,11 +58,26 @@ Manifest-Schema (`<name>.csv.meta.json`, liegt neben `<name>.csv`):
                                      pro erkanntem active-Fenster, in
                                      chronologischer Reihenfolge
   "placement_label": "wrist_top",  // optional, nur fuer placement_variant
-  "notes": "Freitext"
+  "notes": "Freitext",
+  "gp_profile": {                  // optional - siehe unten
+    "rotation_axis": [0.98, 0.1, 0.05],
+    "gyro_bias": [1.5, -1.0, 0.8],
+    "theta_deg_per_s": 120.0,
+    "min_rep_interval_seconds": 0.7  // optional
+  }
 }
 Bei scenario == "wiggle" wird known_active_reps ignoriert - Erwartung ist
 schlicht 0 gezaehlte Reps ueber die GESAMTE Aufnahme, unabhaengig von
 workout_state (reine Alltagsbewegung, kein echtes Training).
+
+Optionales gp_profile: wenn vorhanden, wird die Aufnahme ZUSAETZLICH zum
+combined-Replay auch durch GpCountingSim (g_p-Zaehlpfad, siehe dessen
+Klassendocstring in workout_engine_simulation.py fuer Umfang/Grenzen)
+wiedergegeben - direkter Vergleich combined vs. g_p auf derselben echten
+Aufnahme. rotation_axis/gyro_bias/theta_deg_per_s entsprechen 1:1 den
+ExerciseProfile-Feldern rotationAxis/gyroBias/theta (siehe
+app/lib/domain/models/exercise_profile.dart) eines echten, bereits
+kalibrierten Guided-Calibration-2.0-Profils mit chosenSignal=gP.
 
 Ausfuehrung:
     python3 tools/golden_csv_harness.py --smoke-test
@@ -88,6 +107,7 @@ from dsp_lab_phase2_real_data import read_recording_csv, find_active_windows
 from workout_engine_simulation import (
     SignalProcessor,
     WorkoutEngineSim,
+    GpCountingSim,
     make_clean_reps,
     make_slow_reps,
     make_incidental_movement,
@@ -176,6 +196,11 @@ def load_manifest(meta_path):
         raise ValueError(
             f"{meta_path}: known_active_reps ist Pflicht ausser bei scenario=wiggle"
         )
+    if "gp_profile" in manifest:
+        missing_gp = [k for k in ("rotation_axis", "gyro_bias", "theta_deg_per_s")
+                      if k not in manifest["gp_profile"]]
+        if missing_gp:
+            raise ValueError(f"{meta_path}: gp_profile fehlen Pflichtfelder {missing_gp}")
     manifest["_dir"] = os.path.dirname(os.path.abspath(meta_path))
     return manifest
 
@@ -201,12 +226,51 @@ def replay_recording(data):
     return sorted(all_reps)
 
 
+def replay_gp(data, gp_profile, hz=50.0):
+    """Analog zu replay_recording(), aber ueber GpCountingSim (g_p-
+    Zaehlpfad). Braucht ein Profil (Achse, Bias, theta) - siehe
+    Manifest-Feld gp_profile im Modul-Docstring."""
+    engine = GpCountingSim(
+        rotation_axis=gp_profile["rotation_axis"],
+        gyro_bias=gp_profile["gyro_bias"],
+        theta_deg_per_s=gp_profile["theta_deg_per_s"],
+        min_rep_interval_seconds=gp_profile.get("min_rep_interval_seconds"),
+        hz=hz,
+    )
+    t = data["timestamp_ms"] / 1000.0
+    for i in range(len(t)):
+        engine.process_sample(i, float(data["gyro_x_dps"][i]),
+                               float(data["gyro_y_dps"][i]),
+                               float(data["gyro_z_dps"][i]))
+    return sorted(float(t[i]) for i in engine.reps)
+
+
+def _judge_reps(scenario, rep_times, known_active_reps, windows):
+    """Gemeinsame Bewertungslogik (combined UND g_p nutzen dieselbe
+    Vergleichslogik gegen dieselben known_active_reps/Fenster)."""
+    if scenario == "wiggle":
+        return len(rep_times) == 0, f"{len(rep_times)} Rep(s) (erwartet 0)"
+    if len(known_active_reps) != len(windows):
+        return False, (f"Fenster ({len(windows)}) != known_active_reps "
+                        f"({len(known_active_reps)}) - passt nicht zusammen")
+    all_ok = True
+    parts = []
+    for i, (s0, s1) in enumerate(windows):
+        counted = sum(1 for rt in rep_times if s0 <= rt <= s1)
+        ok = abs(counted - known_active_reps[i]) <= REPLAY_TOLERANCE_REPS
+        all_ok = all_ok and ok
+        parts.append(f"F{i + 1}: erwartet={known_active_reps[i]} replay={counted} "
+                     f"[{'OK' if ok else 'FEHLER'}]")
+    return all_ok, ", ".join(parts)
+
+
 def check_recording(manifest):
     csv_path = os.path.join(manifest["_dir"], manifest["recording"])
     data = read_recording_csv(csv_path)
     t = data["timestamp_ms"] / 1000.0
     windows = find_active_windows(t, data["workout_state"])
     rep_times = replay_recording(data)
+    known = manifest.get("known_active_reps", [])
 
     result = {
         "manifest": manifest["recording"],
@@ -217,40 +281,19 @@ def check_recording(manifest):
         "reps_total": len(rep_times),
     }
 
-    if manifest["scenario"] == "wiggle":
-        result["passed"] = len(rep_times) == 0
-        result["detail"] = (
-            f"{len(rep_times)} Rep(s) auf reiner Alltagsbewegung gezaehlt "
-            f"(erwartet 0)"
-        )
-        return result
+    passed, detail = _judge_reps(manifest["scenario"], rep_times, known, windows)
+    result["passed"] = passed
+    result["detail"] = f"combined -> {detail}"
 
-    known = manifest["known_active_reps"]
-    if len(known) != len(windows):
-        result["passed"] = False
-        result["detail"] = (
-            f"Anzahl erkannter active-Fenster ({len(windows)}) != Anzahl "
-            f"known_active_reps-Eintraege ({len(known)}) - Manifest und "
-            f"Aufnahme passen nicht zusammen"
-        )
-        return result
+    gp_profile = manifest.get("gp_profile")
+    if gp_profile:
+        gp_rep_times = replay_gp(data, gp_profile)
+        gp_passed, gp_detail = _judge_reps(manifest["scenario"], gp_rep_times, known, windows)
+        result["gp_reps_total"] = len(gp_rep_times)
+        result["gp_passed"] = gp_passed
+        result["detail"] += f"  |  g_p -> {gp_detail}"
+        result["passed"] = result["passed"] and gp_passed
 
-    per_window = []
-    all_ok = True
-    for i, (s0, s1) in enumerate(windows):
-        counted = sum(1 for rt in rep_times if s0 <= rt <= s1)
-        ok = abs(counted - known[i]) <= REPLAY_TOLERANCE_REPS
-        all_ok = all_ok and ok
-        per_window.append(
-            {"window": i + 1, "expected": known[i], "replayed": counted, "ok": ok}
-        )
-    result["per_window"] = per_window
-    result["passed"] = all_ok
-    result["detail"] = ", ".join(
-        f"Fenster {w['window']}: erwartet={w['expected']} replay={w['replayed']} "
-        f"[{'OK' if w['ok'] else 'FEHLER'}]"
-        for w in per_window
-    )
     return result
 
 
@@ -346,17 +389,53 @@ def _magnitude_to_csv_rows(t, accel_mag_g, gyro_mag_dps, active_windows_s):
     komplett auf Z (Gravitation + Bewegung). Ersetzt KEINE echte
     3-Achsen-Aufnahme - fuers Pruefen der Harness-Logik selbst
     ausreichend, da hier ohnehin nur Betrags-Personas (make_clean_reps
-    u.ae.) vorliegen, keine echten 3-Achsen-Daten."""
+    u.ae.) vorliegen, keine echten 3-Achsen-Daten.
+
+    Wichtig (empirisch gefunden): make_clean_reps()/make_slow_reps()
+    liefern gyro_mag mit gelegentlichen kleinen negativen Werten (keine
+    echte Betrags-Semantik). Beim CSV-Rundtrip macht replay_recording()
+    daraus via sqrt(gx^2+gy^2+gz^2) einen positiven Ausschlag (Vorzeichen
+    geht verloren) - das kann echte Rep-Erkennung stoeren. Deshalb hier
+    auf >=0 geclippt, bevor geschrieben wird.
+    """
     sp = SignalProcessor()
     rows = []
     for i in range(len(t)):
-        in_window = any(s0 <= t[i] < s1 for s0, s1 in active_windows_s)
+        in_window = any(s0 <= t[i] <= s1 for s0, s1 in active_windows_s)
         state = "active" if in_window else "idle"
-        dm = sp.process(float(accel_mag_g[i]), float(gyro_mag_dps[i]))
+        accel_mag = max(0.0, float(accel_mag_g[i]))
+        gyro_mag = max(0.0, float(gyro_mag_dps[i]))
+        dm = sp.process(accel_mag, gyro_mag)
         rows.append([
             round(float(t[i]) * 1000, 1),
-            0.0, 0.0, round(float(accel_mag_g[i]), 4),
-            round(float(gyro_mag_dps[i]), 4), 0.0, 0.0,
+            0.0, 0.0, round(accel_mag, 4),
+            round(gyro_mag, 4), 0.0, 0.0,
+            round(dm, 4), state,
+        ])
+    return rows
+
+
+def _axes_to_csv_rows(t, acc3, gyro3, active_windows_s):
+    """Wie _magnitude_to_csv_rows, aber fuer ECHTE 3-Achsen-Rohdaten
+    (z.B. make_incidental_movement - zufaellige Rotationsachse pro
+    Event). Wichtig fuer einen fairen gp_profile-Vergleich: eine
+    Kollabierung auf eine einzelne Achse (wie _magnitude_to_csv_rows es
+    tut) wuerde genau den Achsen-Selektivitaets-Effekt zerstoeren, den
+    der g_p-Pfad gegenueber combined zeigen soll."""
+    sp = SignalProcessor()
+    rows = []
+    for i in range(len(t)):
+        in_window = any(s0 <= t[i] <= s1 for s0, s1 in active_windows_s)
+        state = "active" if in_window else "idle"
+        ax, ay, az = float(acc3[i][0]), float(acc3[i][1]), float(acc3[i][2])
+        gx, gy, gz = float(gyro3[i][0]), float(gyro3[i][1]), float(gyro3[i][2])
+        accel_mag = float(np.sqrt(ax * ax + ay * ay + az * az))
+        gyro_mag = float(np.sqrt(gx * gx + gy * gy + gz * gz))
+        dm = sp.process(accel_mag, gyro_mag)
+        rows.append([
+            round(float(t[i]) * 1000, 1),
+            round(ax, 4), round(ay, 4), round(az, 4),
+            round(gx, 4), round(gy, 4), round(gz, 4),
             round(dm, 4), state,
         ])
     return rows
@@ -371,7 +450,8 @@ def _build_smoke_fixtures(out_dir):
     ERSETZT KEINE echte Validierung."""
     os.makedirs(out_dir, exist_ok=True)
 
-    def write_pair(name, t, accel_mag, gyro_mag, scenario, known_active_reps, notes):
+    def write_pair(name, t, accel_mag, gyro_mag, scenario, known_active_reps, notes,
+                   gp_profile=None):
         windows_s = [(float(t[0]), float(t[-1]))]
         _write_csv(os.path.join(out_dir, f"{name}.csv"),
                    _magnitude_to_csv_rows(t, accel_mag, gyro_mag, windows_s))
@@ -379,24 +459,54 @@ def _build_smoke_fixtures(out_dir):
                 "scenario": scenario, "notes": notes}
         if known_active_reps is not None:
             meta["known_active_reps"] = known_active_reps
+        if gp_profile is not None:
+            meta["gp_profile"] = gp_profile
         with open(os.path.join(out_dir, f"{name}.csv.meta.json"), "w") as f:
             json.dump(meta, f, indent=2)
 
     t, am, gm = make_clean_reps(5, seed=42)
-    write_pair("_smoke_normal", t, am, gm, "normal", [5],
-               "Synthetisch, make_clean_reps(5, seed=42)")
+    # make_clean_reps() skaliert gm nur als kleine combined-Nebenkomponente
+    # (empirisch geprueft: Spitze ~33 deg/s) - fuer g_p (Schwellen-Boden
+    # 50 deg/s, echte Curls 100-200 deg/s, siehe applyCalibration-Kommentar
+    # in workout_engine.dart) auf realistische Rotations-Groessenordnung
+    # hochskaliert, bevor die CSV geschrieben wird (combined bleibt
+    # unbeeinflusst funktionsfaehig: WorkoutEngineSim kalibriert relativ
+    # zum beobachteten Peak, nicht absolut).
+    gm_gp_scale = gm * 5.0
+    # _magnitude_to_csv_rows platziert Gyro komplett auf X, ohne Bias -
+    # das gp_profile hier beschreibt exakt diese Konstruktion (axis=[1,0,0],
+    # bias=[0,0,0]), damit g_p-Replay auf denselben Rohdaten mitgeprueft
+    # werden kann. theta_deg_per_s = 0.5 * Spitzenwert, analog zur
+    # Known-Count-Kalibrierung.
+    write_pair("_smoke_normal", t, am, gm_gp_scale, "normal", [5],
+               "Synthetisch, make_clean_reps(5, seed=42), Gyro x5 auf "
+               "g_p-realistische Groessenordnung skaliert",
+               gp_profile={"rotation_axis": [1.0, 0.0, 0.0],
+                           "gyro_bias": [0.0, 0.0, 0.0],
+                           "theta_deg_per_s": 0.5 * float(np.max(gm_gp_scale))})
 
     t, am, gm = make_slow_reps(4, seed=43)
     write_pair("_smoke_slow", t, am, gm, "slow", [4],
                "Synthetisch, make_slow_reps(4, seed=43)")
 
     t3, acc3, gyro3 = make_incidental_movement(12, seed=9001)
-    accel_mag = np.linalg.norm(acc3, axis=1)
-    gyro_mag = np.linalg.norm(gyro3, axis=1)
-    write_pair("_smoke_wiggle", t3, accel_mag, gyro_mag, "wiggle", None,
-               "Synthetisch, make_incidental_movement(12, seed=9001) - "
-               "reproduziert STATUS_FORTSCHRITT.md 2026-07-18 Beschwerde "
-               "('Wenn den M5 nur beege oder etwas drehe werden reps gezaehlt')")
+    windows3_s = [(float(t3[0]), float(t3[-1]))]
+    _write_csv(os.path.join(out_dir, "_smoke_wiggle.csv"),
+               _axes_to_csv_rows(t3, acc3, gyro3, windows3_s))
+    with open(os.path.join(out_dir, "_smoke_wiggle.csv.meta.json"), "w") as f:
+        json.dump({
+            "recording": "_smoke_wiggle.csv", "exercise_id": "bicep_curl",
+            "scenario": "wiggle",
+            "notes": "Synthetisch, make_incidental_movement(12, seed=9001) - "
+                     "reproduziert STATUS_FORTSCHRITT.md 2026-07-18 Beschwerde "
+                     "('Wenn den M5 nur beege oder etwas drehe werden reps "
+                     "gezaehlt'). Echte 3-Achsen-Rohdaten (nicht auf eine "
+                     "Achse kollabiert) - zufaellige Rotationsachse pro "
+                     "Event, damit der gp_profile-Vergleich unten fair ist.",
+            "gp_profile": {"rotation_axis": [1.0, 0.0, 0.0],
+                           "gyro_bias": [0.0, 0.0, 0.0],
+                           "theta_deg_per_s": 120.0},
+        }, f, indent=2)
 
     export = {
         "format": EXPORT_FORMAT,
