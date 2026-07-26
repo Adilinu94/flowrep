@@ -48,13 +48,14 @@ workout_engine_simulation.py) wiedergegeben, direkt neben combined:
   "gp_profile": {
     "rotation_axis": [0.98, 0.1, 0.05],
     "gyro_bias": [1.5, -1.0, 0.8],
-    "theta_deg_per_s": 120.0
+    "theta_deg_per_s": 120.0,
+    "prominence_min": 0.0
   }
 }
 ```
 
-`rotation_axis`/`gyro_bias`/`theta_deg_per_s` entsprechen 1:1 den
-`ExerciseProfile`-Feldern `rotationAxis`/`gyroBias`/`theta` (siehe
+`rotation_axis`/`gyro_bias`/`theta_deg_per_s`/`prominence_min` entsprechen 1:1 den
+`ExerciseProfile`-Feldern `rotationAxis`/`gyroBias`/`theta`/`prominenceMin` (siehe
 `app/lib/domain/models/exercise_profile.dart`) - am einfachsten aus dem
 Profil zu entnehmen, mit dem die Aufnahme tatsaechlich gemacht wurde.
 Ohne `gp_profile` wird nur combined geprueft (wie bisher).

@@ -63,7 +63,8 @@ Manifest-Schema (`<name>.csv.meta.json`, liegt neben `<name>.csv`):
     "rotation_axis": [0.98, 0.1, 0.05],
     "gyro_bias": [1.5, -1.0, 0.8],
     "theta_deg_per_s": 120.0,
-    "min_rep_interval_seconds": 0.7  // optional
+    "min_rep_interval_seconds": 0.7,  // optional
+    "prominence_min": 0.0            // optional, ROM-Gate, 0.0=aus (Default)
   }
 }
 Bei scenario == "wiggle" wird known_active_reps ignoriert - Erwartung ist
@@ -235,6 +236,7 @@ def replay_gp(data, gp_profile, hz=50.0):
         gyro_bias=gp_profile["gyro_bias"],
         theta_deg_per_s=gp_profile["theta_deg_per_s"],
         min_rep_interval_seconds=gp_profile.get("min_rep_interval_seconds"),
+        prominence_min=gp_profile.get("prominence_min", 0.0),
         hz=hz,
     )
     t = data["timestamp_ms"] / 1000.0

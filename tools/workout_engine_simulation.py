@@ -2137,6 +2137,69 @@ def run_known_count_calibration_suite(alt_ergebnisse):
 # Zaehlpfad-Port, gedacht fuer beliebige rohe 3-Achsen-Gyro-Zeitreihen.
 # =====================================================================
 
+# =====================================================================
+# GhostRepGateSim - Portierung von ghost_rep_gate.dart (2026-07-26,
+# frisch gegengelesen). Erkennt "Geraet abgelegt / nicht-periodisches
+# Rauschen" und pausiert das Zaehlen. Laut workout_engine.dart
+# (_updateActivityAndShadow-Kommentar "FR-B6 only on product gP path")
+# NUR auf dem g_p-Pfad aktiv - combined-Skala wuerde das Gate falsch
+# ausloesen (deshalb hier nur in GpCountingSim verdrahtet, nicht in
+# WorkoutEngineSim).
+# =====================================================================
+
+class GhostRepGateSim:
+    """Wertet einmal pro gefuelltem Fenster aus (nicht pro Sample), damit
+    kurze Pausen zwischen Reps nicht sofort einfrieren. Default-Werte
+    1:1 aus ghost_rep_gate.dart uebernommen."""
+
+    def __init__(self, window_size=50, idle_variance_max=40.0, idle_mean_max=18.0,
+                 active_mean_min=35.0, min_idle_windows_to_pause=45,
+                 min_active_windows_to_resume=2):
+        self.window_size = window_size
+        self.idle_variance_max = idle_variance_max
+        self.idle_mean_max = idle_mean_max
+        self.active_mean_min = active_mean_min
+        self.min_idle_windows_to_pause = min_idle_windows_to_pause
+        self.min_active_windows_to_resume = min_active_windows_to_resume
+        self._buf = []
+        self._idle_streak = 0
+        self._active_streak = 0
+        self._paused = False
+
+    @property
+    def allow_counting(self):
+        return not self._paused
+
+    def push(self, magnitude):
+        """Ein |g_p|-Sample einspeisen (nur endliche Werte)."""
+        if not np.isfinite(magnitude):
+            return
+        self._buf.append(abs(magnitude))
+        if len(self._buf) < self.window_size:
+            return
+        arr = np.array(self._buf)
+        mean = float(arr.mean())
+        variance = float(arr.var())
+        self._buf = []
+
+        idle = mean < self.idle_mean_max and variance < self.idle_variance_max
+        active = mean >= self.active_mean_min
+
+        if idle:
+            self._idle_streak += 1
+            self._active_streak = 0
+            if self._idle_streak >= self.min_idle_windows_to_pause:
+                self._paused = True
+        elif active:
+            self._active_streak += 1
+            self._idle_streak = 0
+            if self._active_streak >= self.min_active_windows_to_resume:
+                self._paused = False
+        else:
+            self._idle_streak = max(0, self._idle_streak - 1)
+            self._active_streak = max(0, self._active_streak - 1)
+
+
 class GpCountingSim:
     """Portierung von workout_engine.dart: _detectPeakSigned() plus dem
     applyCalibration()-Zweig fuer chosenSignal=ChosenSignal.gP (die
@@ -2148,22 +2211,31 @@ class GpCountingSim:
     Sentinel geparkt (zaehlt nicht mehr mit) - hier entsprechend
     weggelassen, da GpCountingSim ohnehin nur den g_p-Pfad abbildet.
 
-    NICHT abgedeckt (bewusste Grenze, wie bei WorkoutEngineSim oben):
-    - Ghost-Rep-Gate (separates, State-unabhaengiges Gate um _commitRep,
-      siehe ghost_rep_gate.dart) - ein real abgelegtes Geraet wuerde in
-      der echten App zusaetzlich durch dieses Gate gefiltert, hier nicht.
+    Stand 2026-07-26 (zweite Runde): ROM-Gate (Commit #8,
+    "ROM-Gate + Uebercounting-Policy-Tuning", romOk-Bedingung neben
+    long_enough/strong_enough) und Ghost-Rep-Gate jetzt beide verdrahtet
+    - siehe GhostRepGateSim oben fuer dessen eigene Grenzen.
+
+    NICHT abgedeckt (bewusste Grenze):
     - SignalProcessor.observeForAxisLearning (Online-Achsenlernen OHNE
       bekanntes Profil) - hier wird immer von einer BEKANNTEN,
       kalibrierten Achse ausgegangen (rotation_axis/gyro_bias als
       Konstruktor-Parameter), wie sie ein echtes Guided-Calibration-2.0-
       Profil liefert, nicht online zur Laufzeit gelernt.
+    - Ghost-Gate-Push laeuft ab Sample 0 (vereinfachte Annahme:
+      WorkoutState direkt "active", wie es bei einem bereits kalibrierten
+      Profil nach hasValidCalibration=true fast sofort der Fall ist,
+      siehe workout_engine.dart ~L695) statt erst ab echtem
+      _state==active - fuer die meisten echten Aufnahmen vernachlaessigbar
+      (die ersten 1-2s), aber keine exakte State-Machine-Nachbildung.
     """
 
     MIN_GP_SAMPLES_ABOVE = 15  # ~300ms @ 50Hz, feste Dart-Konstante
     GP_PEAK_OVER_THRESHOLD = 1.2
 
     def __init__(self, rotation_axis, gyro_bias, theta_deg_per_s,
-                 min_rep_interval_seconds=None, hz=50.0):
+                 min_rep_interval_seconds=None, hz=50.0, prominence_min=0.0,
+                 enable_ghost_gate=True):
         axis = np.asarray(rotation_axis, dtype=float)
         norm = np.linalg.norm(axis)
         self.axis = axis / norm if norm > 1e-10 else np.array([1.0, 0.0, 0.0])
@@ -2174,6 +2246,9 @@ class GpCountingSim:
         self.gp_threshold = max(50.0, theta_deg_per_s * 0.70)
         self.gp_direction = 1
         self.gp_use_abs_projection = True
+        # ROM-Gate (workout_engine.dart ~L1026-1050, Commit #8): absoluter
+        # Peak-Floor aus ExerciseProfile.prominenceMin. 0.0 = aus (Default).
+        self.prominence_min = prominence_min
         # |g_p|-Modus erzwingt einen Refraktaer-Boden von 0.7s (Doppel-
         # Buckel-Schutz), unabhaengig von einem evtl. kuerzeren Profilwert.
         floor_samples = round(0.7 * hz)
@@ -2182,6 +2257,8 @@ class GpCountingSim:
                 round(min_rep_interval_seconds * hz), floor_samples)
         else:
             self.min_rep_interval_samples = floor_samples
+        self.ghost_gate = GhostRepGateSim() if enable_ghost_gate else None
+        self.ghost_gate_rejections = 0  # Diagnose: waere ohne Ghost-Gate gezaehlt worden
 
         self.above_threshold = False
         self.samples_above = 0
@@ -2198,6 +2275,13 @@ class GpCountingSim:
         gp = self.project(gx, gy, gz)
         value = abs(gp) if self.gp_use_abs_projection else gp * self.gp_direction
         threshold = self.gp_threshold
+
+        # _updateActivityAndShadow(): Ghost-Gate wird auf JEDEM Sample
+        # gefuettert, unabhaengig vom Exkursions-Status (siehe workout_
+        # engine.dart Zeile 593/1100, gp?.abs() - IMMER abs, auch wenn
+        # gp_use_abs_projection fuer die Zaehlung selbst false waere).
+        if self.ghost_gate is not None:
+            self.ghost_gate.push(abs(gp))
 
         if not self.above_threshold and value > threshold:
             self.above_threshold = True
@@ -2217,17 +2301,22 @@ class GpCountingSim:
         # Exkursion schliesst (value < threshold * 0.3).
         long_enough = self.samples_above >= self.MIN_GP_SAMPLES_ABOVE
         strong_enough = self.peak_in_excursion >= threshold * self.GP_PEAK_OVER_THRESHOLD
+        rom_ok = self.prominence_min <= 0.0 or self.peak_in_excursion >= self.prominence_min
         self.above_threshold = False
         self.samples_above = 0
         self.peak_in_excursion = 0.0
-        if not (long_enough and strong_enough):
+        if not (long_enough and strong_enough and rom_ok):
             return
 
-        # _commitRep(): gemeinsames Refraktaer-Gate ueber Sample-Index.
+        # _commitRep(): Refraktaer-Gate zuerst, dann Ghost-Gate (exakt
+        # diese Reihenfolge in workout_engine.dart Zeile 1075-1082).
         in_refractory = (self.last_counted_rep_sample is not None and
                           (sample_index - self.last_counted_rep_sample) <
                           self.min_rep_interval_samples)
         if in_refractory:
+            return
+        if self.ghost_gate is not None and not self.ghost_gate.allow_counting:
+            self.ghost_gate_rejections += 1
             return
         self.reps.append(sample_index)
         self.last_counted_rep_sample = sample_index
