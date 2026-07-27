@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flowrep/data/logger.dart';
 import 'package:flowrep/domain/config/engine_constants.dart';
+import 'package:flowrep/domain/metrics/directional_gp_shadow.dart';
 import 'package:flowrep/domain/metrics/ghost_rep_gate.dart';
 import 'package:flowrep/domain/metrics/shadow_report.dart';
 import 'package:flowrep/domain/metrics/slow_rep_shadow.dart';
@@ -124,6 +125,11 @@ class WorkoutEngine {
   /// relaxed searchback (slow curls). Shadow only — never [_commitRep].
   int _slowRepShadowCount = 0;
 
+  /// P0 directional observer for gP profiles. It deliberately stays
+  /// separate from [_detectPeakSigned]: its values are diagnostics until
+  /// hardware validation approves replacing the product |gP| path.
+  DirectionalGpShadow? _directionalGpShadow;
+
   /// FR-B12: recent shadow lines for diagnose overlay.
   final ShadowReportBuffer shadowReport = ShadowReportBuffer();
 
@@ -149,6 +155,7 @@ class WorkoutEngine {
     SignalProcessor? signalProcessor,
     this.envelopeDecayRate = 0.95,
     this.pauseAfter = const Duration(seconds: 4),
+
     /// When false (product default), sets end only via [endSetManually].
     /// Tests that assert pause-timeout set-end pass `true`.
     this.autoEndSetEnabled = true,
@@ -167,9 +174,9 @@ class WorkoutEngine {
     double gyroWeight = 0.05,
     double lowPassAlpha = 0.6,
     this.initialPeakThreshold,
-  }) : _signalProcessor = signalProcessor ??
+  })  : _signalProcessor = signalProcessor ??
             SignalProcessor(gyroWeight: gyroWeight, lowPassAlpha: lowPassAlpha),
-       _peakThreshold = initialPeakThreshold ?? 1.2;
+        _peakThreshold = initialPeakThreshold ?? 1.2;
 
   /// Optional pre-calibrated threshold loaded from persistent storage.
   /// If null, the engine starts with the default 1.5g.
@@ -279,9 +286,12 @@ class WorkoutEngine {
   // --- Schritt B (P2, S8) shadow-counting state - only touched when
   // useSignedProjectionCounting is true. Entirely separate from the
   // combined-signal fields above; does not read or write any of them. ---
-  double? _gpThreshold; // set once, from the same calibration rep(s) as _peakThreshold
-  int _gpDirection = 1; // +1 or -1: which sign of g_p corresponds to a rep's primary excursion
-  double _gpPeakDuringCalibrationAbs = 0.0; // |g_p| high-water mark while calibrating
+  double?
+      _gpThreshold; // set once, from the same calibration rep(s) as _peakThreshold
+  int _gpDirection =
+      1; // +1 or -1: which sign of g_p corresponds to a rep's primary excursion
+  double _gpPeakDuringCalibrationAbs =
+      0.0; // |g_p| high-water mark while calibrating
   int _gpSignAtPeakDuringCalibration = 1;
   bool _gpAboveThreshold = false;
   int _gpRepCount = 0;
@@ -395,7 +405,9 @@ class WorkoutEngine {
   // changes immediately after calling processSample(), without needing
   // async pumps. UI listeners (setState) are safe because processSample
   // is never invoked inside another setState cycle in this app.
-  final _controller = StreamController<WorkoutEngineEvent>.broadcast(sync: true);
+  final _controller = StreamController<WorkoutEngineEvent>.broadcast(
+    sync: true,
+  );
   Stream<WorkoutEngineEvent> get events => _controller.stream;
 
   WorkoutState _state = WorkoutState.idle;
@@ -439,7 +451,7 @@ class WorkoutEngine {
 
   final List<Rep> _repsInSet = [];
   int _setCounter = 0;
-  int _diagEngineSampleCount = 0;  // diagnostics: samples received by engine
+  int _diagEngineSampleCount = 0; // diagnostics: samples received by engine
 
   /// Public: how many samples the engine has received since last reset.
   int get diagEngineSampleCount => _diagEngineSampleCount;
@@ -447,15 +459,18 @@ class WorkoutEngine {
   // ---- Guided calibration mode ----
   final List<double> _calibrationSignals = [];
   final List<double> _calibrationGyroSignals = [];
-  static const _minPeakHeight = 1.2;  // restored from 1.05 (diagnosis): must be above noise floor
-  static const _minPeakDistanceSamples = 12; // restored from 8: prevents double-counting within one curl
+  static const _minPeakHeight =
+      1.2; // restored from 1.05 (diagnosis): must be above noise floor
+  static const _minPeakDistanceSamples =
+      12; // restored from 8: prevents double-counting within one curl
   static const _calibrationPercentile = 0.3;
   static const int calibrationTargetReps = 10;
-  static const _minGyroPeakDegPerS = 50.0; // restored from 10.0: requires real rotation, not wrist twitch
+  static const _minGyroPeakDegPerS =
+      50.0; // restored from 10.0: requires real rotation, not wrist twitch
   // Diagnostics: track max values seen during calibration
   double _diagMaxAccel = 0;
   double _diagMaxGyro = 0;
-  int _finalCalibrationSignalCount = 0;  // snapshot before clear
+  int _finalCalibrationSignalCount = 0; // snapshot before clear
 
   /// Public diagnostic accessors for CALIB log capture on UI.
   double get diagMaxAccel => _diagMaxAccel;
@@ -487,8 +502,10 @@ class WorkoutEngine {
     if (result.repResult.repCounted) {
       _shadowRepCount++;
       if (_shadowRepCount != _legacyRepCount) {
-        AppLogger.w('SHADOW-DIFF: legacy=$_legacyRepCount '
-            'new=$_shadowRepCount (Δ=${_shadowRepCount - _legacyRepCount})');
+        AppLogger.w(
+          'SHADOW-DIFF: legacy=$_legacyRepCount '
+          'new=$_shadowRepCount (Δ=${_shadowRepCount - _legacyRepCount})',
+        );
       }
     }
   }
@@ -504,16 +521,18 @@ class WorkoutEngine {
   /// Deaktiviert den Shadow-Mode.
   void disableShadowMode() {
     _shadowMode = false;
-    AppLogger.i('Shadow-Mode deaktiviert. '
-        'Legacy=$_legacyRepCount, New=$_shadowRepCount');
+    AppLogger.i(
+      'Shadow-Mode deaktiviert. '
+      'Legacy=$_legacyRepCount, New=$_shadowRepCount',
+    );
   }
 
   /// Shadow-Statistik (für Diagnose/UI).
   ({int legacyReps, int newReps, int diff}) get shadowStats => (
-    legacyReps: _legacyRepCount,
-    newReps: _shadowRepCount,
-    diff: _shadowRepCount - _legacyRepCount,
-  );
+        legacyReps: _legacyRepCount,
+        newReps: _shadowRepCount,
+        diff: _shadowRepCount - _legacyRepCount,
+      );
 
   /// FR-B6 diagnostics.
   bool get ghostGatePaused => _ghostGate.isPaused;
@@ -539,6 +558,11 @@ class WorkoutEngine {
 
   /// Shadow slow-rep searchback hits this session (diag only).
   int get slowRepShadowCount => _slowRepShadowCount;
+  int? get directionalGpShadowRepCount => _directionalGpShadow?.shadowRepCount;
+  bool get gpMountMismatchSuspected =>
+      _directionalGpShadow?.mountMismatchSuspected ?? false;
+  double? get directionalGpShadowTemplateCorrelation =>
+      _directionalGpShadow?.lastTemplateCorrelation;
   int get repsInCurrentSetCount => _repsInSet.length;
   List<Rep> get currentSetReps => List.unmodifiable(_repsInSet);
 
@@ -557,10 +581,12 @@ class WorkoutEngine {
     );
 
     if (result.repResult.repCounted) {
-      _repsInSet.add(Rep(
-        timestamp: s.timestamp,
-        peakMagnitude: result.repResult.qualityScore ?? 0.0,
-      ));
+      _repsInSet.add(
+        Rep(
+          timestamp: s.timestamp,
+          peakMagnitude: result.repResult.qualityScore ?? 0.0,
+        ),
+      );
       _lastMovementAt = s.timestamp;
       _emitStateEvent();
     }
@@ -587,6 +613,10 @@ class WorkoutEngine {
     if (useSignedProjectionCounting || _primarySignal == ChosenSignal.gP) {
       _signalProcessor.observeForAxisLearning(s);
       gp = _signalProcessor.signedGyroProjection(s);
+    }
+
+    if (gp != null && _directionalGpShadow != null) {
+      _processDirectionalGpShadow(gp, s.timestamp);
     }
 
     // FR-B6 / FR-A8 / FR-B10: activity gate + magnitude shadow + diag snapshot.
@@ -624,29 +654,35 @@ class WorkoutEngine {
 
     // DIAGNOSTIC: log every 50th sample, plus during calibrating every 10th
     final bool shouldLog = _diagEngineSampleCount % 50 == 0 ||
-        (_state == WorkoutState.calibrating && _diagEngineSampleCount % 10 == 0);
+        (_state == WorkoutState.calibrating &&
+            _diagEngineSampleCount % 10 == 0);
     if (shouldLog) {
       final effThresh = _primarySignal == ChosenSignal.gP
           ? _gpThreshold
           : _primarySignal == ChosenSignal.gyroMag
               ? _gyroMagThreshold
               : _peakThreshold;
-      AppLogger.d('ENGINE #$_diagEngineSampleCount '
-          'state=${_state.name} '
-          'combined=${combinedSignal.toStringAsFixed(3)} '
-          'accelMag=${s.accelMagnitude.toStringAsFixed(3)} '
-          'gyroMag=${s.gyroMagnitude.toStringAsFixed(1)} '
-          'gp=${gp?.toStringAsFixed(1) ?? "n/a"} '
-          'threshold=${effThresh ?? _peakThreshold} '
-          'sig=${_primarySignal?.name ?? "combined"} '
-          'gpT=${_gpThreshold?.toStringAsFixed(1)} '
-          'gmT=${_gyroMagThreshold?.toStringAsFixed(1)} '
-          'reps=$_legacyRepCount gpReps=$_gpRepCount '
-          'baseline=${baselineLevel.toStringAsFixed(3)} '
-          'above=$_aboveThreshold');
+      AppLogger.d(
+        'ENGINE #$_diagEngineSampleCount '
+        'state=${_state.name} '
+        'combined=${combinedSignal.toStringAsFixed(3)} '
+        'accelMag=${s.accelMagnitude.toStringAsFixed(3)} '
+        'gyroMag=${s.gyroMagnitude.toStringAsFixed(1)} '
+        'gp=${gp?.toStringAsFixed(1) ?? "n/a"} '
+        'threshold=${effThresh ?? _peakThreshold} '
+        'sig=${_primarySignal?.name ?? "combined"} '
+        'gpT=${_gpThreshold?.toStringAsFixed(1)} '
+        'gmT=${_gyroMagThreshold?.toStringAsFixed(1)} '
+        'reps=$_legacyRepCount gpReps=$_gpRepCount '
+        'baseline=${baselineLevel.toStringAsFixed(3)} '
+        'above=$_aboveThreshold',
+      );
     }
 
-    _runningEnvelope = max(combinedSignal, _runningEnvelope * envelopeDecayRate);
+    _runningEnvelope = max(
+      combinedSignal,
+      _runningEnvelope * envelopeDecayRate,
+    );
 
     if (_baselineLevel == null) {
       _baselineLevel = combinedSignal;
@@ -658,8 +694,7 @@ class WorkoutEngine {
       // connectionLost. In active, only update at true rest
       // (|gyro| < kGyroRestThresholdDegPerSec) so everyday motion cannot
       // drift the baseline upward (Adi-Bug).
-      final atRest =
-          s.gyroMagnitude < kGyroRestThresholdDegPerSec;
+      final atRest = s.gyroMagnitude < kGyroRestThresholdDegPerSec;
       if (_state != WorkoutState.active || atRest) {
         _baselineLevel = _baselineLevel! * (1 - baselineEmaAlpha) +
             combinedSignal * baselineEmaAlpha;
@@ -736,10 +771,11 @@ class WorkoutEngine {
           final medianPeak = sortedPeaks.length.isOdd
               ? sortedPeaks[mid]
               : (sortedPeaks[mid - 1] + sortedPeaks[mid]) / 2;
-          final calibrated =
-              baselineLevel + (medianPeak - baselineLevel) * 0.5;
-          _peakThreshold =
-              max(calibrated, baselineLevel + minThresholdAboveBaseline);
+          final calibrated = baselineLevel + (medianPeak - baselineLevel) * 0.5;
+          _peakThreshold = max(
+            calibrated,
+            baselineLevel + minThresholdAboveBaseline,
+          );
           // Same _wakeThreshold bugfix as applyCalibration/
           // _finishGuidedCalibration - this auto-calibration path is
           // combined-signal-scale only, same as those.
@@ -790,17 +826,23 @@ class WorkoutEngine {
         final currentPeaks = _findGyroValidatedPeaks();
         if (currentPeaks.length != _lastCalibrationPeakCount) {
           _lastCalibrationPeakCount = currentPeaks.length;
-          AppLogger.i('CALIB peaks=$_lastCalibrationPeakCount '
-              'maxAccel=${_diagMaxAccel.toStringAsFixed(3)} '
-              'maxGyro=${_diagMaxGyro.toStringAsFixed(1)} '
-              'signals=${_calibrationSignals.length}');
-          final progress =
-              (currentPeaks.length / calibrationTargetReps).clamp(0.0, 1.0);
-          _controller.add(WorkoutEngineEvent(
-            state: _state,
-            repsInCurrentSet: currentPeaks.length,
-            calibrationProgress: progress,
-          ));
+          AppLogger.i(
+            'CALIB peaks=$_lastCalibrationPeakCount '
+            'maxAccel=${_diagMaxAccel.toStringAsFixed(3)} '
+            'maxGyro=${_diagMaxGyro.toStringAsFixed(1)} '
+            'signals=${_calibrationSignals.length}',
+          );
+          final progress = (currentPeaks.length / calibrationTargetReps).clamp(
+            0.0,
+            1.0,
+          );
+          _controller.add(
+            WorkoutEngineEvent(
+              state: _state,
+              repsInCurrentSet: currentPeaks.length,
+              calibrationProgress: progress,
+            ),
+          );
         }
         if (currentPeaks.length >= calibrationTargetReps) {
           _finishGuidedCalibration();
@@ -818,12 +860,38 @@ class WorkoutEngine {
     }
   }
 
+  void _processDirectionalGpShadow(double gp, DateTime timestamp) {
+    final shadow = _directionalGpShadow!;
+    final beforeCount = shadow.shadowRepCount;
+    final wasMismatchSuspected = shadow.mountMismatchSuspected;
+    shadow.processSample(gp);
+
+    if (shadow.shadowRepCount != beforeCount ||
+        shadow.mountMismatchSuspected != wasMismatchSuspected) {
+      final correlation = shadow.lastTemplateCorrelation;
+      shadowReport.add(
+        ShadowReportLine(
+          timestamp: timestamp,
+          source: 'directional_gp',
+          liveReps: _legacyRepCount,
+          shadowReps: shadow.shadowRepCount,
+          liveSignal: gp.abs(),
+          shadowSignal: gp,
+          note: 'unpairedOpposite=${shadow.unpairedOppositeCycles} '
+              'mismatch=${shadow.mountMismatchSuspected} '
+              'templateNcc=${correlation?.toStringAsFixed(3) ?? "n/a"}',
+        ),
+      );
+    }
+  }
+
   void _detectPeak(SensorSample s, double combinedSignal) {
     // S2: effective threshold, only ever LOWER than _peakThreshold, only
     // once enough reps are confirmed (bootstrap: nothing to adapt from
     // before that - see _confirmedPeaks doc comment).
     var effectiveThreshold = _peakThreshold;
-    if (_adaptiveThresholdEnabled && _confirmedPeaks.length >= adaptiveMinConfirmed) {
+    if (_adaptiveThresholdEnabled &&
+        _confirmedPeaks.length >= adaptiveMinConfirmed) {
       final window = _confirmedPeaks.sublist(
         max(0, _confirmedPeaks.length - adaptiveWindow),
       )..sort();
@@ -831,7 +899,10 @@ class WorkoutEngine {
       final medianPeak = window.length.isOdd
           ? window[mid]
           : (window[mid - 1] + window[mid]) / 2;
-      effectiveThreshold = min(_peakThreshold, adaptiveThresholdRatio * medianPeak);
+      effectiveThreshold = min(
+        _peakThreshold,
+        adaptiveThresholdRatio * medianPeak,
+      );
       // Floor: see _confirmedPeaks doc comment for the regression this
       // prevents (effective threshold sinking below baseline noise).
       final calibratedExcursion = _peakThreshold - baselineLevel;
@@ -845,7 +916,8 @@ class WorkoutEngine {
     // being allowed to become its own excursion and only being discarded
     // later.
     final inRefractory = _lastCountedRepSample != null &&
-        (diagEngineSampleCount - _lastCountedRepSample!) < minRepIntervalSamples;
+        (diagEngineSampleCount - _lastCountedRepSample!) <
+            minRepIntervalSamples;
 
     if (!_aboveThreshold) {
       _preMin = min(_preMin, combinedSignal);
@@ -939,6 +1011,7 @@ class WorkoutEngine {
   double? _gyroMagThreshold;
   bool _gyroMagAboveThreshold = false;
   int _gyroMagRepCount = 0;
+
   /// When true, gyroMag peaks write to [_repsInSet] (ChosenSignal.gyroMag).
   bool _gyroMagCountsReps = false;
 
@@ -963,7 +1036,8 @@ class WorkoutEngine {
 
   bool get _gyroMagIsAuthoritative =>
       _gyroMagCountsReps && _gyroMagThreshold != null;
-  int? get gyroMagRepCount => _gyroMagThreshold != null ? _gyroMagRepCount : null;
+  int? get gyroMagRepCount =>
+      _gyroMagThreshold != null ? _gyroMagRepCount : null;
 
   /// S2's adaptive threshold ([adaptiveThresholdRatio]) is a stopgap for
   /// the FRAGILE single-rep auto-calibration (`calibrationReps`, default
@@ -1059,17 +1133,19 @@ class WorkoutEngine {
                 samplesAbove: samplesAbove,
               )) {
             _slowRepShadowCount++;
-            shadowReport.add(ShadowReportLine(
-              timestamp: timestamp,
-              source: 'slow_rep_searchback',
-              liveReps: _legacyRepCount,
-              shadowReps: _slowRepShadowCount,
-              liveSignal: threshold,
-              shadowSignal: peak,
-              note:
-                  'peak=${peak.toStringAsFixed(1)} θ=${threshold.toStringAsFixed(1)} '
-                  'samples=$samplesAbove (shadow only)',
-            ));
+            shadowReport.add(
+              ShadowReportLine(
+                timestamp: timestamp,
+                source: 'slow_rep_searchback',
+                liveReps: _legacyRepCount,
+                shadowReps: _slowRepShadowCount,
+                liveSignal: threshold,
+                shadowSignal: peak,
+                note:
+                    'peak=${peak.toStringAsFixed(1)} θ=${threshold.toStringAsFixed(1)} '
+                    'samples=$samplesAbove (shadow only)',
+              ),
+            );
             AppLogger.d(
               'shadow slow-rep #$_slowRepShadowCount peak=${peak.toStringAsFixed(1)} '
               'θ=${threshold.toStringAsFixed(1)} samples=$samplesAbove',
@@ -1090,13 +1166,19 @@ class WorkoutEngine {
   }
 
   /// Shared rep commit with sample-based refractory (minRepIntervalSamples).
-  void _commitRep({required DateTime timestamp, required double peakMagnitude}) {
+  void _commitRep({
+    required DateTime timestamp,
+    required double peakMagnitude,
+  }) {
     final inRefractory = _lastCountedRepSample != null &&
-        (diagEngineSampleCount - _lastCountedRepSample!) < minRepIntervalSamples;
+        (diagEngineSampleCount - _lastCountedRepSample!) <
+            minRepIntervalSamples;
     if (inRefractory) return;
     // FR-B6: skip commits while ghost gate says device is idle/laid down.
     if (_ghostGateEnabled && !_ghostGate.allowCounting) {
-      AppLogger.d('Ghost gate: skip rep peak=${peakMagnitude.toStringAsFixed(1)}');
+      AppLogger.d(
+        'Ghost gate: skip rep peak=${peakMagnitude.toStringAsFixed(1)}',
+      );
       return;
     }
     _repsInSet.add(Rep(timestamp: timestamp, peakMagnitude: peakMagnitude));
@@ -1127,14 +1209,16 @@ class WorkoutEngine {
       _magnitudeShadowReps++;
       if (_magnitudeShadowReps % 5 == 0 ||
           _magnitudeShadowReps != _legacyRepCount) {
-        shadowReport.add(ShadowReportLine(
-          timestamp: DateTime.now(),
-          source: 'magnitude',
-          liveReps: _legacyRepCount,
-          shadowReps: _magnitudeShadowReps,
-          liveSignal: gpAbs ?? envelope,
-          shadowSignal: envelope,
-        ));
+        shadowReport.add(
+          ShadowReportLine(
+            timestamp: DateTime.now(),
+            source: 'magnitude',
+            liveReps: _legacyRepCount,
+            shadowReps: _magnitudeShadowReps,
+            liveSignal: gpAbs ?? envelope,
+            shadowSignal: envelope,
+          ),
+        );
       }
     }
   }
@@ -1177,18 +1261,19 @@ class WorkoutEngine {
     );
     _repsInSet.clear();
     _state = WorkoutState.paused;
-    _controller.add(WorkoutEngineEvent(
-      state: _state,
-      repsInCurrentSet: 0,
-      completedSet: completedSet,
-    ));
+    _controller.add(
+      WorkoutEngineEvent(
+        state: _state,
+        repsInCurrentSet: 0,
+        completedSet: completedSet,
+      ),
+    );
   }
 
   void _emitStateEvent() {
-    _controller.add(WorkoutEngineEvent(
-      state: _state,
-      repsInCurrentSet: _repsInSet.length,
-    ));
+    _controller.add(
+      WorkoutEngineEvent(state: _state, repsInCurrentSet: _repsInSet.length),
+    );
   }
 
   /// Ends the current set manually (user-triggered "Satz beenden").
@@ -1230,8 +1315,8 @@ class WorkoutEngine {
     _calibrationSignals.clear();
     _calibrationGyroSignals.clear();
     _baselineLevel = _signalProcessor.lastFiltered;
-    _peakThreshold = 1.2;  // matches default, lowered for real hardware
-    _wakeThreshold = 1.2;  // same bugfix as applyCalibration - see doc comment
+    _peakThreshold = 1.2; // matches default, lowered for real hardware
+    _wakeThreshold = 1.2; // same bugfix as applyCalibration - see doc comment
     _aboveThreshold = false;
     _currentExcursionPeak = 0.0;
     _repsInSet.clear();
@@ -1248,6 +1333,7 @@ class WorkoutEngine {
     _gpPeakDuringCalibrationAbs = 0.0;
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _directionalGpShadow = null;
     _gpSamplesAbove = 0;
     _gyroMagThreshold = null;
     _gyroMagAboveThreshold = false;
@@ -1267,12 +1353,13 @@ class WorkoutEngine {
 
   int get calibrationPeaksFound => _calibrationPeaksFound;
   int _calibrationPeaksFound = 0;
-  int _lastCalibrationPeakCount = 0;  // throttle: only emit when count changes
+  int _lastCalibrationPeakCount = 0; // throttle: only emit when count changes
 
   void _finishGuidedCalibration() {
     final peaks = _findGyroValidatedPeaks();
     _calibrationPeaksFound = peaks.length;
-    _finalCalibrationSignalCount = _calibrationSignals.length;  // snapshot before clear
+    _finalCalibrationSignalCount =
+        _calibrationSignals.length; // snapshot before clear
 
     final double newThreshold;
     if (peaks.length >= 5) {
@@ -1294,17 +1381,20 @@ class WorkoutEngine {
     final excursion = _peakThreshold - baselineLevel;
     minThresholdAboveBaseline = (excursion * 0.5).clamp(0.10, 2.0);
     hasValidCalibration = true; // ADR-020: guided calibration just completed
-    _awaitingSettleAfterCalibration = true; // settle-gate, see field doc comment
+    _awaitingSettleAfterCalibration =
+        true; // settle-gate, see field doc comment
 
     _calibrationSignals.clear();
     _calibrationGyroSignals.clear();
     _state = WorkoutState.idle;
-    _controller.add(WorkoutEngineEvent(
-      state: _state,
-      repsInCurrentSet: 0,
-      calibrationProgress: 1.0,
-      calibratedThreshold: newThreshold,
-    ));
+    _controller.add(
+      WorkoutEngineEvent(
+        state: _state,
+        repsInCurrentSet: 0,
+        calibrationProgress: 1.0,
+        calibratedThreshold: newThreshold,
+      ),
+    );
   }
 
   /// 5-sample median filter: for each sample, takes the median of a
@@ -1435,11 +1525,13 @@ class WorkoutEngine {
         reps: List.of(_repsInSet),
       );
       _repsInSet.clear();
-      _controller.add(WorkoutEngineEvent(
-        state: WorkoutState.connectionLost,
-        repsInCurrentSet: 0,
-        completedSet: abortedSet,
-      ));
+      _controller.add(
+        WorkoutEngineEvent(
+          state: WorkoutState.connectionLost,
+          repsInCurrentSet: 0,
+          completedSet: abortedSet,
+        ),
+      );
       _state = WorkoutState.connectionLost;
       return;
     }
@@ -1472,6 +1564,7 @@ class WorkoutEngine {
     }
     _gpAboveThreshold = false;
     _gpRepCount = 0;
+    _directionalGpShadow?.reset();
     _gyroMagAboveThreshold = false;
     _gyroMagRepCount = 0;
     _excursionFallingThreshold = null;
@@ -1586,11 +1679,23 @@ class WorkoutEngine {
     // |g_p| mode needs enough refractory to collapse opposite-phase humps
     // of one curl into a single count (after optional profile override).
     if (_gpUseAbsProjection) {
-      minRepIntervalSamples =
-          max(minRepIntervalSamples, (0.7 * 1000 / 20).round());
+      minRepIntervalSamples = max(
+        minRepIntervalSamples,
+        (0.7 * 1000 / 20).round(),
+      );
     }
     if (prominenceMin != null) {
       _prominenceOverride = prominenceMin;
+    }
+    if (chosenSignal == ChosenSignal.gP && _gpThreshold != null) {
+      _directionalGpShadow = DirectionalGpShadow(
+        threshold: _gpThreshold!,
+        direction: _gpDirection,
+        repTemplate: repTemplate,
+        templateCorrThreshold: templateCorrThreshold ?? 0.65,
+      );
+    } else {
+      _directionalGpShadow = null;
     }
     if (markValid) {
       hasValidCalibration = true;
