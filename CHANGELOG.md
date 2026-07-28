@@ -52,6 +52,19 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 - `.gitignore`: `data/`, `*.log`, `app/android/build/`, backup noise
 - Analyze hygiene: `prefer_const` prefs; `withValues` status chip
 
+### Chore (2026-07-28, branch cleanup)
+
+- Three independent Claude sessions had built the same P0 directional
+  gP shadow proposal in parallel (`agent/directional-gp-shadow` —
+  already merged as `9f128b3`/`8416564`; `p0-directional-gp-shadow`;
+  `fix/direction-aware-counting-shadow`). Verified the merged version
+  on a real `flutter test` run (466/477 green, all 11 failures
+  independently confirmed pre-existing and unrelated — see
+  `docs/design/GP_SHADOW_BRANCH_CLEANUP_2026-07-28.md`), then closed
+  the two redundant branches. `feature-exercise-selection-start-button`
+  left untouched — unrelated, Adi's own feature branch, not part of
+  this collision.
+
 ## [1.0.0-rc.1] — 2026-07-23
 
 Release-candidate line for FlowRep 1.0 **code freeze** (product IMU path). Physical A-path HW validation and store admin remain open (see `docs/Version1.0/13_OFFENE_PUNKTE.md`).
