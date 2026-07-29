@@ -6,6 +6,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Versioning: Sem
 
 ## [Unreleased] — 2026-07-24
 
+### Planned (2026-07-28, not yet built)
+
+- Multi-exercise support: user-created exercises, each with its own
+  calibration, replacing the "curl-only for V1" guardrail (Product
+  decision, 2026-07-28). Auto-arm-after-calibration is being replaced by
+  an explicit Start button + countdown + vibration, before every set
+  (not just the first). Full plan:
+  `docs/design/UMBAUPLAN_MULTI_EXERCISE_2026-07-28.md`.
+
 ### Added (Audit Quick Wins)
 
 - Full-repo audit: `docs/design/AUDIT_FULL_REPO_IMPROVEMENTS.md`

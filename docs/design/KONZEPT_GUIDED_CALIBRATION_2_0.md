@@ -310,7 +310,7 @@ Es existieren bereits gespeicherte Kalibrierungen im alten Format (zwei Einzelwe
 | Burst-Zeitbasis (S3) verzerrt `T₀`-Schätzung | Anzahl- statt Zeit-Logik dominiert; nach P0.3 Zeitkonstanten in Sekunden final korrekt |
 | **Performance des Sweeps auf dem Gerät** | Bewusst lightweight: ~10⁴–10⁵ Ops, < 1 ms, einmalig am Stufenende (§3 Stufe B); kein Risiko, dokumentiert |
 | **Migration alter Store-Daten** schlägt fehl / Datenverlust | Versionierung + Auto-Wrap (§6), altes Format bleibt beim ersten Laden unangetastet bis erfolgreiche Migration, Unit-Tests |
-| **Vorzeitige Multi-Exercise-Generalisierung** | Modell generisch (Keying), UI/Flows V1 strikt single-exercise; keine generelle Übungslogik vor Übung #2 |
+| **Vorzeitige Multi-Exercise-Generalisierung** | Modell generisch (Keying), UI/Flows V1 strikt single-exercise; keine generelle Übungslogik vor Übung #2 — **überholt seit 2026-07-28, siehe `docs/design/UMBAUPLAN_MULTI_EXERCISE_2026-07-28.md`: Übung #2+ ist jetzt bewusst gewollt** |
 | Template-Pfad beruht auf NA-Quellen (§2.4) | Nicht Teil von V1/V2; V3 nur nach Validierung an eigenen CSVs; ADR-023 dokumentiert Quellenlage |
 
 ## 9. Offene Entscheidungen für Adi
