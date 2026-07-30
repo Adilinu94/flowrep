@@ -60,6 +60,14 @@ nie ändert, auch wenn `displayName` später umbenannt wird. `exerciseId` in
 `ExerciseProfile`/`ExerciseSets`/CSV-Export bleibt exakt dieselbe ID — keine
 Änderung an bestehenden Tabellen nötig, nur eine neue Tabelle dazu.
 
+> **Nachtrag 2026-07-28** (siehe
+> [`EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md`](./EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md)):
+> Diese Aussage zur generierten `id` bleibt richtig. Die Tabelle braucht aber
+> zusätzlich ein Pflichtfeld `templateId`, das eine von 5 vordefinierten
+> Übungen referenziert (kein Freitext-Typ) — Anlegen wird dadurch von einem
+> reinen Textfeld zu einer Auswahl aus 5 Optionen, `displayName` bleibt frei
+> editierbar wie hier beschrieben.
+
 ## 4. Migration/Seeding
 
 Beim ersten Start nach dem Umbau (einmaliger Migrationsschritt, analog zum
@@ -142,6 +150,15 @@ kalibriert".
   der Wiederholung) genauso zuverlässig eine brauchbare Achse findet, ist
   offen — sollte bei der ersten echten Nicht-Curl-Kalibrierung bewusst
   beobachtet werden, nicht als selbstverständlich vorausgesetzt.
+
+  > **Nachtrag 2026-07-28**: Diese Prämisse gilt ab jetzt nicht mehr —
+  > siehe [`EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md`](./EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md).
+  > Der Assistent selbst bleibt generisch (siehe Absatz oben, weiterhin
+  > richtig), aber 5 Übungen bekommen zusätzlich ein recherchiertes
+  > biomechanisches Profil zur Plausibilisierung des Kalibrierungsergebnisses
+  > und für übungsspezifische Anweisungstexte. Der Satz „nicht als
+  > selbstverständlich vorausgesetzt" bleibt trotzdem richtig — die
+  > Profile ersetzen die empirische Kalibrierung nicht, sie prüfen sie nur.
 
 ## 8. Wiederverwendete Bausteine (nichts davon wird neu gebaut)
 
