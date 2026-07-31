@@ -150,20 +150,40 @@ frei editierbar (z.B. "Latzug eng" statt "Latzug") — das war schon im Umbaupla
 vorgesehen und ändert sich nicht. Anlegen wird aus einem Textfeld eine Auswahl aus
 5 Karten/Optionen (ersetzt Umbauplan Abschnitt 5.2).
 
-### 4.2 Neue Datenstruktur: biomechanisches Profil
+### 4.2 Datenstruktur: bestehende `ExerciseMetadata` erweitern, keine neue Klasse
+
+**Korrektur (2026-07-28, zweite Überarbeitung):** `app/lib/domain/exercises/
+exercise_registry.dart` hat bereits eine `ExerciseMetadata`-Klasse mit `id`,
+`displayName`, `muscleGroup`, `description`, `requiresCalibration` — mit
+14 eigenen Tests (`exercise_registry_test.dart`), aber im Katalog bislang nur
+mit `bicep_curl` befüllt. Das ist praktisch schon die richtige Stelle für die
+biomechanischen Zusatzfelder — eine separate `ExerciseBiomechanicalTemplate`-
+Klasse (frühere Fassung dieses Abschnitts) wäre unnötige Parallelstruktur
+gewesen:
 
 ```dart
-class ExerciseBiomechanicalTemplate {
-  final String templateId;
-  final String jointDescription;      // z.B. "Ellbogen (Flexion)"
+class ExerciseMetadata {
+  final String id;
+  final String displayName;
+  final String muscleGroup;
+  final String description;
+  final bool requiresCalibration;
+  // NEU, fuer diese Planung:
+  final String jointDescription;       // z.B. "Ellbogen (Flexion)"
   final bool isMultiJoint;
   final (double, double) expectedRomDegrees;
   final (double, double) expectedTempoSecPerRep;
-  final String instructionText;       // siehe Abschnitt 5
+  final String instructionText;        // siehe Abschnitt 5
 }
 ```
 
-Rein statische Konstanten (wie `kExerciseCatalog` heute), keine neue Tabelle nötig.
+`ExerciseRegistry.blendProfile()`/`ExerciseProfile.blendWith()` existieren
+ebenfalls bereits (lineares Blending zwischen zwei kalibrierten Profilen,
+gewichtet) — dienen heute einem anderen Zweck (alte vs. neue Kalibrierung
+derselben Übung mischen), aber dieselbe Mechanik wäre direkt wiederverwendbar,
+falls aus der in Abschnitt 3 diskutierten Bayesian-Kombination (Prior gegen
+Empirie) doch einmal mehr als reine Plausibilisierung werden soll — günstiger
+als ursprünglich in Abschnitt 3 eingeschätzt.
 
 ### 4.3 Einsatz in Guided Calibration 2.0 — vier konkrete Stellen
 
