@@ -19,23 +19,30 @@ Statt freien Textnamen: **Auswahl aus 5 vordefinierten Übungen**, jede mit
 recherchiertem biomechanischem Profil. Ziele (von Adi vorgegeben): bessere
 Guided-Calibration-Ergebnisse, genauere Anweisungen an den Nutzer.
 
-## 2. Die 5 Übungen — Auswahl und Begründung
+## 2. Die 5 Übungen — konkret von Adi vorgegeben (2026-07-28, zweite Runde)
 
-`kExerciseCatalog` (`exercise_registry.dart`) hatte bereits `shoulder_press` und
-`lateral_raise` als V2-Kommentare vorgesehen. Dazu Latzug (von Adi genannt) und
-Trizeps-Extension als bewusstes Gegenstück zum Curl (gleiches Gelenk, entgegen-
-gesetzte Bewegungsrichtung — guter Testfall, ob zwei Ellbogen-Übungen sauber
-unterschieden werden). Fünf Übungen, drei Bewegungsmuster, bewusst nicht
-beliebig — jede zusätzliche Übung braucht eigene Recherche und Beobachtung,
-mehr wäre für den Start unnötiger Umfang:
+Ersetzt die erste, selbst vorgeschlagene Auswahl (Trizeps-Extension/Seitheben/
+Schulterdrücken/Latzug) vollständig. Bizeps-Curl bleibt zusätzlich bestehen
+(bereits produktiv, nicht Teil dieser 5) — macht 6 Übungen im Katalog insgesamt.
 
-| Übung | Gelenk(e) | Bewegungsmuster |
-|---|---|---|
-| Bizeps-Curl (bestehend) | Ellbogen (Flexion) | Zug, eingelenkig |
-| Trizeps-Extension | Ellbogen (Extension) | Druck, eingelenkig — Gegenstück zum Curl |
-| Seitheben | Schulter (Abduktion) | Zug, nahezu eingelenkig |
-| Schulterdrücken | Schulter + Ellbogen | Druck, mehrgelenkig, vertikal |
-| Latzug | Schulter + Ellbogen + Skapula | Zug, mehrgelenkig, kombiniert |
+| Übung | Gelenk(e) | Bewegungsmuster | Maschinen-Typ |
+|---|---|---|---|
+| Bizeps-Curl (bestehend) | Ellbogen (Flexion) | Zug, eingelenkig | Freihantel |
+| Hammer Strength Iso-Lateral Front Lat Pulldown | Schulter + Ellbogen | Zug, mehrgelenkig, vertikal, Untergriff | konvergierend/divergierend |
+| Hammer Strength Iso-Lateral Incline Press | Schulter + Ellbogen | Druck, mehrgelenkig, steil nach oben-vorne | konvergierend/divergierend |
+| Hammer Strength Iso-Lateral Row | Schulter + Ellbogen | Zug, mehrgelenkig, horizontal, brustgestützt | konvergierend/divergierend |
+| Scott Curls / Preacher Curls | Ellbogen (Flexion) | Zug, eingelenkig, Oberarm fixiert | Freihantel/Kabel/Maschine |
+| Hammer Strength Iso-Lateral Horizontal Bench Press | Schulter + Ellbogen | Druck, mehrgelenkig, horizontal | konvergierend/divergierend |
+
+**Neue Kategorie, die die erste Fassung nicht hatte:** vier der 5 sind
+Hammer-Strength-Maschinen mit **konvergierender/divergierender, iso-lateraler**
+Armführung — jede Seite bewegt sich unabhängig, aber entlang einer vom
+Maschinen-Hebelmechanismus fest vorgegebenen Bahn (Life Fitness/Hammer
+Strength, offizielle Produktseiten). Das unterscheidet sich grundlegend von
+freier Hantel-/Kabelzugbewegung: die Bahn ist nicht durch Gelenkbiomechanik und
+individuelle Technik bestimmt, sondern durch die Maschine selbst erzwungen —
+vermutlich konsistenter von Rep zu Rep und zwischen Nutzern, trotz
+Mehrgelenkigkeit. Unverifizierte Erwartung, siehe Abschnitt 4.4.
 
 ## 3. Biomechanisches Profil je Übung (recherchiert, mit Quellen)
 
@@ -82,50 +89,74 @@ dieser Planung.
 - Tempo in bisherigen Simulationen (`PERSONA_PROFILES`): ~1.2–1.6s/Rep.
 - Signal: rotationsdominant, gP-Projektion passt gut (bestätigt durch Produktivbetrieb).
 
-### Trizeps-Extension
-- 1 Gelenk (Ellbogen), Extension statt Flexion — biomechanisch das Gegenteil
-  des Curls, ähnliche ROM-Größenordnung, je nach Ausführung (Overhead-Extension
-  vs. Kickback) etwas kleiner.
-- Handgelenk-Charakteristik wie beim Curl: rotiert praktisch starr mit.
-- Signal: rotationsdominant wie Curl, aber Vorzeichen/Ruhelage unterscheiden sich.
-- Guter erster Testfall für "zwei ähnliche Übungen sauber unterscheiden", ohne
-  gleich die Komplexität eines mehrgelenkigen Musters mitzubringen.
+### Hammer Strength Iso-Lateral Front Lat Pulldown
+- Mehrgelenkig: Schulteradduktion + Ellbogenflexion, sitzend, **Untergriff**
+  (Life Fitness/Hammer Strength, offizielle Produktbeschreibung) — anders als
+  der generische Latzug (meist Obergriff), das ändert die Ruheposition des
+  Unterarms/Handgelenks im Raum gegenüber einem Standard-Latzug.
+- Konvergierende/divergierende Armbahn: die Griffe bewegen sich beim Ziehen
+  aufeinander zu, beim Loslassen auseinander — maschinengeführte Bahn, nicht
+  frei.
+- Herstellerbeschreibung nennt explizit "natürlichen, ergonomischen
+  Bewegungspfad", ausgelegt für kontrollierte Zugbewegungen.
+- Signal: vermutlich weiterhin Mischung aus Rotation und Translation wie beim
+  generischen Latzug (Hand bleibt am Griff, Hauptbewegung an Schulter+Ellbogen),
+  aber durch die feste Maschinenbahn potenziell konsistenter als am freien
+  Kabelzug — unverifiziert (Abschnitt 4.4).
 
-### Seitheben
-- Schulter-Abduktion, für die Hauptbewegung nahezu eingelenkig — Bewegung findet
-  in der Scapularebene statt, ca. 35° vor der reinen Frontalebene (Muscle & Motion,
-  anatomische Analyse), ROM bis etwa Schulterhöhe (~90°).
-- Explizit in der Literatur (ATHLEAN-X, Technikanleitungen) als **langsam,
-  kontrolliert** auszuführen beschrieben — "Handgelenk über dem Ellbogen halten",
-  das Handgelenk bewegt sich relativ zum Unterarm kaum, der GANZE Arm rotiert um
-  die Schulter. Für den Sensor: anderer Hebelarm/Abstand zum Rotationszentrum als
-  beim Curl, aber weiterhin rotationsdominant.
-- Erwartung: langsameres Tempo als Curl → falls das bestehende
-  `_minGpSamplesAbove`/Refraktärzeit-Timing zu eng auf Curl-Tempo kalibriert ist,
-  hier zuerst beobachten (siehe Audit C-06, langsame Reps).
+### Hammer Strength Iso-Lateral Incline Press
+- Mehrgelenkig: Schulterabduktion/-flexion + Ellbogenextension, sitzend.
+- Herstellerbeschreibung: liegt bewegungstechnisch zwischen Schulterdrücken und
+  Incline Press, Bahn ähnelt einem "Frontal-Military-Press" — steiler/mehr
+  nach oben-vorne als ein klassischer Incline Press.
+- Griffe zwischen neutralem und Obergriff positioniert (Herstellerangabe).
+- Konvergierend/divergierend wie die anderen Hammer-Strength-Maschinen.
+- Signal: Druckbewegung, ähnlich Schulterdrücken-Charakteristik aus der ersten
+  Dokumentfassung, aber steilere/andere Bahnrichtung — eigene Beobachtung nötig.
 
-### Schulterdrücken
-- Mehrgelenkig: Schulterabduktion/-flexion + Ellbogenextension gemeinsam, vertikale/
-  Über-Kopf-Bahn (Vertical-Push-Literatur: ab ~80–90° Schulterflexion wird die
-  Skapula aktiv mitbewegt).
-- Handgelenk bewegt sich mit dem Oberarm mit, aber die Bewegungsrichtung ist
-  vertikal statt der Bogenform des Curls — andere Signalform, nicht nur andere Achse.
-- Ähnlich komplex wie Latzug, aber vertikal statt horizontal/ziehend — guter
-  zweiter mehrgelenkiger Testfall mit anderer Bewegungsrichtung.
+### Hammer Strength Iso-Lateral Row
+- Mehrgelenkig: Schulter-Retraktion + Ellbogenflexion, **horizontal** (im
+  Gegensatz zum vertikalen Lat Pulldown), sitzend mit **Brustpolster**
+  (chest-supported) und geneigtem Sitz (Herstellerangabe: Sitz und Brustpolster
+  eigens auf optimales Rückenengagement ausgelegt).
+- Konvergierend/divergierende Zugbahn.
+- Brustpolster stützt den Oberkörper — vermutlich weniger Rumpf-/
+  Ausweichbewegung als bei einem freien Rudern, ähnlich der
+  Momentum-Reduktion bei Scott Curls unten.
+- Signal: horizontale Zugbewegung, andere Ebene als Lat Pulldown und Bizeps-Curl.
 
-### Latzug
-- Mehrgelenkig und am komplexesten: Schulteradduktion + horizontale
-  Schulterabduktion + Ellbogenflexion + Skapula-Retraktion gleichzeitig (NASM-
-  Biomechanik-Blog; Strength & Conditioning Journal, komparative Analyse).
-- Hand bleibt relativ fest am Griff — die Hauptbewegung passiert an Schulter und
-  Ellbogen zusammen, **nicht primär am Handgelenk selbst**.
-- Literatur nennt explizit ein kontrolliertes Tempo von 2–4s pro Phase, spürbar
-  langsamer als ein typischer Curl.
-- Signal: vermutlich weniger eindeutig rotationsdominant als bei den anderen 4 —
-  wahrscheinlich eine Mischung aus Rotation und linearer Translation der Hand
-  entlang des Griffwegs. Das bestätigt (nicht nur vermutet) die im
-  Umbauplan-Dokument offen benannte Sorge, ob die PCA-Achsenfindung hier
-  genauso zuverlässig eine Achse findet wie beim Curl.
+### Scott Curls / Preacher Curls
+- **Eingelenkig wie der Standard-Curl** (reine Ellbogenflexion) — aber der
+  **Oberarm liegt fixiert auf einem geneigten Polster** (Scott-/Curlbank,
+  typisch 45–60°), nur der Unterarm bewegt sich (modusX, alle 4 dort
+  beschriebenen Varianten — Kurzhantel, Langhantel, SZ-Stange, Kabelzug —
+  betonen das übereinstimmend: Oberarm/Ellbogen bleiben unbewegt).
+- Ausgangsposition des Arms im Raum unterscheidet sich vom hängenden
+  Standard-Curl (durch die geneigte Bank), die ROM bezieht sich auf den Winkel
+  zwischen Unter- und Oberarm (fast gestreckt → fast senkrecht), nicht auf eine
+  absolute Armposition.
+- Explizit **weniger Schwung/Körpereinsatz möglich** — die Bank verhindert das
+  mechanisch (Quelle nennt das als Hauptzweck der Übung sowie als häufigen
+  Fehler, wenn versucht). Vermutlich saubereres Signal als beim Standard-Curl:
+  weniger Störbewegung durch Restkörper.
+- Handgelenk soll laut Quelle eine "natürliche Verlängerung" des Unterarms
+  bleiben (kein Abknicken) — bestätigt dieselbe starre Handgelenk-Unterarm-
+  Kopplung wie beim Standard-Curl, nur mit anderer Ruhelage im Raum.
+- Varianten: ein- oder beidarmig, mehrere Geräte (SZ-Stange, Langhantel,
+  Kurzhantel, Kabelzug, Bizepsmaschine) — Bewegungsprinzip bei allen identisch.
+- Signal: rotationsdominant wie Bizeps-Curl, aber andere Achsen-Ruhelage im
+  Raum — guter zweiter Testfall neben double_bump, ob das System zwei
+  Curl-Varianten anhand der Ruhelage sauber trennt statt zu verwechseln.
+
+### Hammer Strength Iso-Lateral Horizontal Bench Press
+- Mehrgelenkig: Schulterhorizontaladduktion + Ellbogenextension, **horizontal**
+  (Gegenstück zur Incline Press oben), sitzend mit **5°-geneigtem Sitz** für
+  Positionierung "wie auf einer echten Flachbank" (Herstellerangabe).
+- Konvergierend/divergierende Druckbahn — Herstellerbeschreibung betont
+  explizit den Unterschied zur Langhantel: "eine Langhantel zwingt beide Arme
+  als eine Einheit, hier bewegt sich jeder Arm unabhängig."
+- Signal: Druckbewegung wie Incline Press, aber horizontal statt steil-nach-
+  oben — eigene Bahnrichtung, dritte Druckvariante neben Incline Press.
 
 ## 4. Wie das in die Architektur passt
 
@@ -137,9 +168,9 @@ Die geplante `Exercises`-Tabelle braucht eine zusätzliche Spalte:
 class Exercises extends Table {
   TextColumn get id => text()();
   TextColumn get displayName => text()();
-  TextColumn get templateId => text()(); // NEU: 'bicep_curl' | 'triceps_extension'
-                                          //      | 'lateral_raise' | 'shoulder_press'
-                                          //      | 'lat_pulldown'
+  TextColumn get templateId => text()(); // NEU: 'bicep_curl' | 'hs_lat_pulldown'
+                                          //      | 'hs_incline_press' | 'hs_row'
+                                          //      | 'scott_curl' | 'hs_bench_press'
   DateTimeColumn get createdAt => dateTime()();
 }
 ```
@@ -192,19 +223,19 @@ als ursprünglich in Abschnitt 3 eingeschätzt.
    vergleichen. Bei starker Abweichung (Faktor 2+ o.ä., genaue Schwelle braucht
    eigene Kalibrierung mit echten Daten) einen Hinweis zeigen — **nicht** die
    Kalibrierung blockieren, nur ehrlich flaggen ("Das gemessene Tempo passt nicht
-   ganz zum Erwartungswert für Latzug — trotzdem übernehmen?").
+   ganz zum Erwartungswert für Hammer Strength Row — trotzdem übernehmen?").
 2. **Zweites, übungsunabhängiges Signal — Achsen-Eindeutigkeit**: `_axisAnalysis`
    berechnet über `_jacobiEigen3` bereits `varianzAnteil` (größter Eigenwert /
    Summe aller drei Eigenwerte, `_AxisResult`, Zeile 707) — komplett kostenlos,
    kein neuer Rechenschritt. Ein niedriger Wert heißt: die gemessene Bewegung war
    nicht eindeutig einachsig, unabhängig davon ob ROM/Tempo zum Profil passen.
-   Für Latzug (oben als am wenigsten eindeutig rotationsdominant eingeschätzt)
-   ein zweites, orthogonales Warnsignal. Genauer wäre "größter vs. zweitgrößter
+   Für die Hammer-Strength-Maschinen (oben als konvergierend/divergierend statt
+   frei rotierend eingeschätzt) ein zweites, orthogonales Warnsignal. Genauer wäre "größter vs. zweitgrößter
    Eigenwert" statt "größter/Summe" — der ist aktuell NICHT exponiert, bräuchte
    einen zusätzlichen (immer noch billigen) Schritt. Start mit `varianzAnteil`,
    da bereits vorhanden; Wechsel zur präziseren Metrik bleibt offen.
 3. **`isMultiJoint` steuert `knownSetCount` statt nur Nachprüfung**: mehrgelenkige
-   Übungen (Schulterdrücken, Latzug) bekommen mehr Kalibrierungs-Reps (z.B. 8
+   Übungen (die 4 Hammer-Strength-Maschinen) bekommen mehr Kalibrierungs-Reps (z.B. 8
    statt 5) — mehr Rohdaten für die unveränderte `_axisAnalysis`, kein Eingriff
    in die Achsen-Mathematik selbst. Mildert direkt das Problem aus Abschnitt 3
    (mehr Shots → geringere Prior-Abhängigkeit, laut Burzer et al. selbst).
@@ -227,7 +258,7 @@ zeigt. Diese Übersetzung ist unverifiziert. Deshalb, passend zum in ADR-022
 (`docs/archive/umbauplan/02_ARCHITECTURE_DECISION_RECORDS.md`) verankerten
 Grundsatz "erst simulieren/beobachten, dann scharf schalten" — dort konkret zu
 Testmethodik, hier sinngemäß übertragen: die erste echte Kalibrierung jeder
-neuen Übung (v.a. Latzug, Schulterdrücken) manuell gegen diese Erwartungswerte
+neuen Übung (v.a. die 4 Hammer-Strength-Maschinen) manuell gegen diese Erwartungswerte
 und gegen `varianzAnteil` prüfen, bevor das Plausibilisierungs-Flag für diese
 Übung scharf geschaltet wird. Bis dahin: Template vorhanden, Warnung deaktiviert.
 
@@ -235,15 +266,20 @@ und gegen `varianzAnteil` prüfen, bevor das Plausibilisierungs-Flag für diese
 
 - **Bizeps-Curl**: „Sensor am Handgelenk. Ellbogen am Körper, Unterarm rauf und
   runter — der Ellbogen bleibt der feste Punkt."
-- **Trizeps-Extension**: „Sensor am Handgelenk. Oberarm ruhig halten, nur den
-  Unterarm strecken und wieder beugen."
-- **Seitheben**: „Sensor am Handgelenk. Arm seitlich bis Schulterhöhe heben,
-  langsam und kontrolliert — nicht schwungvoll."
-- **Schulterdrücken**: „Sensor am Handgelenk. Gewicht gerade nach oben drücken,
-  bis der Arm fast gestreckt ist, dann kontrolliert zurück."
-- **Latzug**: „Sensor am Handgelenk. Stange kontrolliert zur Brust ziehen —
-  diese Übung ist für die Kalibrierung anspruchsvoller als die anderen, bitte bei
-  Problemen einmal neu kalibrieren, bevor du das Ergebnis anzweifelst."
+- **Hammer Strength Front Lat Pulldown**: „Sensor am Handgelenk. Griff im
+  Untergriff kontrolliert zur Brust ziehen, dann kontrolliert zurück — die
+  Maschine führt die Bahn, du musst sie nicht erzwingen."
+- **Hammer Strength Incline Press**: „Sensor am Handgelenk. Griffe nach
+  schräg oben drücken, bis die Arme fast gestreckt sind, dann kontrolliert
+  zurück."
+- **Hammer Strength Row**: „Sensor am Handgelenk. Brust am Polster, Griffe
+  waagerecht zum Körper ziehen, Schulterblätter zusammenziehen."
+- **Scott Curls / Preacher Curls**: „Sensor am Handgelenk. Oberarm bleibt
+  fest auf dem Polster liegen, nur der Unterarm bewegt sich — kein Schwung
+  aus dem Körper."
+- **Hammer Strength Horizontal Bench Press**: „Sensor am Handgelenk. Griffe
+  gerade nach vorne drücken, bis die Arme fast gestreckt sind, dann
+  kontrolliert zurück."
 
 ## 6. Änderung an `UMBAUPLAN_MULTI_EXERCISE_2026-07-28.md`
 
