@@ -43,6 +43,36 @@ Recherchiert für Genauigkeit der ROM-/Tempo-Angaben; individuelle Streuung
 zwischen Nutzern bleibt trotzdem groß — diese Werte sind **Startwerte für
 Plausibilisierung**, kein Ersatz für die empirische Known-Count-Sweep-Kalibrierung.
 
+**Statistische Begründung, warum das bei nur 8 Kalibrierungs-Reps überhaupt
+etwas bringt** (`knownSetCount=5` + `slowSetCount=3`, verifiziert in
+`calibration_controller.dart` Zeile 128–129): Burzer et al., "Uncertainty-Aware
+(Un)Supervised Few-Shot User Adaptation for On-Device Personalized Human
+Activity Recognition" (arXiv:2606.04798, Juni 2026) — sensorbasierte
+Aktivitätserkennung, on-device, Few-Shot-Nutzerkalibrierung, methodisch nah an
+unserem Problem. Tabelle 2 des Papers zeigt konkret: bei extrem wenigen
+Kalibrierungsdaten ("1 shot", 3 Sekunden) liegt rein empirische
+Prototyp-Schätzung auf dem HHAR-Datensatz bei **-2,65** Prozentpunkten relativ
+zur Zero-Shot-Baseline (schlechter als gar keine Personalisierung!), während die
+Bayesian-Prior-Kombination durchgehend über alle 4 getesteten Datensätze
+gewinnt. Zwei Einschränkungen, um das nicht zu überziehen: (a) der Effekt nimmt
+laut Paper selbst mit mehr Shots ab (Richtung 16 Shots konvergieren die
+Verfahren) — 8 Reps sind nicht der extremste "1-Shot"-Fall, in dem die
+dramatischsten Zahlen gemessen wurden; (b) es ist ein Multi-Klassen-
+Aktivitätserkennungs-Paper mit Bayesian-Schätzung im Embedding-Raum, nicht
+unser einfacheres Achsen-/Schwellenwert-Problem — das allgemeine Prinzip
+(Prior+Stichprobe schlägt reine Stichprobe bei wenigen Samples) überträgt sich,
+die konkreten Prozentpunkte nicht.
+
+**Bewusste Scoping-Entscheidung:** Das Paper selbst kombiniert Prior und
+Stichprobe rechnerisch (Bayesian Shrinkage). Das wäre die konsequentere
+Umsetzung dieser Erkenntnis, ist aber ein deutlich größerer Eingriff in die
+Zählmathematik als eine reine Plausibilisierung. Diese Planung entscheidet sich
+bewusst für die konservativere Variante (Abschnitt 4.3: nur flaggen, nie
+automatisch verrechnen) — passend zum sonst im Projekt durchgehend gelebten
+Shadow-erst-Prinzip (siehe `DIRECTIONAL_GP_SHADOW_ROLLOUT_2026-07-27.md`).
+Rechnerische Kombination bleibt ein möglicher späterer Schritt, kein Teil
+dieser Planung.
+
 ### Bizeps-Curl (bereits produktiv, hier als Referenz)
 - 1 Gelenk (Ellbogen), reine Flexion/Extension.
 - ROM ≈ 110–160° je nach Quelle/Variante (GVSU-Biomechanik-Thesis: 156–157° bei
@@ -135,7 +165,7 @@ class ExerciseBiomechanicalTemplate {
 
 Rein statische Konstanten (wie `kExerciseCatalog` heute), keine neue Tabelle nötig.
 
-### 4.3 Einsatz in Guided Calibration 2.0 — drei konkrete Stellen
+### 4.3 Einsatz in Guided Calibration 2.0 — vier konkrete Stellen
 
 1. **Plausibilisierung nach dem Known-Count-Sweep**: gefundene Tempo-/ROM-Werte
    gegen `expectedRomDegrees`/`expectedTempoSecPerRep` des gewählten Templates
@@ -143,14 +173,43 @@ Rein statische Konstanten (wie `kExerciseCatalog` heute), keine neue Tabelle nö
    eigene Kalibrierung mit echten Daten) einen Hinweis zeigen — **nicht** die
    Kalibrierung blockieren, nur ehrlich flaggen ("Das gemessene Tempo passt nicht
    ganz zum Erwartungswert für Latzug — trotzdem übernehmen?").
-2. **Bessere Startwerte statt generischer Defaults**: `expectedDurationSamples`
+2. **Zweites, übungsunabhängiges Signal — Achsen-Eindeutigkeit**: `_axisAnalysis`
+   berechnet über `_jacobiEigen3` bereits `varianzAnteil` (größter Eigenwert /
+   Summe aller drei Eigenwerte, `_AxisResult`, Zeile 707) — komplett kostenlos,
+   kein neuer Rechenschritt. Ein niedriger Wert heißt: die gemessene Bewegung war
+   nicht eindeutig einachsig, unabhängig davon ob ROM/Tempo zum Profil passen.
+   Für Latzug (oben als am wenigsten eindeutig rotationsdominant eingeschätzt)
+   ein zweites, orthogonales Warnsignal. Genauer wäre "größter vs. zweitgrößter
+   Eigenwert" statt "größter/Summe" — der ist aktuell NICHT exponiert, bräuchte
+   einen zusätzlichen (immer noch billigen) Schritt. Start mit `varianzAnteil`,
+   da bereits vorhanden; Wechsel zur präziseren Metrik bleibt offen.
+3. **`isMultiJoint` steuert `knownSetCount` statt nur Nachprüfung**: mehrgelenkige
+   Übungen (Schulterdrücken, Latzug) bekommen mehr Kalibrierungs-Reps (z.B. 8
+   statt 5) — mehr Rohdaten für die unveränderte `_axisAnalysis`, kein Eingriff
+   in die Achsen-Mathematik selbst. Mildert direkt das Problem aus Abschnitt 3
+   (mehr Shots → geringere Prior-Abhängigkeit, laut Burzer et al. selbst).
+   Schließt einen Kreis mit Punkt 2: bleibt `varianzAnteil` trotz erhöhter
+   Rep-Zahl niedrig, ist das ein stärkeres Signal als eine niedrige Rep-Zahl allein.
+4. **Bessere Startwerte statt generischer Defaults**: `expectedDurationSamples`
    für den (noch nicht produktiven) `QualityScorer` aus `expectedTempoSecPerRep`
    seeden, statt eines festen generischen Werts.
-3. **Instruktionstext**: `CalibrationWizardScreen._phaseHint` (aktuell komplett
+5. **Instruktionstext**: `CalibrationWizardScreen._phaseHint` (aktuell komplett
    übungs-unabhängig — geprüft, dort steht heute nur generischer Workflow-Text
    wie "Aufzeichnung läuft. Danach Weiter tippen.") um einen zusätzlichen,
    übungsspezifischen Satz aus `instructionText` ergänzen, in der Briefing-Phase
    angezeigt.
+
+## 4.4 Validierungsplan (vor Produktivschaltung)
+
+Die ROM-/Tempo-Werte in Abschnitt 3 sind Literaturwerte auf Gelenkebene — nicht
+dasselbe wie das, was der M5StickC am Handgelenk tatsächlich als gP-Signal
+zeigt. Diese Übersetzung ist unverifiziert. Deshalb, passend zum in ADR-022
+(`docs/archive/umbauplan/02_ARCHITECTURE_DECISION_RECORDS.md`) verankerten
+Grundsatz "erst simulieren/beobachten, dann scharf schalten" — dort konkret zu
+Testmethodik, hier sinngemäß übertragen: die erste echte Kalibrierung jeder
+neuen Übung (v.a. Latzug, Schulterdrücken) manuell gegen diese Erwartungswerte
+und gegen `varianzAnteil` prüfen, bevor das Plausibilisierungs-Flag für diese
+Übung scharf geschaltet wird. Bis dahin: Template vorhanden, Warnung deaktiviert.
 
 ## 5. Beispiel-Instruktionstexte (Entwurf, nicht final)
 
@@ -185,6 +244,9 @@ Datei als Vorlage für den Stil):
   — unabhängig von dieser Planung, nicht hier mit hineinmischen).
 - Keine harte Ablehnung einer Kalibrierung bei Abweichung vom Profil — nur
   Hinweis, nie Blockade (siehe 4.3, Punkt 1).
+- Keine rechnerische Prior+Stichprobe-Kombination (Bayesian Shrinkage) —
+  Prior bleibt reine Plausibilisierung, verändert das Kalibrierungsergebnis
+  selbst nicht (siehe Abschnitt 3, "Bewusste Scoping-Entscheidung").
 - Keine weiteren Übungen über die 5 hinaus in dieser Runde.
 - Keine Änderung an `_axisAnalysis`/Known-Count-Sweep selbst — die bleibt
   generisch, die Profile sind zusätzliche Plausibilisierung, kein Ersatz.
