@@ -76,7 +76,7 @@ class ExerciseMetadata {
   });
 }
 
-/// Standard-Übungen (V1: bicep_curl; 2026-07-28: 5 weitere dazu, siehe
+/// Standard-Übungen (V1: bicep_curl; 2026-07-28: 4 weitere dazu, siehe
 /// docs/design/EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md).
 const Map<String, ExerciseMetadata> kExerciseCatalog = {
   'bicep_curl': ExerciseMetadata(
@@ -153,20 +153,6 @@ const Map<String, ExerciseMetadata> kExerciseCatalog = {
     instructionText: 'Sensor am Handgelenk. Oberarm bleibt fest auf dem '
         'Polster liegen, nur der Unterarm bewegt sich — kein Schwung aus '
         'dem Körper.',
-  ),
-  'hs_bench_press': ExerciseMetadata(
-    id: 'hs_bench_press',
-    displayName: 'Hammer Strength Horizontal Bench Press',
-    muscleGroup: 'Brust',
-    description: 'Iso-laterale Flachbank-Druckmaschine, 5°-geneigter Sitz, '
-        'konvergierende/divergierende Bahn.',
-    jointDescription: 'Schulter + Ellbogen',
-    isMultiJoint: true,
-    expectedRomDegrees: null,
-    expectedTempoSecPerRep: null,
-    instructionText: 'Sensor am Handgelenk. Griffe gerade nach vorne '
-        'drücken, bis die Arme fast gestreckt sind, dann kontrolliert '
-        'zurück.',
   ),
 };
 

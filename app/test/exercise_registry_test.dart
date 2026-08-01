@@ -218,13 +218,12 @@ void main() {
       expect(scott.instructionText, contains('Oberarm'));
     });
 
-    test('alle 4 Hammer-Strength-Übungen sind mehrgelenkig und im Katalog',
+    test('alle 3 Hammer-Strength-Übungen sind mehrgelenkig und im Katalog',
         () {
       for (final id in [
         'hs_lat_pulldown',
         'hs_incline_press',
         'hs_row',
-        'hs_bench_press',
       ]) {
         final metadata = kExerciseCatalog[id];
         expect(metadata, isNotNull, reason: '$id fehlt im Katalog');
@@ -238,21 +237,20 @@ void main() {
     test('Hammer-Strength-Übungen ohne recherchierte ROM-Gradzahl haben '
         'bewusst null statt einer erfundenen Zahl', () {
       // Nur hs_lat_pulldown hat ein recherchiertes Tempo (aus generischer
-      // Latzug-Recherche übernommen); die ROM-Gradzahl fehlt bei allen 4.
+      // Latzug-Recherche übernommen); die ROM-Gradzahl fehlt bei allen 3.
       for (final id in [
         'hs_lat_pulldown',
         'hs_incline_press',
         'hs_row',
-        'hs_bench_press',
       ]) {
         expect(kExerciseCatalog[id]!.expectedRomDegrees, isNull,
             reason: '$id: keine ROM-Gradzahl recherchiert, sollte null sein');
       }
     });
 
-    test('kExerciseCatalog enthält genau 6 Übungen (1 bestehend + 5 neu)',
+    test('kExerciseCatalog enthält genau 5 Übungen (1 bestehend + 4 neu)',
         () {
-      expect(kExerciseCatalog.length, 6);
+      expect(kExerciseCatalog.length, 5);
       expect(
         kExerciseCatalog.keys,
         containsAll([
@@ -261,7 +259,6 @@ void main() {
           'hs_incline_press',
           'hs_row',
           'scott_curl',
-          'hs_bench_press',
         ]),
       );
     });
