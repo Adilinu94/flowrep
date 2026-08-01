@@ -7,6 +7,7 @@ import 'package:vibration/vibration.dart';
 
 import '../../../data/security/calibration_store.dart';
 import '../../../domain/calibration_controller.dart';
+import '../../../domain/exercises/exercise_registry.dart';
 import '../../../domain/workout_engine.dart' show SensorSample;
 
 /// Guided Calibration 2.0 (Konzept-Dokument, Paket 4-9): fuehrt den Nutzer
@@ -70,8 +71,15 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   @override
   void initState() {
     super.initState();
+    // 2026-07-28 (EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md, Abschnitt
+    // 4.3 Punkt 3): mehrgelenkige Übungen bekommen mehr Kalibrierungs-Reps
+    // - mehr Rohdaten für die unveränderte _axisAnalysis, kein Eingriff in
+    // die Achsen-Mathematik selbst. 8 statt 5 ist ein Startwert, keine
+    // validierte Zahl.
+    final metadata = kExerciseCatalog[widget.exerciseId];
     _controller = CalibrationController(
       exerciseId: widget.exerciseId,
+      knownSetCount: (metadata?.isMultiJoint ?? false) ? 8 : 5,
       onStageAdvanced: (stage) {
         if (!mounted) return;
         _metronomTimer?.cancel();
@@ -511,6 +519,7 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
   }
 
   Widget _buildBriefing(BuildContext context) {
+    final instruction = kExerciseCatalog[widget.exerciseId]?.instructionText;
     return Column(
       children: [
         Icon(
@@ -519,6 +528,17 @@ class _CalibrationWizardScreenState extends State<CalibrationWizardScreen> {
           color: Theme.of(context).colorScheme.primary,
         ),
         const SizedBox(height: 12),
+        if (instruction != null && instruction.isNotEmpty) ...[
+          Text(
+            instruction,
+            textAlign: TextAlign.center,
+            style: Theme.of(context)
+                .textTheme
+                .bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+        ],
         Text(
           'Kein Sensor-Stream bis du bereit bist.\n'
           'Position einnehmen → Bereit tippen → 5 s Countdown → Vibration.',

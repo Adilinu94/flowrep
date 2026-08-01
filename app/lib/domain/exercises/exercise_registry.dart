@@ -24,6 +24,11 @@ library;
 import '../models/exercise_profile.dart';
 
 /// Metadaten einer Übung (für UI-Anzeige).
+///
+/// Biomechanische Felder (ab EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md):
+/// recherchierte Startwerte für Plausibilisierung, KEINE validierten Messwerte.
+/// null, wo die Recherche keine belastbare Gradzahl/Zeitangabe ergeben hat —
+/// bewusst nicht mit einer erfundenen Zahl aufgefüllt.
 class ExerciseMetadata {
   /// Eindeutige ID (z.B. 'bicep_curl').
   final String id;
@@ -40,26 +45,129 @@ class ExerciseMetadata {
   /// true, wenn die Übung kalibriert werden muss.
   final bool requiresCalibration;
 
+  /// Beteiligte(s) Gelenk(e), z.B. "Ellbogen (Flexion)".
+  final String jointDescription;
+
+  /// true bei mehrgelenkigen Übungen (Schulter+Ellbogen o.ä.) — steuert
+  /// aktuell knownSetCount in CalibrationWizardScreen (mehr Kalibrierungs-
+  /// Reps, siehe Abschnitt 4.3 Punkt 3 der Priors-Doku).
+  final bool isMultiJoint;
+
+  /// (min, max) Gelenk-ROM in Grad, falls recherchiert.
+  final (double, double)? expectedRomDegrees;
+
+  /// (min, max) Tempo pro Wiederholung in Sekunden, falls recherchiert.
+  final (double, double)? expectedTempoSecPerRep;
+
+  /// Übungsspezifischer Hinweis für die Briefing-Phase der Kalibrierung.
+  final String instructionText;
+
   const ExerciseMetadata({
     required this.id,
     required this.displayName,
     required this.muscleGroup,
     required this.description,
     this.requiresCalibration = true,
+    this.jointDescription = '',
+    this.isMultiJoint = false,
+    this.expectedRomDegrees,
+    this.expectedTempoSecPerRep,
+    this.instructionText = '',
   });
 }
 
-/// Standard-Übungen (V1).
+/// Standard-Übungen (V1: bicep_curl; 2026-07-28: 5 weitere dazu, siehe
+/// docs/design/EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28.md).
 const Map<String, ExerciseMetadata> kExerciseCatalog = {
   'bicep_curl': ExerciseMetadata(
     id: 'bicep_curl',
     displayName: 'Bizeps-Curl',
     muscleGroup: 'Arme',
     description: 'Klassische Bizeps-Übung mit Kurzhantel oder Kabelzug.',
+    jointDescription: 'Ellbogen (Flexion)',
+    isMultiJoint: false,
+    // GVSU-Biomechanik-Thesis: 156-157° Standard-Curl; Exosuit-Studie:
+    // 107-115° gemessen.
+    expectedRomDegrees: (110.0, 160.0),
+    expectedTempoSecPerRep: (1.2, 1.6),
+    instructionText: 'Sensor am Handgelenk. Ellbogen am Körper, Unterarm '
+        'rauf und runter — der Ellbogen bleibt der feste Punkt.',
   ),
-  // V2: weitere Übungen hier hinzufügen
-  // 'shoulder_press': ExerciseMetadata(...),
-  // 'lateral_raise': ExerciseMetadata(...),
+  'hs_lat_pulldown': ExerciseMetadata(
+    id: 'hs_lat_pulldown',
+    displayName: 'Hammer Strength Front Lat Pulldown',
+    muscleGroup: 'Rücken',
+    description: 'Iso-laterale Latzug-Maschine, Untergriff, konvergierende/'
+        'divergierende Zugbahn.',
+    jointDescription: 'Schulter + Ellbogen',
+    isMultiJoint: true,
+    // Keine belastbare ROM-Gradzahl recherchiert (Herstellerseite
+    // beschreibt Bewegung qualitativ, keine Winkelangabe) - bewusst null.
+    expectedRomDegrees: null,
+    // Aus generischer Latzug-Recherche uebernommen (NASM/S&C Journal,
+    // kontrolliertes Tempo), nicht Hammer-Strength-spezifisch gemessen.
+    expectedTempoSecPerRep: (2.0, 4.0),
+    instructionText: 'Sensor am Handgelenk. Griff im Untergriff kontrolliert '
+        'zur Brust ziehen, dann kontrolliert zurück — die Maschine führt '
+        'die Bahn, du musst sie nicht erzwingen.',
+  ),
+  'hs_incline_press': ExerciseMetadata(
+    id: 'hs_incline_press',
+    displayName: 'Hammer Strength Incline Press',
+    muscleGroup: 'Brust',
+    description: 'Iso-laterale Schrägbank-Druckmaschine, steiler als '
+        'klassischer Incline Press, konvergierende/divergierende Bahn.',
+    jointDescription: 'Schulter + Ellbogen',
+    isMultiJoint: true,
+    expectedRomDegrees: null, // keine Gradzahl recherchiert
+    expectedTempoSecPerRep: null, // kein Hammer-Strength-Tempo recherchiert
+    instructionText: 'Sensor am Handgelenk. Griffe nach schräg oben drücken, '
+        'bis die Arme fast gestreckt sind, dann kontrolliert zurück.',
+  ),
+  'hs_row': ExerciseMetadata(
+    id: 'hs_row',
+    displayName: 'Hammer Strength Row',
+    muscleGroup: 'Rücken',
+    description: 'Iso-laterale, brustgestützte Rudermaschine, horizontale '
+        'Zugbahn.',
+    jointDescription: 'Schulter + Ellbogen',
+    isMultiJoint: true,
+    expectedRomDegrees: null,
+    expectedTempoSecPerRep: null,
+    instructionText: 'Sensor am Handgelenk. Brust am Polster, Griffe '
+        'waagerecht zum Körper ziehen, Schulterblätter zusammenziehen.',
+  ),
+  'scott_curl': ExerciseMetadata(
+    id: 'scott_curl',
+    displayName: 'Scott Curls / Preacher Curls',
+    muscleGroup: 'Arme',
+    description: 'Bizeps-Curl mit auf geneigtem Polster fixiertem Oberarm, '
+        'deutlich reduzierter Körperschwung.',
+    jointDescription: 'Ellbogen (Flexion)',
+    isMultiJoint: false,
+    // Gleiches Gelenk wie bicep_curl, ROM auf den Ellbogenwinkel bezogen -
+    // Groessenordnung uebernommen, Ruhelage im Raum unterscheidet sich
+    // (Arm liegt auf geneigtem Polster statt haengend).
+    expectedRomDegrees: (110.0, 160.0),
+    expectedTempoSecPerRep: (1.2, 1.6),
+    instructionText: 'Sensor am Handgelenk. Oberarm bleibt fest auf dem '
+        'Polster liegen, nur der Unterarm bewegt sich — kein Schwung aus '
+        'dem Körper.',
+  ),
+  'hs_bench_press': ExerciseMetadata(
+    id: 'hs_bench_press',
+    displayName: 'Hammer Strength Horizontal Bench Press',
+    muscleGroup: 'Brust',
+    description: 'Iso-laterale Flachbank-Druckmaschine, 5°-geneigter Sitz, '
+        'konvergierende/divergierende Bahn.',
+    jointDescription: 'Schulter + Ellbogen',
+    isMultiJoint: true,
+    expectedRomDegrees: null,
+    expectedTempoSecPerRep: null,
+    instructionText: 'Sensor am Handgelenk. Griffe gerade nach vorne '
+        'drücken, bis die Arme fast gestreckt sind, dann kontrolliert '
+        'zurück.',
+  ),
 };
 
 /// Zentrale Verwaltung von Übungsprofilen.
