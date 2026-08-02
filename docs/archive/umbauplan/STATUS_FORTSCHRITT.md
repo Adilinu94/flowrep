@@ -443,3 +443,27 @@ Branch `fix-exercise-catalog-5` von frischem `origin/main`. `feat/exercise-biome
 **Kleiner Fund, nicht behoben (außerhalb des Fensters für Phase 1):** Der Bauplan verweist in Teil 2.A/Schritt 5 auf "Abschnitt 8.4" der Priors-Doku für die exakten IDs — dieser Abschnitt existiert dort nicht (Doku endet bei Abschnitt 7). Ungefährlich, IDs stattdessen direkt aus `exercise_registry.dart` verifiziert.
 
 Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). Nächster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) können parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+
+
+---
+
+## 2026-08-01, Claude-106b941b (Desktop Commander, Adis Windows-Maschine, Adi: "Phase 1 aus dem Bauplan ausführen"): Phase 1 mit echtem flutter test/analyze verifiziert
+
+Vor Arbeitsbeginn `git fetch origin --prune` (main und `fix-exercise-catalog-5` unverändert seit dem vorherigen Eintrag). Vollen Diff von `fix-exercise-catalog-5` gegen main selbst gelesen statt dem Statustext zu glauben — Code, Tests und Docs stimmen mit der Beschreibung überein, inkl. der "Abschnitt 8.4 existiert nicht"-Randnotiz (Doku endet echt bei Abschnitt 7).
+
+Isolierter Klon (`flowrep-verify-phase1-106b941b`, eigenes Verzeichnis, um die parallele Session auf `feat-explicit-start-button` nicht zu stören) → `flutter pub get` → `dart run build_runner build` (286 Outputs, keine Fehler) → `flutter analyze` → `flutter test`. Alles über echten Flutter/Dart-Toolchain, nicht simuliert.
+
+**flutter analyze: 17 Probleme, 0 davon durch Phase 1 verursacht.** 16 sind vorbestehende info/warning-Hinweise (Stil/Perf) in unveränderten Dateien. 1 ist ein echter Fehler (`test/reconnect_test.dart:11` — `ControllableSensorProvider` implementiert `ISensorProvider.deviceEvents` nicht). Für jedes der 17 geprüft: keine der 6 von Phase 1 geänderten Dateien betroffen.
+
+**flutter test: alle Phase-1-eigenen Tests grün.** Alle 14 bestehenden + 6 neuen `exercise_registry_test.dart`-Tests bestehen, ebenso der neue `calibration_wizard_screen_test.dart`-Instruktionstext-Test. Musste in zwei Läufen erfolgen: der Compile-Fehler in `reconnect_test.dart` bricht den ersten `flutter test`-Durchlauf mitten in der Dateiliste ab — die ~20 danach folgenden Dateien in einem zweiten, gezielten Lauf nachgeholt, um keine blinden Flecken zu lassen.
+
+**Vorbestehend, außerhalb des Phase-1-Fensters, nicht angefasst:** 10 Testfehlschläge + der Compile-Fehler, für jeden einzeln bestätigt (nicht Teil des Phase-1-Diffs UND `grep` zeigt keine Abhängigkeit zu `exercise_registry.dart`/`kExerciseCatalog`) — also bereits auf main vorhanden, nicht durch diesen Branch verursacht:
+- `test/reconnect_test.dart` — Compile-Fehler (s.o.), blockiert die Datei komplett.
+- `test/dsp_verification_test.dart` — 4 Fehlschläge (Szenario 1/3/4/7, SPEC TEIL 7.2): erwartete Rep-Anzahl ≥N, tatsächlich 0.
+- `test/exercise_engine_pipeline_test.dart` — 3 Fehlschläge (Fallback ohne Template, volle Pipeline, Reset-Zähler): erwartet >0, tatsächlich 0.
+- `test/p1_assets_structural_test.dart` — 1 Fehlschlag: "CI workflow exists at repo root" = false.
+- `test/workout_engine_test.dart` — 2 Fehlschläge, beide ROM-Gate/`prominenceMin` (referenzieren "Product-Owner-Entscheidung 2026-07-25").
+
+Sieht nach einem zusammenhängenden, vorbestehenden Cluster rund um Rep-Zählung/ROM-Gate aus (nicht einzeln tiefer untersucht, außerhalb dieses Auftrags) — falls noch nicht bekannt, vor einem main-Merge dieser oder verwandter Branches einen Blick wert.
+
+Kein Code geändert, reine Verifikation. Branch bleibt `fix-exercise-catalog-5`, dieser Eintrag gepusht, **nicht** nach main gemerged.
