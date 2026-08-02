@@ -511,3 +511,15 @@ Danach den Rest der Suite ohne die eine kaputte Datei laufen lassen (64 Dateien 
 **Ergebnis:** Phase 1 + 2 sind jetzt tatsächlich mit echter Toolchain verifiziert, nicht nur plausibel gemacht. Branch `feat-explicit-start-button` bei `151a346`, weiterhin nicht gemergt.
 
 **Nebenbefund beim `git fetch` danach:** `feat-weight-entry` ist inzwischen auf `origin` erschienen (Phase 3 der parallelen Session), und `fix-exercise-catalog-5` hat einen neuen Commit (`a55af51..26aeadb`) von jemand anderem erhalten. Beides hier nur vermerkt, nicht geprüft oder angefasst — das ist ein eigener nächster Schritt.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "wurde schon gemacht, bitte überprüfen" → C:\Users\adini\Desktop\flowrep-verify-phase3-106b941b): Phase 4 zu Ende geführt statt neu gebaut
+
+Auf origin war nichts zu Phase 4 zu finden (alle Branches, main, offene PRs via `gh pr list` geprüft — nichts). Erst nach Adis Pfadhinweis gefunden: lokaler, nie gepushter Branch `phase4-tracker-integration` (Session 106b941b), 5 Commits vor `feat-weight-entry`, mit bereits erledigtem Merge von `feat-explicit-start-button` (Commit `a3ff5bf`, echte Konflikte nur in `home_screen.dart` und dieser Datei, beide sauber aufgelöst) plus einer unfertigen, nicht committeten Änderung im Arbeitsverzeichnis.
+
+Diese unfertige Änderung geprüft statt blind übernommen (`git diff`), war inhaltlich sinnvoll (StartCountdownButton zusätzlich an `hasCalibration` gekoppelt, konsistent mit `WeightInputField` direkt daneben) und fertig genug zum Committen — daher committet (`a925f3e`, eigene Session-Signatur, da Fortsetzung fremder Arbeit) statt eigenen konkurrierenden Code zu schreiben.
+
+**Verifiziert, nicht nur übernommen:** `dart run build_runner build` sauber, `flutter analyze` → 17 Fehler, exakt dieselben vorbestehenden wie überall sonst, nichts Neues. `flutter test` auf den acht relevantesten Dateien aus Phase 1+2+3 zusammen (genau wegen der Integrationsstelle in `home_screen.dart`) → **64/64 grün**.
+
+Branch `phase4-tracker-integration` zum ersten Mal auf `origin` gepusht (war vorher nur lokal auf Adis Maschine). Kein Merge nach main.
