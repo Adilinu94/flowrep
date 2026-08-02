@@ -462,3 +462,17 @@ Vor Arbeitsbeginn `git fetch origin --prune`: main-HEAD (`969865a`) unverändert
 **Nebenbefund:** `feat-weight-entry` wurde von `fix-exercise-catalog-5` vor dessen letzten zwei Commits (`bc05d9c`, `26aeadb`, beide reine Status-Doku) abgezweigt — funktional ohne Bedeutung, der Vollständigkeit halber erwähnt.
 
 Kein Merge nach main. Branch bleibt `feat-weight-entry`, gepusht.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "weiter, bitte vorher immer prüfen, was schon gemacht wurde. Fange dann mit Phase 3 an"): Erste echte Toolchain-Verifikation von feat-weight-entry — keine Doppelarbeit
+
+Vor jedem eigenen Code-Versuch erst geprüft, was hier bereits steht (Diff komplett gelesen, nicht nur Commit-Messages, gegen Bauplan Phase 3 Schritt für Schritt abgeglichen, `history_screen.dart` selbst nachgeprüft statt der Behauptung "keine Pro-Satz-Ansicht" zu vertrauen — stimmt). Ergebnis: Umsetzung ist vollständig und sauber, alle 11 Schritte aus dem Bauplan abgedeckt. Deshalb kein eigener, konkurrierender Code — stattdessen mit Desktop Commander verifiziert, was laut den vorherigen Einträgen hier noch fehlte.
+
+**Wichtig:** weder `c5f4b80` noch `2549d7c8` hatten echtes `flutter test` — nur `flutter analyze` bzw. einen manuellen Klammernbalance-Check als Ersatz (siehe die beiden Einträge direkt darüber). Das hier ist also der erste echte Testlauf, keine Doppelverifikation.
+
+Frischer Klon (`flowrep-verify-phase3-f2c0b46b`), `feat-weight-entry` bei `2549d7c8` (exakt der Stand mit `history_screen`-Anzeige und `raw.close()`-Fix). `dart run build_runner build`: 292 Outputs, sauber. `flutter analyze`: 17 Fehler — exakt dieselben 17 vorbestehenden wie auf `feat-explicit-start-button` (nichts Neues, keine der Gewichts-Dateien betroffen). `flutter test test/weight_entry_test.dart test/drift_migration_test.dart`: **13/13 grün**, inklusive des im Testfile selbst als riskantesten Teil geflaggten Migrationstests (hand-rekonstruiertes v1-Schema) — funktioniert beim ersten echten Lauf. Zusätzlich die beiden tatsächlich angefassten Bestandstests direkt geprüft: `home_screen_test.dart` + `session_summary_test.dart` — 5/5 grün.
+
+**Nebenbefund (nur vermerkt, nicht behoben):** Sobald `feat-explicit-start-button` (Phase 2) und `feat-weight-entry` (Phase 3) zusammengeführt werden, treffen sich beide exakt an derselben Stelle in `home_screen.dart::_buildSetupBody` — der alte Direkt-Button, den Phase 2 durch `StartCountdownButton` ersetzt hat, ist in Phase 3 noch die Einfügestelle für `WeightInputField`. Rein mechanischer Konflikt (Reihenfolge der beiden Widgets), keine Logik-Kollision — voraussichtlich Phase-4-Thema ("alles zur Tracker-Seite zusammenführen").
+
+Kein Code geändert, keine Doppelarbeit erzeugt. Kein Merge nach main. Branch bleibt `feat-weight-entry`.
