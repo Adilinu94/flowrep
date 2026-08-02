@@ -214,7 +214,7 @@ void main() {
       n.dispose();
     });
 
-    test('default remains true without stored value', () async {
+    test('default remains false without stored value', () async {
       final n = EngineNotifier.create(
         sensorProvider: MockSensorProvider(),
         engine: WorkoutEngine(
@@ -224,7 +224,7 @@ void main() {
         userPrefs: UserPrefsStore(storage: _FakeSecureStorage()),
       );
       await n.reloadUserPrefsForTest();
-      expect(n.autoArmAfterCalib, isTrue);
+      expect(n.autoArmAfterCalib, isFalse);
       n.dispose();
     });
 
