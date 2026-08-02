@@ -387,12 +387,13 @@ class HomeScreen extends ConsumerWidget {
                 onChanged: notifier.setWeightForCurrentSet,
               ),
             ),
-          StartCountdownButton(
-            enabled: uiState.hasCalibration,
-            isCountdownActive: uiState.isStartCountdownActive,
-            secondsRemaining: uiState.startCountdownSecondsRemaining,
-            onPressed: notifier.beginStartCountdown,
-          ),
+          if (uiState.hasCalibration)
+            StartCountdownButton(
+              enabled: uiState.hasCalibration,
+              isCountdownActive: uiState.isStartCountdownActive,
+              secondsRemaining: uiState.startCountdownSecondsRemaining,
+              onPressed: notifier.beginStartCountdown,
+            ),
           if (uiState.lastCompletedSetCount != null) ...[
             const SizedBox(height: 8),
             TextButton.icon(
