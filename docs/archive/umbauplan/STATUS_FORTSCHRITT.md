@@ -443,3 +443,23 @@ Branch `fix-exercise-catalog-5` von frischem `origin/main`. `feat/exercise-biome
 **Kleiner Fund, nicht behoben (außerhalb des Fensters für Phase 1):** Der Bauplan verweist in Teil 2.A/Schritt 5 auf "Abschnitt 8.4" der Priors-Doku für die exakten IDs — dieser Abschnitt existiert dort nicht (Doku endet bei Abschnitt 7). Ungefährlich, IDs stattdessen direkt aus `exercise_registry.dart` verifiziert.
 
 Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). Nächster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) können parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (claude.ai-Sandbox, Adi: "Fange an mit Phase 2"): Expliziter Start-Knopf mit Countdown statt Auto-Arm
+
+Branch `feat-explicit-start-button` von frischem `origin/fix-exercise-catalog-5` (Phase 1 war zu Beginn dieser Session noch nicht auf main). Teil 0, Teil 2.B und Phase 2 aus dem Bauplan komplett gelesen, bevor Code angefasst wurde.
+
+**Wichtigster Fund vor dem Schreiben:** es gab bereits einen "Zählen starten"-Button in `home_screen.dart`, der `startCounting()` direkt (ohne Countdown) aufrief, sichtbar sobald verbunden — nicht strikt an Kalibrierung gekoppelt. Der Bauplan-Wortlaut ("erscheint ein Start-Knopf") ließ vermuten, der Button existiere noch gar nicht; tatsächlich fehlten nur zwei Dinge: der Countdown davor und die Kopplung an `hasCalibration`. Kette manuell nachverfolgt statt angenommen: `startCounting()` setzt nur `isCountingActive` (UI-Gate für `_onSample`); der eigentliche idle→active-Übergang in `workout_engine.dart` (Wake-Threshold, ADR-020/ADR-003) ist unverändert und wird von M5 BtnA identisch genutzt — musste also nicht angefasst werden.
+
+**Umgesetzt:** `beginStartCountdown()`/`_cancelStartCountdown()` in `engine_provider.dart`, 1:1 nach dem Muster des bestehenden Pausen-Timers (`_restTimer`/`_startRestTimer`) gebaut, inkl. `debugSetStartCountdownSeconds()` für schnelle Tests. `startCounting()` räumt jetzt auch einen noch laufenden Countdown auf (z.B. wenn M5 BtnA während des Countdowns gedrückt wird). `autoArmAfterCalib`-Default in `user_prefs_store.dart` und `engine_provider.dart` von an auf aus gedreht — bestehende, bereits gespeicherte Nutzerwerte bleiben unangetastet (`_loadBool` greift nur, wenn der Key noch nie gesetzt wurde, das ist kein neuer Mechanismus, nur genutzt). Neues Widget `start_countdown_button.dart` ersetzt den alten Button optisch 1:1, zeigt bei laufendem Countdown Text statt Button. Zwei Stellen mit jetzt falschem "Default an"-Text korrigiert (`settings_screen.dart`, zwei Doc-Kommentare in `engine_provider.dart`).
+
+**Bewusste Auslegungsentscheidung, nicht stillschweigend:** `enabled` des Buttons an `uiState.hasCalibration` gekoppelt (vorher nur an `isConnected`) — das ist strenger als der bisherige Code, aber genau das, was Phase 2 wörtlich verlangt ("nur aktiv/sichtbar wenn kalibriert").
+
+**Bewusst nicht angefasst:** `docs/Version1.0/13_OFFENE_PUNKTE.md`, obwohl dort ebenfalls "(default on)"/"(Default an)" steht — das ist ein datiertes Audit-Snapshot-Dokument (Stand 2026-07-24), kein lebendiges Spec; rückwirkendes Ändern würde die Historie verfälschen.
+
+Bestandstests an den neuen Default angepasst (`user_prefs_store_test.dart` 2 Stellen, `quick_wins_audit_test.dart` 1 Test). Neuer kombinierter Test `start_countdown_test.dart` (Provider mit echtem `Future.delayed`-Timer + Widget-Tests): deckt explizit alle vier in Phase 2 geforderten Fälle ab, insbesondere dass nach Countdown-Ende `isCountingActive` tatsächlich `true` wird (echter Beleg für den Aufruf, nicht nur Rendering-Check). `home_screen_test.dart` (4 Tests) gegengeprüft: alle bleiben im getrennten Zustand, erreichen den geänderten Codepfad nicht — keine Kollision zu erwarten. Alle Tests im Repo per `grep` nach `reloadCalibration`/Auto-Arm-Abhängigkeiten durchsucht: keine weiteren Treffer außer den beiden angepassten.
+
+**Nicht mit echtem `flutter analyze`/`flutter test` verifiziert** — kein Flutter/Dart-Toolchain in dieser Sandbox. Ersatzweise: jede geänderte Datei komplett gegengelesen, alle Referenzen per `grep`/`git log -- <pfad>` nachverfolgt statt angenommen, Dartdoc-Querverweis auf eine nicht importierte Klasse vorab entfernt.
+
+Commit `42aa1c2` auf Branch `feat-explicit-start-button`, gepusht und gegen `origin` verifiziert (Hash-Match), **nicht** nach main gemerged. Nächster Schritt laut Bauplan: Phase 3 (Gewicht/KG eintragen), gleiches Muster.
