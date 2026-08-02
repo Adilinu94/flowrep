@@ -1,9 +1,11 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/sensor_provider.dart';
 import 'package:flowrep/data/services/export_service.dart';
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/workout_engine.dart';
 import 'package:flowrep/presentation/providers/engine_provider.dart';
+import 'package:flowrep/presentation/widgets/weight_input_field.dart';
 
 void main() {
   group('ExerciseSet.copyWith Gewicht', () {
@@ -119,6 +121,53 @@ void main() {
       final weightIdx = header.indexOf('weightKg');
       final row = csv.trim().split('\n')[1].split(',');
       expect(row[weightIdx], '');
+    });
+  });
+
+  group('WeightInputField widget', () {
+    testWidgets('zeigt initialWeightKg im Textfeld an', (tester) async {
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: WeightInputField(
+            initialWeightKg: 42.5,
+            onChanged: (_) {},
+          ),
+        ),
+      ));
+
+      expect(find.text('42.5'), findsOneWidget);
+    });
+
+    testWidgets('onChanged liefert geparsten double bei Eingabe',
+        (tester) async {
+      double? received;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: WeightInputField(
+            initialWeightKg: null,
+            onChanged: (v) => received = v,
+          ),
+        ),
+      ));
+
+      await tester.enterText(find.byType(TextField), '27.5');
+      expect(received, 27.5);
+    });
+
+    testWidgets('normalisiert Komma zu Punkt (deutsche Tastatur)',
+        (tester) async {
+      double? received;
+      await tester.pumpWidget(MaterialApp(
+        home: Scaffold(
+          body: WeightInputField(
+            initialWeightKg: null,
+            onChanged: (v) => received = v,
+          ),
+        ),
+      ));
+
+      await tester.enterText(find.byType(TextField), '20,5');
+      expect(received, 20.5);
     });
   });
 }

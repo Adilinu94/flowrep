@@ -443,3 +443,22 @@ Branch `fix-exercise-catalog-5` von frischem `origin/main`. `feat/exercise-biome
 **Kleiner Fund, nicht behoben (außerhalb des Fensters für Phase 1):** Der Bauplan verweist in Teil 2.A/Schritt 5 auf "Abschnitt 8.4" der Priors-Doku für die exakten IDs — dieser Abschnitt existiert dort nicht (Doku endet bei Abschnitt 7). Ungefährlich, IDs stattdessen direkt aus `exercise_registry.dart` verifiziert.
 
 Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). Nächster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) können parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+
+
+---
+
+## 2026-08-02, Claude-0caf5da8 (claude.ai-Sandbox, Adi: "Phase 3 vollständig gemäß Bauplan-Schritt 8/10"): Schritt 8 (History-Anzeige) + fehlender Widget-Test ergänzt
+
+Vor Arbeitsbeginn `git fetch origin --prune`: main-HEAD (`969865a`) unverändert, `feat-weight-entry` zum Startzeitpunkt nicht weiter fortgeschritten als der zitierte Stand der parallelen Desktop-Commander-Session (`c5f4b80` aktuellster Commit). Bauplan Phase 3 im Original gelesen statt Paraphrase übernommen — 11 Schritte bestätigt, "8/10" bezieht sich auf die Schritte 8 und 10, nicht auf einen Bruch.
+
+**Schritt 8:** `session_summary_dialog.dart` hatte die Gewichtsanzeige bereits (Append-Stil `' · $weightKg kg'` pro Satz). `history_screen.dart` war unverändert (leerer Diff bestätigt) — dort ergänzt, exakt im selben Append-Stil. Eigene Entscheidung, weil `history_screen.dart` anders als der Dialog auf Session-Ebene aggregiert: Gewicht wird nur gezeigt, wenn alle Sätze einer Session dasselbe Gewicht haben, sonst keine kg-Angabe in der Karte — kein neues Spannen-/Volumen-Konzept erfunden (Bauplan: "kein neues Layout-Konzept"). Falls Adi lieber eine Spanne oder das letzte Satzgewicht will: eine Zeile in `_SessionCard.build` ändern, kein struktureller Umbau.
+
+**Schritt 10:** `weight_entry_test.dart` hatte Modell-, Provider- und Export-Tests, aber keinen `testWidgets()` für `WeightInputField`. Neue Gruppe ergänzt (3 Tests): Initialwert im Feld, `onChanged` liefert geparsten `double`, Komma wird zu Punkt normalisiert — deckt exakt ab, was `_handleChanged` in `weight_input_field.dart` tatsächlich tut.
+
+**Nicht mit echtem `flutter analyze`/`test` verifiziert** — kein Flutter/Dart-Toolchain in dieser Sandbox, Desktop Commander (Schritt 3) ist in dieser Session nicht verfügbar. Ersatzweise: Klammernbalance-Check (Python) auf beiden geänderten Dateien OK, jede Zeile manuell gegen bestehenden Code gelesen, keine vorhandenen Tests für `history_screen.dart` gefunden, die brechen könnten (`grep`: 0 Treffer). Bitte mit echtem Flutter-Zugriff nachholen, insbesondere die 3 neuen `testWidgets()`.
+
+**Nachtrag zu `c5f4b80`:** Der Commit dokumentiert ausführlich, was `flutter analyze` fand und behob, erwähnt aber an keiner Stelle, ob `flutter test` gelaufen ist. Damit ist unbelegt, ob `drift_migration_test.dart` (173 Zeilen) und die übrigen Phase-3-Tests seit den dortigen Änderungen (u. a. `raw.close()` statt `raw.dispose()`) tatsächlich grün sind — nur `analyze`, kein `test`, ist dort dokumentiert.
+
+**Nebenbefund:** `feat-weight-entry` wurde von `fix-exercise-catalog-5` vor dessen letzten zwei Commits (`bc05d9c`, `26aeadb`, beide reine Status-Doku) abgezweigt — funktional ohne Bedeutung, der Vollständigkeit halber erwähnt.
+
+Kein Merge nach main. Branch bleibt `feat-weight-entry`, gepusht.
