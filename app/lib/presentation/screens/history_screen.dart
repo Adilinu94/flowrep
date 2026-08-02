@@ -134,6 +134,13 @@ class _SessionCard extends StatelessWidget {
     final meanLoss = losses.isEmpty
         ? null
         : losses.reduce((a, b) => a + b) / losses.length;
+    // Gewicht ist pro Satz gespeichert (Pyramiden-/Dropsätze möglich) - nur
+    // anzeigen, wenn alle Sätze dieser Session dasselbe Gewicht haben. Sonst
+    // müsste die Karte eine Spanne o.ä. zeigen, was der Bauplan für diesen
+    // Schritt nicht verlangt ("kein neues Layout-Konzept").
+    final sessionWeights = session.sets.map((s) => s.weightKg).toSet();
+    final sessionWeightKg =
+        sessionWeights.length == 1 ? sessionWeights.first : null;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -152,7 +159,9 @@ class _SessionCard extends StatelessWidget {
           meanLoss != null
               ? '${session.sets.length} Sätze · $totalReps Wdh. · '
                   'Loss ${meanLoss.toStringAsFixed(0)} %'
-              : '${session.sets.length} Sätze · $totalReps Wiederholungen',
+                  '${sessionWeightKg != null ? ' · $sessionWeightKg kg' : ''}'
+              : '${session.sets.length} Sätze · $totalReps Wiederholungen'
+                  '${sessionWeightKg != null ? ' · $sessionWeightKg kg' : ''}',
         ),
         trailing: session.endedAt != null
             ? Text(

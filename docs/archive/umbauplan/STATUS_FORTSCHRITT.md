@@ -446,16 +446,48 @@ Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach ma
 
 ---
 
+## 2026-08-02, Claude-0caf5da8 (claude.ai-Sandbox, Adi: "Phase 3 vollständig gemäß Bauplan-Schritt 8/10"): Schritt 8 (History-Anzeige) + fehlender Widget-Test ergänzt
+
+Vor Arbeitsbeginn `git fetch origin --prune`: main-HEAD (`969865a`) unverändert, `feat-weight-entry` zum Startzeitpunkt nicht weiter fortgeschritten als der zitierte Stand der parallelen Desktop-Commander-Session (`c5f4b80` aktuellster Commit). Bauplan Phase 3 im Original gelesen statt Paraphrase übernommen — 11 Schritte bestätigt, "8/10" bezieht sich auf die Schritte 8 und 10, nicht auf einen Bruch.
+
+**Schritt 8:** `session_summary_dialog.dart` hatte die Gewichtsanzeige bereits (Append-Stil `' · $weightKg kg'` pro Satz). `history_screen.dart` war unverändert (leerer Diff bestätigt) — dort ergänzt, exakt im selben Append-Stil. Eigene Entscheidung, weil `history_screen.dart` anders als der Dialog auf Session-Ebene aggregiert: Gewicht wird nur gezeigt, wenn alle Sätze einer Session dasselbe Gewicht haben, sonst keine kg-Angabe in der Karte — kein neues Spannen-/Volumen-Konzept erfunden (Bauplan: "kein neues Layout-Konzept"). Falls Adi lieber eine Spanne oder das letzte Satzgewicht will: eine Zeile in `_SessionCard.build` ändern, kein struktureller Umbau.
+
+**Schritt 10:** `weight_entry_test.dart` hatte Modell-, Provider- und Export-Tests, aber keinen `testWidgets()` für `WeightInputField`. Neue Gruppe ergänzt (3 Tests): Initialwert im Feld, `onChanged` liefert geparsten `double`, Komma wird zu Punkt normalisiert — deckt exakt ab, was `_handleChanged` in `weight_input_field.dart` tatsächlich tut.
+
+**Nicht mit echtem `flutter analyze`/`test` verifiziert** — kein Flutter/Dart-Toolchain in dieser Sandbox, Desktop Commander (Schritt 3) ist in dieser Session nicht verfügbar. Ersatzweise: Klammernbalance-Check (Python) auf beiden geänderten Dateien OK, jede Zeile manuell gegen bestehenden Code gelesen, keine vorhandenen Tests für `history_screen.dart` gefunden, die brechen könnten (`grep`: 0 Treffer). Bitte mit echtem Flutter-Zugriff nachholen, insbesondere die 3 neuen `testWidgets()`.
+
+**Nachtrag zu `c5f4b80`:** Der Commit dokumentiert ausführlich, was `flutter analyze` fand und behob, erwähnt aber an keiner Stelle, ob `flutter test` gelaufen ist. Damit ist unbelegt, ob `drift_migration_test.dart` (173 Zeilen) und die übrigen Phase-3-Tests seit den dortigen Änderungen (u. a. `raw.close()` statt `raw.dispose()`) tatsächlich grün sind — nur `analyze`, kein `test`, ist dort dokumentiert.
+
+**Nebenbefund:** `feat-weight-entry` wurde von `fix-exercise-catalog-5` vor dessen letzten zwei Commits (`bc05d9c`, `26aeadb`, beide reine Status-Doku) abgezweigt — funktional ohne Bedeutung, der Vollständigkeit halber erwähnt.
+
+Kein Merge nach main. Branch bleibt `feat-weight-entry`, gepusht.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "weiter, bitte vorher immer prüfen, was schon gemacht wurde. Fange dann mit Phase 3 an"): Erste echte Toolchain-Verifikation von feat-weight-entry — keine Doppelarbeit
+
+Vor jedem eigenen Code-Versuch erst geprüft, was hier bereits steht (Diff komplett gelesen, nicht nur Commit-Messages, gegen Bauplan Phase 3 Schritt für Schritt abgeglichen, `history_screen.dart` selbst nachgeprüft statt der Behauptung "keine Pro-Satz-Ansicht" zu vertrauen — stimmt). Ergebnis: Umsetzung ist vollständig und sauber, alle 11 Schritte aus dem Bauplan abgedeckt. Deshalb kein eigener, konkurrierender Code — stattdessen mit Desktop Commander verifiziert, was laut den vorherigen Einträgen hier noch fehlte.
+
+**Wichtig:** weder `c5f4b80` noch `2549d7c8` hatten echtes `flutter test` — nur `flutter analyze` bzw. einen manuellen Klammernbalance-Check als Ersatz (siehe die beiden Einträge direkt darüber). Das hier ist also der erste echte Testlauf, keine Doppelverifikation.
+
+Frischer Klon (`flowrep-verify-phase3-f2c0b46b`), `feat-weight-entry` bei `2549d7c8` (exakt der Stand mit `history_screen`-Anzeige und `raw.close()`-Fix). `dart run build_runner build`: 292 Outputs, sauber. `flutter analyze`: 17 Fehler — exakt dieselben 17 vorbestehenden wie auf `feat-explicit-start-button` (nichts Neues, keine der Gewichts-Dateien betroffen). `flutter test test/weight_entry_test.dart test/drift_migration_test.dart`: **13/13 grün**, inklusive des im Testfile selbst als riskantesten Teil geflaggten Migrationstests (hand-rekonstruiertes v1-Schema) — funktioniert beim ersten echten Lauf. Zusätzlich die beiden tatsächlich angefassten Bestandstests direkt geprüft: `home_screen_test.dart` + `session_summary_test.dart` — 5/5 grün.
+
+**Nebenbefund (nur vermerkt, nicht behoben):** Sobald `feat-explicit-start-button` (Phase 2) und `feat-weight-entry` (Phase 3) zusammengeführt werden, treffen sich beide exakt an derselben Stelle in `home_screen.dart::_buildSetupBody` — der alte Direkt-Button, den Phase 2 durch `StartCountdownButton` ersetzt hat, ist in Phase 3 noch die Einfügestelle für `WeightInputField`. Rein mechanischer Konflikt (Reihenfolge der beiden Widgets), keine Logik-Kollision — voraussichtlich Phase-4-Thema ("alles zur Tracker-Seite zusammenführen").
+
+Kein Code geändert, keine Doppelarbeit erzeugt. Kein Merge nach main. Branch bleibt `feat-weight-entry`.
+
+---
+
 ## 2026-08-02, Claude-e82988e3 (claude.ai-Sandbox, Adi: "Du bist doch mit Desktopcommander verbunden, kannst du bitte die Tests machen"): Phase 3 (Gewicht) + Phase 1 echt verifiziert, Phase 2 fremdgeprüft
 
 **Phase 2 vorab gegengeprüft (fremder Branch, nichts angefasst):** `feat-explicit-start-button` existierte bereits, baut korrekt auf `fix-exercise-catalog-5` auf. Echten Diff gelesen (nicht nur Commit-Message geglaubt): saubere Wiederverwendung von `startCounting()`, `autoArmAfterCalib`-Default korrekt auf `false`, echte Timer-Tests. Lücke: kein Vibrations-Feedback beim Countdown trotz bestätigter Produktentscheidung dazu - vermerkt, nicht gefixt (nicht mein Branch).
 
-**Phase 3 (`feat-weight-entry`, von `fix-exercise-catalog-5` abgezweigt, nicht von Phase 2 - beide sollen unabhängig bleiben):** weightKg-Spalte (Drift-Migration v1→v2, vorher gab's noch nie eine Schema-Migration im Projekt, entgegen der Bauplan-Annahme), `setWeightForCurrentSet()`, Eingabefeld, Anzeige in `session_summary_dialog.dart`, CSV/JSON-Export. `history_screen.dart` bewusst nicht geändert (nur Session-Summen, keine Pro-Satz-Stelle - Aggregation wäre neues Layout-Konzept). Details siehe Commits `5612ca4`/`c5f4b80`.
+**Phase 3 (`feat-weight-entry`, von `fix-exercise-catalog-5` abgezweigt, nicht von Phase 2 - beide sollen unabhängig bleiben):** weightKg-Spalte (Drift-Migration v1→v2, vorher gab's noch nie eine Schema-Migration im Projekt, entgegen der Bauplan-Annahme), `setWeightForCurrentSet()`, Eingabefeld, Anzeige in `session_summary_dialog.dart`, CSV/JSON-Export. Details siehe Commits `5612ca4`/`c5f4b80` — mein eigener Testlauf unten bezieht sich auf genau diesen Stand (`c5f4b80`), also VOR der `history_screen.dart`-Ergänzung und dem Widget-Test aus den beiden Einträgen direkt darüber.
 
 **Erste echte Verifikation via Desktop Commander** (isolierter Klon `flowrep-phase3-verify` auf Adis Windows-Rechner, nicht der geteilte `flowrep-main`-Ordner):
 - `dart run build_runner build --delete-conflicting-outputs`: erfolgreich, 292 Outputs.
 - `flutter analyze`: initial 3 eigene Punkte (meta fehlte explizit in pubspec.yaml, `dispose()` deprecated in eigenem Test, super-parameter-Hinweis) - alle gefixt (Commit `c5f4b80`), danach 0 eigene Meldungen mehr.
-- `flutter test` (voller Lauf, 487 Tests): **476 grün, 11 rot.** Eigene neue Tests alle grün: `weight_entry_test.dart` 7/7, `drift_migration_test.dart` 3/3 (inkl. dem heikelsten Teil - der von Hand nachgebaute v1-Rohschema-Migrationstest lief beim ersten Versuch durch). `exercise_registry_test.dart` (Phase 1, bisher nie mit echtem `flutter test` verifiziert) 20/20 grün.
+- `flutter test` (voller Lauf, 487 Tests, Stand `c5f4b80`): **476 grün, 11 rot.** Eigene neue Tests alle grün: `weight_entry_test.dart` 7/7, `drift_migration_test.dart` 3/3 (inkl. dem heikelsten Teil - der von Hand nachgebaute v1-Rohschema-Migrationstest lief beim ersten Versuch durch). `exercise_registry_test.dart` (Phase 1, bisher nie mit echtem `flutter test` verifiziert) 20/20 grün.
 
 **Alle 11 Fehlschläge pre-existing, keiner in einer von mir angefassten Datei** (gegengeprüft per Dateiname, kein Baseline-Vergleichsklon nötig/gemacht):
 - `dsp_verification_test.dart`: Szenario 1, 3, 4, 7 (4x)
@@ -464,6 +496,6 @@ Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach ma
 - `reconnect_test.dart`: Ladefehler, `ControllableSensorProvider` fehlt `deviceEvents` seit `be9f401` (BLE-Reconnect) - schon letzte Session als pre-existing identifiziert, hier bestätigt
 - `workout_engine_test.dart`: ROM-Gate (`prominenceMin`) below-floor + omitted-Fall (2x)
 
-Keine dieser Dateien wurde in Phase 1 oder Phase 3 berührt (`workout_engine.dart`, DSP-Pipeline, CI-Workflow-Datei - alles außerhalb beider Fenster). Nicht selbst gefixt, nur vermerkt.
+Keine dieser Dateien wurde in Phase 1 oder Phase 3 berührt (`workout_engine.dart`, DSP-Pipeline, CI-Workflow-Datei - alles außerhalb beider Fenster). Nicht selbst gefixt, nur vermerkt. Deckt sich mit dem unabhängigen Fund von Claude-f2c0b46b direkt darüber ("dieselben 17 vorbestehenden [Analyzer-Meldungen] wie auf feat-explicit-start-button").
 
 Branch `feat-weight-entry` bleibt offen, **nicht** nach main gemerged. Isolierter Verify-Klon (`flowrep-phase3-verify`) bleibt auf dem Windows-Rechner liegen, falls die nächste Session direkt weiterverifizieren will, statt neu zu klonen.
