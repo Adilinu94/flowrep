@@ -33,7 +33,7 @@ class ExportService {
     final buf = StringBuffer();
     buf.writeln(
       'sessionId,sessionStartedAt,sessionEndedAt,setId,exerciseId,'
-      'countedReps,correctedReps,effectiveReps,repIndex,repTimestamp,'
+      'countedReps,correctedReps,effectiveReps,weightKg,repIndex,repTimestamp,'
       'peakMagnitude,setVelocityLossPct',
     );
     for (final session in sessions) {
@@ -45,7 +45,7 @@ class ExportService {
             '${_csv(session.endedAt?.toIso8601String() ?? '')},'
             '${_csv(set.id)},${_csv(set.exerciseId)},'
             '${set.countedReps},${set.correctedReps ?? ''},'
-            '${set.effectiveReps},,,,${loss?.toStringAsFixed(2) ?? ''}',
+            '${set.effectiveReps},${set.weightKg ?? ''},,,,${loss?.toStringAsFixed(2) ?? ''}',
           );
           continue;
         }
@@ -56,7 +56,7 @@ class ExportService {
             '${_csv(session.endedAt?.toIso8601String() ?? '')},'
             '${_csv(set.id)},${_csv(set.exerciseId)},'
             '${set.countedReps},${set.correctedReps ?? ''},'
-            '${set.effectiveReps},${i + 1},'
+            '${set.effectiveReps},${set.weightKg ?? ''},${i + 1},'
             '${_csv(rep.timestamp.toIso8601String())},'
             '${rep.peakMagnitude.toStringAsFixed(4)},'
             '${loss?.toStringAsFixed(2) ?? ''}',
@@ -117,6 +117,7 @@ class ExportService {
             'countedReps': set.countedReps,
             'correctedReps': set.correctedReps,
             'effectiveReps': set.effectiveReps,
+            'weightKg': set.weightKg,
             'endedAt': set.endedAt.toIso8601String(),
             'velocityLossPct': loss,
             'meanPeakVelocity': VelocityMetrics.meanPeak(set.reps),

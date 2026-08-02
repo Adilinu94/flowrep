@@ -19,6 +19,7 @@ import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
 import '../widgets/fusion_status_badge.dart';
 import '../widgets/vision_agreement_badge.dart';
+import '../widgets/weight_input_field.dart';
 import 'calibration/calibration_wizard_screen.dart';
 import 'camera_session_screen.dart';
 import 'history_screen.dart';
@@ -375,6 +376,14 @@ class HomeScreen extends ConsumerWidget {
                       fontWeight: FontWeight.w600,
                     ),
                 textAlign: TextAlign.center,
+              ),
+            ),
+          if (uiState.hasCalibration)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: WeightInputField(
+                initialWeightKg: uiState.pendingWeightKg,
+                onChanged: notifier.setWeightForCurrentSet,
               ),
             ),
           SizedBox(

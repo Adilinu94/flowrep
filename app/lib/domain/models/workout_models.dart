@@ -27,6 +27,9 @@ class ExerciseSet {
   final int? correctedReps;
   final DateTime endedAt;
   final List<Rep> reps;
+  /// Verwendetes Gewicht in kg, pro Satz (Bauplan Phase 3). Optional - nicht
+  /// jede Übung/jeder Satz braucht zwingend ein Gewicht (z. B. Bodyweight).
+  final double? weightKg;
 
   const ExerciseSet({
     required this.id,
@@ -35,19 +38,21 @@ class ExerciseSet {
     required this.endedAt,
     required this.reps,
     this.correctedReps,
+    this.weightKg,
   });
 
   /// The value that should be shown/used downstream: the corrected count
   /// if a correction exists, otherwise the system count.
   int get effectiveReps => correctedReps ?? countedReps;
 
-  ExerciseSet copyWith({int? correctedReps}) => ExerciseSet(
+  ExerciseSet copyWith({int? correctedReps, double? weightKg}) => ExerciseSet(
         id: id,
         exerciseId: exerciseId,
         countedReps: countedReps,
         endedAt: endedAt,
         reps: reps,
         correctedReps: correctedReps ?? this.correctedReps,
+        weightKg: weightKg ?? this.weightKg,
       );
 }
 

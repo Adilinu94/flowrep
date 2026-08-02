@@ -36,6 +36,7 @@ import 'dart:io';
 
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
+import 'package:meta/meta.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import 'package:sqlite3/sqlite3.dart' as sqlite3pkg;
@@ -81,6 +82,11 @@ class ExerciseSets extends Table {
   IntColumn get countedReps => integer()();
   IntColumn get correctedReps => integer().nullable()();
   DateTimeColumn get endedAt => dateTime()();
+  /// Gewicht in kg für diesen Satz (Bauplan Phase 3). Nullable: nicht jede
+  /// Übung/jeder Satz braucht zwingend ein Gewicht (z. B. Bodyweight).
+  /// Pro Satz statt pro Übung/Session, damit Pyramiden-/Dropsätze mit
+  /// unterschiedlichem Gewicht pro Satz möglich sind.
+  RealColumn get weightKg => real().nullable()();
 
   @override
   Set<Column> get primaryKey => {id};
@@ -110,8 +116,34 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase({DatabaseKeyManager? keyManager})
       : super(_openConnection(keyManager ?? DatabaseKeyManager()));
 
+  /// Test-only: öffnet mit einem beliebigen [QueryExecutor] statt der
+  /// produktiven, verschlüsselten [_openConnection] - so lassen sich
+  /// Schema/Migration/Repository ohne SQLite3MultipleCiphers-Build und ohne
+  /// [DatabaseKeyManager] testen (siehe drift_migration_test.dart).
+  @visibleForTesting
+  AppDatabase.forTesting(QueryExecutor executor) : super(executor);
+
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
+
+  /// v1 -> v2 (Bauplan Phase 3, 2026-08-02): `weightKg`-Spalte auf
+  /// ExerciseSets ergänzt. Reine additive, nullable Spalte - kein
+  /// Datentransfer, kein Verschlüsseln, deutlich risikoärmer als die
+  /// Datei-Verschlüsselungs-Migration oben, aber trotzdem echt zu testen,
+  /// nicht anzunehmen (siehe drift_migration_test.dart). Es gab vor dieser
+  /// Änderung noch KEINE Drift-Schema-Migration in diesem Projekt
+  /// (schemaVersion stand seit Projektbeginn unverändert bei 1) - eine
+  /// frühere Version des Bauplans behauptete fälschlich, es gäbe bereits
+  /// eine als Vorlage.
+  @override
+  MigrationStrategy get migration => MigrationStrategy(
+        onCreate: (Migrator m) => m.createAll(),
+        onUpgrade: (Migrator m, int from, int to) async {
+          if (from < 2) {
+            await m.addColumn(exerciseSets, exerciseSets.weightKg);
+          }
+        },
+      );
 
   /// Opens the (now always encrypted) database, migrating an existing
   /// plaintext `flowrep.sqlite` in place on first run after this change.
@@ -251,6 +283,7 @@ class DriftWorkoutRepository implements IWorkoutRepository {
               countedReps: set.countedReps,
               correctedReps: Value(set.correctedReps),
               endedAt: set.endedAt,
+              weightKg: Value(set.weightKg),
             ),
           );
       for (final rep in set.reps) {
@@ -284,6 +317,7 @@ class DriftWorkoutRepository implements IWorkoutRepository {
           countedReps: setRow.countedReps,
           correctedReps: setRow.correctedReps,
           endedAt: setRow.endedAt,
+          weightKg: setRow.weightKg,
           reps: repRows
               .map((r) => domain.Rep(timestamp: r.timestamp, peakMagnitude: r.peakMagnitude))
               .toList(),

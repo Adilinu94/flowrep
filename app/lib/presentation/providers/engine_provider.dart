@@ -281,6 +281,24 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     state = state.copyWith(clearExerciseSuggestion: true);
   }
 
+  // === Gewicht (kg) pro Satz (Bauplan Phase 3) ===
+
+  /// Setzt das Gewicht für den aktuellen bzw. nächsten Satz. Reine
+  /// Protokollierung - beeinflusst bewusst NICHT die Zählschwelle/Engine
+  /// (das eine ist Bewegungserkennung, das andere reine Aufzeichnung).
+  /// Wird bei Satzabschluss in [_onSetCompleted] übernommen; bleibt danach
+  /// unverändert stehen (nicht automatisch zurückgesetzt), damit
+  /// aufeinanderfolgende Sätze mit gleichem Gewicht nicht jedes Mal neu
+  /// eingegeben werden müssen - bei Pyramiden-/Dropsätzen ändert man es
+  /// gezielt vor dem jeweiligen Satz.
+  void setWeightForCurrentSet(double? kg) {
+    if (kg == null) {
+      state = state.copyWith(clearPendingWeightKg: true);
+    } else {
+      state = state.copyWith(pendingWeightKg: kg);
+    }
+  }
+
   /// Startet das Zählen (Engine erhält ab jetzt Samples).
   void startCounting() {
     if (state.isCountingActive) return;
@@ -1266,7 +1284,13 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   }
 
   /// Satz abgeschlossen: persistieren (Phase 5.2).
-  void _onSetCompleted(ExerciseSet completedSet) {
+  void _onSetCompleted(ExerciseSet rawCompletedSet) {
+    // Bauplan Phase 3: aktuell eingetragenes Gewicht auf den fertigen Satz
+    // übernehmen. Kommt aus der Engine ohne Gewicht (reine Bewegungs-
+    // erkennung kennt kein Gewicht), wird hier rein für die Protokollierung
+    // angereichert.
+    final completedSet =
+        rawCompletedSet.copyWith(weightKg: state.pendingWeightKg);
     _completedSets.add(completedSet);
     final loss = VelocityMetrics.setVelocityLossPct(completedSet.reps);
     final toward = state.completedSetsTowardTarget + 1;
