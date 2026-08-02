@@ -92,10 +92,10 @@ void main() {
 
     tearDown(() => notifier.dispose());
 
-    test('autoArmAfterCalib default true and toggleable', () async {
-      expect(notifier.autoArmAfterCalib, isTrue);
-      await notifier.setAutoArmAfterCalib(false);
+    test('autoArmAfterCalib default false and toggleable', () async {
       expect(notifier.autoArmAfterCalib, isFalse);
+      await notifier.setAutoArmAfterCalib(true);
+      expect(notifier.autoArmAfterCalib, isTrue);
     });
 
     test('dismissGhostBanner only when paused', () {
