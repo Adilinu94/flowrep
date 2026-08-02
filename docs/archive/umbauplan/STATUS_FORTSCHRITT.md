@@ -443,3 +443,27 @@ Branch `fix-exercise-catalog-5` von frischem `origin/main`. `feat/exercise-biome
 **Kleiner Fund, nicht behoben (außerhalb des Fensters für Phase 1):** Der Bauplan verweist in Teil 2.A/Schritt 5 auf "Abschnitt 8.4" der Priors-Doku für die exakten IDs — dieser Abschnitt existiert dort nicht (Doku endet bei Abschnitt 7). Ungefährlich, IDs stattdessen direkt aus `exercise_registry.dart` verifiziert.
 
 Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). Nächster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) können parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+
+---
+
+## 2026-08-02, Claude-e82988e3 (claude.ai-Sandbox, Adi: "Du bist doch mit Desktopcommander verbunden, kannst du bitte die Tests machen"): Phase 3 (Gewicht) + Phase 1 echt verifiziert, Phase 2 fremdgeprüft
+
+**Phase 2 vorab gegengeprüft (fremder Branch, nichts angefasst):** `feat-explicit-start-button` existierte bereits, baut korrekt auf `fix-exercise-catalog-5` auf. Echten Diff gelesen (nicht nur Commit-Message geglaubt): saubere Wiederverwendung von `startCounting()`, `autoArmAfterCalib`-Default korrekt auf `false`, echte Timer-Tests. Lücke: kein Vibrations-Feedback beim Countdown trotz bestätigter Produktentscheidung dazu - vermerkt, nicht gefixt (nicht mein Branch).
+
+**Phase 3 (`feat-weight-entry`, von `fix-exercise-catalog-5` abgezweigt, nicht von Phase 2 - beide sollen unabhängig bleiben):** weightKg-Spalte (Drift-Migration v1→v2, vorher gab's noch nie eine Schema-Migration im Projekt, entgegen der Bauplan-Annahme), `setWeightForCurrentSet()`, Eingabefeld, Anzeige in `session_summary_dialog.dart`, CSV/JSON-Export. `history_screen.dart` bewusst nicht geändert (nur Session-Summen, keine Pro-Satz-Stelle - Aggregation wäre neues Layout-Konzept). Details siehe Commits `5612ca4`/`c5f4b80`.
+
+**Erste echte Verifikation via Desktop Commander** (isolierter Klon `flowrep-phase3-verify` auf Adis Windows-Rechner, nicht der geteilte `flowrep-main`-Ordner):
+- `dart run build_runner build --delete-conflicting-outputs`: erfolgreich, 292 Outputs.
+- `flutter analyze`: initial 3 eigene Punkte (meta fehlte explizit in pubspec.yaml, `dispose()` deprecated in eigenem Test, super-parameter-Hinweis) - alle gefixt (Commit `c5f4b80`), danach 0 eigene Meldungen mehr.
+- `flutter test` (voller Lauf, 487 Tests): **476 grün, 11 rot.** Eigene neue Tests alle grün: `weight_entry_test.dart` 7/7, `drift_migration_test.dart` 3/3 (inkl. dem heikelsten Teil - der von Hand nachgebaute v1-Rohschema-Migrationstest lief beim ersten Versuch durch). `exercise_registry_test.dart` (Phase 1, bisher nie mit echtem `flutter test` verifiziert) 20/20 grün.
+
+**Alle 11 Fehlschläge pre-existing, keiner in einer von mir angefassten Datei** (gegengeprüft per Dateiname, kein Baseline-Vergleichsklon nötig/gemacht):
+- `dsp_verification_test.dart`: Szenario 1, 3, 4, 7 (4x)
+- `exercise_engine_pipeline_test.dart`: 3x (Fallback ohne Template, volle Pipeline, Reset nach Reps)
+- `p1_assets_structural_test.dart`: "CI workflow exists at repo root" (1x)
+- `reconnect_test.dart`: Ladefehler, `ControllableSensorProvider` fehlt `deviceEvents` seit `be9f401` (BLE-Reconnect) - schon letzte Session als pre-existing identifiziert, hier bestätigt
+- `workout_engine_test.dart`: ROM-Gate (`prominenceMin`) below-floor + omitted-Fall (2x)
+
+Keine dieser Dateien wurde in Phase 1 oder Phase 3 berührt (`workout_engine.dart`, DSP-Pipeline, CI-Workflow-Datei - alles außerhalb beider Fenster). Nicht selbst gefixt, nur vermerkt.
+
+Branch `feat-weight-entry` bleibt offen, **nicht** nach main gemerged. Isolierter Verify-Klon (`flowrep-phase3-verify`) bleibt auf dem Windows-Rechner liegen, falls die nächste Session direkt weiterverifizieren will, statt neu zu klonen.
