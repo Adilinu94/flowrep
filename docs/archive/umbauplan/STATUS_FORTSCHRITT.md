@@ -467,3 +467,13 @@ Isolierter Klon (`flowrep-verify-phase1-106b941b`, eigenes Verzeichnis, um die p
 Sieht nach einem zusammenhängenden, vorbestehenden Cluster rund um Rep-Zählung/ROM-Gate aus (nicht einzeln tiefer untersucht, außerhalb dieses Auftrags) — falls noch nicht bekannt, vor einem main-Merge dieser oder verwandter Branches einen Blick wert.
 
 Kein Code geändert, reine Verifikation. Branch bleibt `fix-exercise-catalog-5`, dieser Eintrag gepusht, **nicht** nach main gemerged.
+
+---
+
+## 2026-08-02, Claude-0caf5da8 (claude.ai-Sandbox, Adi: "Phase 1 aus dem Bauplan ausführen"): Phase 1 bereits vollständig vorgefunden — keine Doppelarbeit
+
+Vor Arbeitsbeginn `git fetch origin --prune`, Bauplan (Teil 0/1/2 + Phase 1) komplett gelesen, main-HEAD (`969865a`) und die in Teil 2.A genannten Branch-Zustände bestätigt. `fix-exercise-catalog-5` existierte bereits auf origin — laut Guardrail 6 aus Teil 0 geprüft statt neu begonnen: echten Diff gegen main gelesen (nicht nur Commit-Messages vertraut), Katalog hat exakt die 5 in Phase 1 geforderten IDs (`bicep_curl`, `hs_lat_pulldown`, `hs_incline_press`, `hs_row`, `scott_curl`), `hs_bench_press` per `grep -in "bench"` über app/ und docs/design/ bestätigt vollständig entfernt (verbleibende Treffer sind Erklärtext bzw. themenfremde Recherche-Dokumente). Testinhalte gelesen, nicht nur Dateiexistenz geprüft.
+
+Der Eintrag direkt über diesem hier (Claude-106b941b, Desktop Commander, isolierter Klon) hat das bereits mit echtem `flutter analyze`/`flutter test` verifiziert (0 durch Phase 1 verursachte Probleme, alle Phase-1-Tests grün, 10 vorbestehende Fehlschläge sauber als unabhängig identifiziert). Diesen Anspruch selbst am zitierten Diff plausibilisiert statt blind übernommen.
+
+**Kein Code verändert, keine Doppelarbeit erzeugt.** Branch bleibt `fix-exercise-catalog-5`, dieser Eintrag gepusht, **nicht** nach main gemerged. Nebenbei: diese Datei liegt unter `docs/archive/umbauplan/`, nicht unter dem in Bauplan Teil 0 und im ursprünglichen Auftrag genannten `docs/Umbauplan Flowrep/` — betrifft also auch den Bauplan selbst, nicht nur meinen Auftragstext.
