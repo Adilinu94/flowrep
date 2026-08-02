@@ -24,7 +24,7 @@ class UserPrefsSnapshot {
   final Map<String, ExerciseTarget> exerciseTargets;
 
   const UserPrefsSnapshot({
-    this.autoArmAfterCalib = true,
+    this.autoArmAfterCalib = false,
     this.haptic = true,
     this.audio = false,
     this.blindMode = false,
@@ -191,7 +191,7 @@ class UserPrefsStore {
       _saveBool(keyCameraEnabled, enabled);
 
   /// Backward-compatible single-key load (tests / call sites).
-  Future<bool> loadAutoArmAfterCalib({bool defaultValue = true}) =>
+  Future<bool> loadAutoArmAfterCalib({bool defaultValue = false}) =>
       _loadBool(keyAutoArmAfterCalib, defaultValue: defaultValue);
 
   // --- Internals ---

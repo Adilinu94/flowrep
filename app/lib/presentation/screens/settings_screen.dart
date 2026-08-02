@@ -102,7 +102,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             title: const Text('Nach Kalibrierung auto starten'),
             subtitle: const Text(
               'Nach erfolgreichem Assistenten: Zählen startet automatisch '
-              '(verhindert 0-Reps-Falle). Default an.',
+              '(verhindert 0-Reps-Falle). Default aus.',
             ),
             value: _autoArmAfterCalib,
             onChanged: (v) {

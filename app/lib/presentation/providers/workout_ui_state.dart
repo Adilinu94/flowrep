@@ -32,6 +32,10 @@ class WorkoutUiState {
   // Zähl-Gating (Start-Button)
   final bool isCountingActive;
 
+  // Expliziter Start-Countdown (Bauplan Phase 2 / Teil 2.B)
+  final bool isStartCountdownActive;
+  final int startCountdownSecondsRemaining;
+
   // Exercise Selection
   final String selectedExerciseId;
   final bool hasCalibration;
@@ -107,6 +111,8 @@ class WorkoutUiState {
     this.recordedSampleCount = 0,
     this.lastRecordingFileName,
     this.isCountingActive = false,
+    this.isStartCountdownActive = false,
+    this.startCountdownSecondsRemaining = 3,
     this.selectedExerciseId = 'bicep_curl',
     this.hasCalibration = false,
     this.pendingWeightKg,
@@ -163,6 +169,8 @@ class WorkoutUiState {
     int? recordedSampleCount,
     String? lastRecordingFileName,
     bool? isCountingActive,
+    bool? isStartCountdownActive,
+    int? startCountdownSecondsRemaining,
     String? selectedExerciseId,
     bool? hasCalibration,
     double? pendingWeightKg,
@@ -224,6 +232,10 @@ class WorkoutUiState {
       recordedSampleCount: recordedSampleCount ?? this.recordedSampleCount,
       lastRecordingFileName: lastRecordingFileName ?? this.lastRecordingFileName,
       isCountingActive: isCountingActive ?? this.isCountingActive,
+      isStartCountdownActive:
+          isStartCountdownActive ?? this.isStartCountdownActive,
+      startCountdownSecondsRemaining:
+          startCountdownSecondsRemaining ?? this.startCountdownSecondsRemaining,
       selectedExerciseId: selectedExerciseId ?? this.selectedExerciseId,
       hasCalibration: hasCalibration ?? this.hasCalibration,
       pendingWeightKg: clearPendingWeightKg

@@ -17,6 +17,7 @@ import '../widgets/rest_timer_widget.dart';
 import '../widgets/session_summary_dialog.dart';
 import '../widgets/set_history_card.dart';
 import '../widgets/signal_debug_view.dart';
+import '../widgets/start_countdown_button.dart';
 import '../widgets/fusion_status_badge.dart';
 import '../widgets/vision_agreement_badge.dart';
 import '../widgets/weight_input_field.dart';
@@ -386,18 +387,11 @@ class HomeScreen extends ConsumerWidget {
                 onChanged: notifier.setWeightForCurrentSet,
               ),
             ),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: notifier.startCounting,
-              icon: const Icon(Icons.play_circle_outline, size: 28),
-              label: const Text('Zählen starten', style: TextStyle(fontSize: 18)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
-              ),
-            ),
+          StartCountdownButton(
+            enabled: uiState.hasCalibration,
+            isCountdownActive: uiState.isStartCountdownActive,
+            secondsRemaining: uiState.startCountdownSecondsRemaining,
+            onPressed: notifier.beginStartCountdown,
           ),
           if (uiState.lastCompletedSetCount != null) ...[
             const SizedBox(height: 8),

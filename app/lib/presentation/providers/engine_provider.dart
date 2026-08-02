@@ -125,14 +125,18 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   StreamSubscription<DeviceEvent>? _deviceEventSub;
   /// When true, M5 BtnA drives startCounting / endSetManually.
   bool _m5ButtonControlEnabled = true;
-  /// After successful calib reload, auto-start counting (Audit QW-2). Default on.
-  bool _autoArmAfterCalib = true;
+  /// After successful calib reload, auto-start counting (Audit QW-2).
+  /// Default off since Phase 2 (2026-08-01): the explicit start button with
+  /// countdown is now the default path, see [beginStartCountdown].
+  bool _autoArmAfterCalib = false;
   /// Pref keys the user changed this session — late [_loadUserPrefs] skips them.
   final Set<String> _prefsUserSet = <String>{};
   Timer? _refreshTimer;
   Timer? _recordingSampleCountTimer;
   Timer? _restTimer;
   int _restDurationSeconds = kDefaultRestDurationSeconds; // P0-2 / P2-6
+  Timer? _startCountdownTimer;
+  int _startCountdownSeconds = kDefaultStartCountdownSeconds; // Phase 2
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
   static const int _maxReconnectAttempts = kMaxReconnectAttempts;
@@ -302,6 +306,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Startet das Zählen (Engine erhält ab jetzt Samples).
   void startCounting() {
     if (state.isCountingActive) return;
+    _cancelStartCountdown(); // Phase 2: kein doppelter Countdown-Rest hängen lassen
     _stopRestTimer(); // P0-2: Pausen-Timer stoppen bei neuem Satz
     _engine.resetGhostGate();
     _imuWindowBuf.clear();
@@ -547,6 +552,39 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// Öffentlicher Zugriff: Timer manuell stoppen („Pause überspringen").
   void skipRest() => _stopRestTimer();
 
+  // === Expliziter Start-Countdown (Bauplan Phase 2 / Teil 2.B) ===
+
+  /// Startet den 3-Sekunden-Countdown vor dem eigentlichen Zählstart.
+  /// Ruft nach Ablauf dieselbe [startCounting] auf wie M5 BtnA und der
+  /// (früher direkte) Auto-Arm-Pfad — siehe [_reloadCalibrationAndMaybeArm].
+  void beginStartCountdown() {
+    if (state.isCountingActive || state.isStartCountdownActive) return;
+    _startCountdownTimer?.cancel();
+    state = state.copyWith(
+      isStartCountdownActive: true,
+      startCountdownSecondsRemaining: _startCountdownSeconds,
+    );
+    _startCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      final remaining = state.startCountdownSecondsRemaining - 1;
+      if (remaining <= 0) {
+        _cancelStartCountdown();
+        startCounting();
+        AppLogger.i('Start-Countdown abgelaufen → startCounting');
+      } else {
+        state = state.copyWith(startCountdownSecondsRemaining: remaining);
+      }
+    });
+  }
+
+  /// Bricht einen laufenden Start-Countdown ab, ohne zu zählen.
+  void _cancelStartCountdown() {
+    _startCountdownTimer?.cancel();
+    _startCountdownTimer = null;
+    if (state.isStartCountdownActive) {
+      state = state.copyWith(isStartCountdownActive: false);
+    }
+  }
+
   /// Rest duration used for UI progress (default 90s).
   int get restDurationSeconds => _restDurationSeconds;
 
@@ -591,7 +629,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
 
   bool get autoArmAfterCalib => _autoArmAfterCalib;
 
-  /// Toggle + persist (survives app restart). Default remains on when unset.
+  /// Toggle + persist (survives app restart). Default off when unset since
+  /// Phase 2 (explicit start button replaces auto-arm as the default path).
   Future<void> setAutoArmAfterCalib(bool enabled) async {
     _prefsUserSet.add(UserPrefsStore.keyAutoArmAfterCalib);
     _autoArmAfterCalib = enabled;
@@ -1010,6 +1049,12 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   @visibleForTesting
   void debugSetRestDurationSeconds(int seconds) {
     _restDurationSeconds = seconds;
+  }
+
+  /// Override start-countdown duration for faster unit tests (Phase 2).
+  @visibleForTesting
+  void debugSetStartCountdownSeconds(int seconds) {
+    _startCountdownSeconds = seconds;
   }
 
   /// Force near-instant reconnect delays in unit tests.
@@ -1500,6 +1545,8 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _recordingSampleCountTimer?.cancel();
     _restTimer?.cancel();
     _restTimer = null;
+    _startCountdownTimer?.cancel();
+    _startCountdownTimer = null;
     _cancelIdleDisconnect();
     _reconnectTimer?.cancel();
     _reconnectTimer = null;

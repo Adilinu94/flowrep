@@ -56,9 +56,9 @@ class _FakeSecureStorage extends FlutterSecureStorage {
 
 void main() {
   group('UserPrefsStore', () {
-    test('default auto-arm is true when unset', () async {
+    test('default auto-arm is false when unset', () async {
       final store = UserPrefsStore(storage: _FakeSecureStorage());
-      expect(await store.loadAutoArmAfterCalib(), isTrue);
+      expect(await store.loadAutoArmAfterCalib(), isFalse);
     });
 
     test('save and load auto-arm false', () async {
@@ -71,7 +71,7 @@ void main() {
 
     test('loadAll returns product defaults when empty', () async {
       final snap = await UserPrefsStore(storage: _FakeSecureStorage()).loadAll();
-      expect(snap.autoArmAfterCalib, isTrue);
+      expect(snap.autoArmAfterCalib, isFalse);
       expect(snap.haptic, isTrue);
       expect(snap.audio, isFalse);
       expect(snap.restDurationSeconds, 90);
@@ -214,7 +214,7 @@ void main() {
       n.dispose();
     });
 
-    test('default remains true without stored value', () async {
+    test('default remains false without stored value', () async {
       final n = EngineNotifier.create(
         sensorProvider: MockSensorProvider(),
         engine: WorkoutEngine(
@@ -224,7 +224,7 @@ void main() {
         userPrefs: UserPrefsStore(storage: _FakeSecureStorage()),
       );
       await n.reloadUserPrefsForTest();
-      expect(n.autoArmAfterCalib, isTrue);
+      expect(n.autoArmAfterCalib, isFalse);
       n.dispose();
     });
 
