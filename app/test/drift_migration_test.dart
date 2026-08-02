@@ -169,5 +169,5 @@ void _createV1DatabaseWithData(File dbFile) {
     'INSERT INTO exercise_sets VALUES (?, ?, ?, ?, ?, ?);',
     ['set-v1', 'session-v1', 'bicep_curl', 9, null, endedAt],
   );
-  raw.dispose();
+  raw.close();
 }

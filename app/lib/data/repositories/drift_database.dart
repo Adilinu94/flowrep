@@ -121,7 +121,7 @@ class AppDatabase extends _$AppDatabase {
   /// Schema/Migration/Repository ohne SQLite3MultipleCiphers-Build und ohne
   /// [DatabaseKeyManager] testen (siehe drift_migration_test.dart).
   @visibleForTesting
-  AppDatabase.forTesting(QueryExecutor executor) : super(executor);
+  AppDatabase.forTesting(super.executor);
 
   @override
   int get schemaVersion => 2;

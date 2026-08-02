@@ -26,6 +26,7 @@ hooks:
 dependencies:
   flutter:
     sdk: flutter
+  meta: ^1.16.0
   # BLE - final choice, siehe ADR-002. functional with read()-polling at 28 Hz.
   # Notifications confirmed working on HyperOS (nRF Connect test) but
   # flutter_blue_plus v1 doesn't deliver them. read()-polling is the
