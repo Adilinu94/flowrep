@@ -545,3 +545,21 @@ Nebenbei: veralteten Kommentar auf `_buildSetupBody` korrigiert ("Setup / betwee
 Branch `phase4-tracker-integration`, noch nicht gepusht zum Zeitpunkt dieses Commits (folgt direkt danach). Kein Merge nach main.
 
 **Nachtrag zum Eintrag direkt oben:** die dort angekündigte Verifikation ("folgt direkt") hat NICHT stattgefunden - Desktop Commanders Shell-/Prozess-Ausführung war in dieser Session danach nicht mehr erreichbar (nur noch ein reines Datei-Tool, beschränkt auf den geteilten `flowrep-main`-Ordner, ohne Befehlsausführung). `phase4-tracker-integration` bei `8350764` ist damit weiterhin ungeprüft mit echtem `flutter analyze`/`test` - offen für die nächste Session mit Toolchain-Zugriff.
+
+
+---
+
+## 2026-08-03, Claude-0caf5da8 (claude.ai-Sandbox, Adi: Zwischenstand einer Desktop-Commander-Session mit zwei bestätigten, aber nur lokal existierenden Fixes für `phase4_tracker_flow_test.dart`): zwei Fixes nachgebaut und gepusht, dritten offen gelassen
+
+Vor Arbeitsbeginn geprüft: `phase4-tracker-integration` auf origin unverändert seit `7b69471` (die beiden im Zwischenstand beschriebenen Fixes lagen laut dortiger Aussage ausschließlich im isolierten Klon `C:\Users\adini\Desktop\flowrep-verify-phase4-ff8d81e1`, nie gepusht) — bestätigt.
+
+**Übernommen (Diagnose als plausibel bewertet, Fix selbst nachgebaut - kein Diff vom Original vorhanden, nur die Prosa-Beschreibung):**
+
+1. Deadlock in `phase4_tracker_flow_test.dart`: `await notifier.connect()` awaitet direkt ein echtes `Future.delayed(2s)` in `sensor_provider.dart`; in der fake-async-Zone von `testWidgets` läuft die Uhr aber erst bei `pump()` weiter → endloses Hängen. Fix: `connect()` erst starten (`final connectFuture = notifier.connect();`), dann pumpen, dann `connectFuture` awaiten.
+2. Hit-Test-Fehler: `home_screen.dart` steckt in einem `SingleChildScrollView`, sprengt den 800×600-Standard-Testviewport; `tap()` scrollt nicht automatisch. Fix: `tester.view.physicalSize`/`devicePixelRatio` einmalig am Testanfang vergrößert (800×2400) statt an acht Tap-Stellen `ensureVisible()`.
+
+**Bewusst NICHT angefasst:** der dritte, im Zwischenstand selbst als unbestätigt markierte Verdacht (`repsInCurrentSet` bleibt 0 nach simuliertem Rep, evtl. weil die simulierte Bewegung schon während `calibrating` statt erst bei `active` läuft) — das war zum Zeitpunkt des Tool-Limits noch nicht verifiziert, nicht mal von der Session mit echtem Flutter-Zugriff. Selbst zu raten wäre eine Vermutung auf einer unbestätigten Vermutung. Bleibt offen für die nächste Session mit Toolchain-Zugriff.
+
+**Verifikationsstatus unverändert ungeklärt:** kein Flutter/Dart-Toolchain in dieser Sandbox, also auch meine beiden nachgebauten Fixes nicht mit echtem `flutter test` geprüft — nur Klammernbalance (Python) OK. Da Fund 3 offen ist, ist auch nach diesem Commit nicht gesichert, dass der Test insgesamt grün läuft, nur dass die zwei hier behandelten Fehlerursachen behoben sein sollten.
+
+Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.

@@ -45,12 +45,26 @@ void main() {
       'voller Ablauf: verbinden -> Gewicht -> Countdown -> zählen -> '
       'Korrektur -> Satz 2 ohne neuen Knopf -> Training beenden',
       (tester) async {
+    // home_screen.dart steckt in einem SingleChildScrollView, das den
+    // 800x600-Standard-Testviewport sprengt - tap() scrollt nicht
+    // automatisch, Taps auf weiter unten liegende Widgets (z. B. "Zählen
+    // starten") träfen sonst ins Leere.
+    tester.view.physicalSize = const Size(800, 2400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
     await tester.pumpWidget(buildTestApp());
     await tester.pump();
 
     // 1. Verbinden (MockSensorProvider.connect() hat 2s simulierte Zeit).
-    await notifier.connect();
+    // WICHTIG: connect() NICHT direkt awaiten - es awaitet intern ein
+    // echtes Future.delayed(2s), das in der fake-async-Zone von
+    // testWidgets erst bei pump() weiterläuft. Direktes await hängt
+    // endlos. Erst starten, dann pumpen, dann awaiten.
+    final connectFuture = notifier.connect();
     await tester.pump(const Duration(seconds: 3));
+    await connectFuture;
 
     // 2. Kalibrierung: Wizard im Mock-Modus nicht erreichbar, Zustand
     // direkt herstellen (siehe Kommentar auf debugSetHasCalibration).
