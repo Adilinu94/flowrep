@@ -60,7 +60,8 @@ Plan schreibt) wiederholt dieselben Fehler gemacht haben. Ignoriere sie nicht.
    Problem — vermeidbar durch einen kurzen Blick vorher.
 7. **Windows/PowerShell-Toolchain** (falls du über Desktop Commander auf
    Adis echtem Rechner arbeitest, `C:\Users\adini\Desktop\flowrep-main`):
-   `${env:ProgramFiles(x86)} = 'C:\Program Files (x86)';` vor JEDEM
+   die Umgebungsvariable "ProgramFiles(x86)" auf "C:\Program Files (x86)"
+   setzen, bevor du einen `flutter`-Befehl ausführst — vor JEDEM
    `flutter`-Befehl voranstellen — fehlt die Variable, bricht der Befehl
    still ab. `dart run build_runner build --delete-conflicting-outputs` aus
    `app/` laufen lassen, bevor `flutter analyze`/`test`, wenn Drift-generierte
