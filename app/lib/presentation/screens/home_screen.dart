@@ -253,7 +253,14 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Setup / between-sets layout (connection, calib, history, debug).
+  /// Setup layout (connection, calib, weight, start) - shown only while
+  /// `!isCountingActive`. NOT shown between sets within an active session:
+  /// isCountingActive stays true across sets (only stopCounting()/
+  /// endSession() reset it, not _onSetCompleted()), so subsequent sets
+  /// render via [_buildActiveSetBody] the whole time. Corrected 2026-08-02
+  /// (Phase 4 Schritt 3) - this comment previously said "between-sets",
+  /// which stopped being true once the rest timer/correction flow moved
+  /// into [_buildActiveSetBody].
   Widget _buildSetupBody(
     BuildContext context,
     WorkoutUiState uiState,

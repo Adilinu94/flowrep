@@ -1045,6 +1045,19 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     _sessionStartedAt ??= DateTime.now();
   }
 
+  /// Force `hasCalibration` for widget/integration tests. Needed because
+  /// there is no reachable path to `true` in Mock mode otherwise:
+  /// `_openCalibrationWizard` in home_screen.dart requires a
+  /// [BleSensorProvider] (returns immediately for [MockSensorProvider]),
+  /// and [_loadCalibration] - the only place in this file that sets
+  /// `hasCalibration: true` - itself returns immediately when [isMock].
+  /// Phase 4 Bauplan Schritt 3/4 finding (2026-08-02): this is a
+  /// pre-existing characteristic, not something introduced by Phase 1-4.
+  @visibleForTesting
+  void debugSetHasCalibration(bool value) {
+    state = state.copyWith(hasCalibration: value);
+  }
+
   /// Override rest duration for faster unit tests.
   @visibleForTesting
   void debugSetRestDurationSeconds(int seconds) {
