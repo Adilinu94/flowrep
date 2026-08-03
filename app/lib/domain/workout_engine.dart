@@ -974,7 +974,21 @@ class WorkoutEngine {
       // g_p is ready, and as the sole path when the feature is off) but
       // stops writing to _repsInSet once g_p has taken over, so the two
       // paths can never double-count the same physical rep.
-      if (_combinedCountsReps) {
+      //
+      // 2026-08-03 (Fund 5): exception to "stops writing" - the rep that
+      // the live g_p auto-calibration was derived from is allowed to
+      // commit here even when g_p already shows authoritative, as long
+      // as the gP path itself has not counted ANY excursion yet
+      // (_gpRepCount == 0) and no other rep is in refractory. Without
+      // this, that first handover rep is counted by NEITHER path (its
+      // rising edge predates the takeover, its falling edge comes after,
+      // and the gP product gates reject it as a wiggle - exactly the
+      // 'shadow slow-rep #1 ... reps=0' log line from the phase 4
+      // integration test). _commitRep's refractory plus the rising-edge
+      // suppression above keep the two paths mutually exclusive from
+      // the next rep on, same contract as before.
+      if (_combinedCountsReps ||
+          (_gpThreshold != null && _gpRepCount == 0 && !inRefractory)) {
         _commitRep(
           timestamp: s.timestamp,
           peakMagnitude: _currentExcursionPeak,
