@@ -583,3 +583,21 @@ Vor Arbeitsbeginn geprüft: `phase4-tracker-integration` bewegte sich während d
 Tatsächliche Ursache nicht gefunden - bräuchte vermutlich eigene Instrumentierung direkt in `_detectPeak`/`_commitRep` und einen erneuten echten Lauf, nicht weiteres Lesen des bestehenden Codes. Test schlägt weiterhin an derselben Stelle fehl (`expect(repsInCurrentSet, greaterThan(0))`).
 
 Nur die `applyCalibration`-Zeile geändert (11 Zeilen, `flutter analyze` sauber). Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.
+
+---
+
+## 2026-08-03, Claude-ff8d81e1 (Desktop Commander, Adis Windows-Maschine, Adi: "Weiter"): Fund 5 - echte Ursache für repsInCurrentSet=0 identifiziert, nicht gelöst
+
+Vor Arbeitsbeginn geprüft: `phase4-tracker-integration` bewegte sich seit dem zuletzt bekannten eigenen Stand (`7b69471`) um drei Commits (`41cabde`, `f36e3e5`, `6b0eb8d`) - alle drei einzeln per Commit-Diff verifiziert, nicht nur den Zusammenfassungen vertraut. Eigener, zwischenzeitlich beendeter Desktop-Commander-Prozess neu gestartet, isolierter Klon per `git fetch`+`reset --hard` synchronisiert statt neu geklont (Dependencies/build_runner unverändert seit dem letzten Lauf).
+
+**Ursache für das seit Fund 4 offene "reps bleiben bei 0" gefunden**, per temporärer Instrumentierung direkt in `_detectPeak` (nach dem Lauf wieder entfernt, nicht in diesem Commit enthalten):
+
+    PEAK-DECISION #130 excursionPeak=6.288 preMin=4.044 excursion=2.244
+    prominence=0.440 prominenceRejects=false combinedCountsReps=false
+    gpAuth=true gyroMagAuth=false lastCountedRepSample=null
+
+`combinedCountsReps=false`, obwohl der Test `applyCalibration()` ganz ohne `chosenSignal` aufruft (der `case null:`-Zweig setzt `_gyroMagCountsReps=false` korrekt, selbst nachvollzogen - das war nicht die Lücke). Tatsächliche Ursache: die als "Shadow only — never `_commitRep`" dokumentierte Slow-Rep-Erkennung (`shadow slow-rep #1 peak=48.9 θ=15.2` im Log) setzt trotzdem live `_gpThreshold`, wodurch `_gpIsAuthoritative` unabhängig von jeder expliziten `chosenSignal`-Wahl auf `true` springt. Das schaltet den kombinierten Pfad ab (`_combinedCountsReps = !gpAuth && !gyroMagAuth`), aber der gP-Pfad zählt den Rep seinerseits auch nicht (`gpReps=0` im Log direkt danach) - vermutlich weil die Slow-Rep-Schwelle nur für die Schatten-Diagnose gedacht war, nicht als scharfe Zählschwelle für `_detectPeakSigned`.
+
+**Bewusst nicht selbst entschieden/gefixt:** Betrifft die Kern-Zähllogik, nicht nur Phase 4, und würde vermutlich auch auf echter Hardware bei einer einzelnen langsamen Wiederholung auftreten, nicht nur im Mock-Test - eine Architekturfrage mit realen Auswirkungen auf die Zählgenauigkeit, keine, die nebenbei in einem Integrationstest-Branch entschieden wird. Zwei sichtbare Optionen, nicht abschließend: (a) Shadow-Erkennung darf `_gpThreshold`/`_gpIsAuthoritative` nicht setzen, nur eigene Diagnose-Felder; (b) sobald Shadow-Erkennung `_gpIsAuthoritative` auf true setzt, muss `_detectPeakSigned` mit dieser Schwelle auch tatsächlich zählen. Adi entscheidet.
+
+Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht. Instrumentierung war rein diagnostisch und wieder entfernt - dieser Commit ändert nur diese Dokumentation.
