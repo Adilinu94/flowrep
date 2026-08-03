@@ -601,3 +601,29 @@ Vor Arbeitsbeginn geprÃ¼ft: `phase4-tracker-integration` bewegte sich seit dem
 **Bewusst nicht selbst entschieden/gefixt:** Betrifft die Kern-ZÃ¤hllogik, nicht nur Phase 4, und wÃ¼rde vermutlich auch auf echter Hardware bei einer einzelnen langsamen Wiederholung auftreten, nicht nur im Mock-Test - eine Architekturfrage mit realen Auswirkungen auf die ZÃ¤hlgenauigkeit, keine, die nebenbei in einem Integrationstest-Branch entschieden wird. Zwei sichtbare Optionen, nicht abschlieÃŸend: (a) Shadow-Erkennung darf `_gpThreshold`/`_gpIsAuthoritative` nicht setzen, nur eigene Diagnose-Felder; (b) sobald Shadow-Erkennung `_gpIsAuthoritative` auf true setzt, muss `_detectPeakSigned` mit dieser Schwelle auch tatsÃ¤chlich zÃ¤hlen. Adi entscheidet.
 
 Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht. Instrumentierung war rein diagnostisch und wieder entfernt - dieser Commit Ã¤ndert nur diese Dokumentation.
+
+---
+
+## 2026-08-03, Claude-7e4b2c91 (Fortsetzung, Adi: "Kümmere dich um die PhaseValidator-Frage" → dann "Nur dokumentieren"): PhaseValidator-Defekt vollständig vermessen, Lösungsrichtung dokumentiert, bewusst KEIN Umbau
+
+Aufgabe war die PhaseValidator-Frage aus dem letzten Eintrag. Nach dem Befund "Policy-Grenzen 0.15/0.85 verwerfen jede Sinus-Rep" sollte geprüft werden, ob das ein Validator-Bug, ein Detektions-Fenster-Bug oder eine zu strenge Policy ist. Ergebnis: **keines von dreien allein — es ist eine strukturelle Zeitverschiebung zwischen Detektions- und Validierungs-Fenster.** Bewusst kein Fix gebaut (Adi: "Nur dokumentieren"), hier die komplette, echt vermessene Diagnose mit allen Zahlen.
+
+**Vor Arbeit geprüft:** `git fetch`, main unverändert (`28533ae`), keine parallele Branch mit PhaseValidator-/DSP-Fix. Branch `fix-phase-validator-window` von `origin/main` erstellt, alle Experimente darauf verworfen (Arbeitsbaum am Ende sauber, nichts gepusht außer Doku).
+
+**Vermessen (temporäre Diagnose-Tests, alle danach gelöscht, nicht committed):**
+- `PhaseValidator().validate()` auf das vom PeakDetector gelieferte Fenster einer idealen Sinus-Rep (Amplitude 250°/s, 50 Samples, wie `dsp_verification_test.dart`): **24 pos / 3 neg → ratio 0.89, verworfen** ("asymmetrisch [0.15, 0.85]"). Bei 5 Reps: 5× ratio 0.89–0.94, alle verworfen.
+- Derselbe Validator auf die **volle** Sinus-Rep (alle 50 Samples): **25 pos / 24 neg → ratio 0.51, gültig.** Die Policy-Grenzen 0.15/0.85 sind also für eine echte, vollständige Rep **korrekt** — sie verwerfen nur das verstümmelte Fenster.
+- Grund der Verstümmelung: `PeakDetector.process()` schließt das Detektionsfenster bei `θ×0.5` + `_fallingDebounce=4` Samples. Das ist für Pan-Tompkins-Peak-Timing **richtig** (Peak-Zeitpunkt präzise), enthält aber nur ~3 Samples der negativen Halbwelle. Die restlichen ~22 Samples der exzentrischen Phase liegen zu diesem Zeitpunkt **in der Zukunft** — das Fenster kann zum Detektionszeitpunkt physikalisch nicht vollständig sein.
+
+**Was das für Problem 2 bedeutet:** Die 4 DSP-Fehlschläge (Szenario 1/3/4/7) und 3 Pipeline-Fehlschläge sind **nicht** "Tests zu streng" und **nicht** "Policy falsch", sondern der PhaseValidator bekommt strukturell das falsche Fenster. Die Policy-Grenzen von c956607 (0.15/0.85) haben diesen vorbestehenden Fenster-Fehler erst **sichtbar** gemacht — vorher (0.05/0.99) war er unsichtbar, weil 0.89 noch durchging. Der eigentliche Defekt ist älter als die Policy.
+
+**Lösungsrichtungen (nicht umgesetzt, Reihenfolge = Empfehlung):**
+1. **Verzögerte Bestätigung (strukturell sauber):** Der RepCounter markiert eine erkannte Rep als "pending", wartet ~25 Samples (0.5s), bis die exzentrische Halbwelle gelaufen ist, und bestätigt die Rep erst dann mit dem vollständigen Fenster. PhaseValidator-Grenzen bleiben 0.15/0.85, Policy unangetastet. Größter Umbau (Peak-Bestätigung wird asynchron, betrifft RepCounter/StateMachine/OnlineAdapter), aber einzige Lösung, die die echte Phasen-Asymmetrie misst statt sie zu schätzen.
+2. **Validator misst am Gesamtpuffer:** RepCounter hält einen Ringpuffer aller Frames und übergibt dem PhaseValidator zusätzlich das Fenster "Rising-Edge bis aktueller Frame". Weniger invasiv, aber mischt Detektions- und Validierungs-Verantwortung und misst die Gegenphase ebenfalls nur teilweise (Peak 1 wird im selben Frame detektiert, in dem Peak 0s Gegenphase endet — Zuordnungsproblem, echt getestet und gescheitert).
+3. **Grenzen zurückdrehen (0.05/0.99):** Macht die Suite sofort grün, revidiert aber die dokumentierte Product-Owner-Policy "Überzählen > Unterzählen" und lässt den Fenster-Defekt bestehen. Keine Lösung, nur Rücknahme der Sichtbarkeit.
+
+**Bewusst NICHT gemacht:** Jeglicher Umbau von PeakDetector/RepCounter/PhaseValidator (Adi: "Nur dokumentieren"). Die nachträgliche Fenster-Vervollständigung (`takeCompletedPhaseWindow`) wurde echt implementiert, getestet und wieder verworfen, weil sie am Zuordnungsproblem scheitert (Peak N wird im selben Frame detektiert, in dem Peak N−1s Gegenphase endet — das vervollständigte Fenster lässt sich nicht eindeutig zuordnen). Nichts davon ist im Repo.
+
+**Offen für Adi:** Richtungsentscheidung (1/2/3) für die DSP-/Pipeline-Suite. Die 2 ROM-Gate-Fehler in `workout_engine_test.dart` sind ein getrennter Mechanismus (Live-gP-ROM-Gate aus c956607, bezieht sich auf `_prominenceOverride`, nicht auf den PhaseValidator) und hiervon unberührt. `reconnect_test.dart` und `p1_assets_structural_test.dart` ebenfalls getrennt.
+
+Kein Merge nach main. Branch `fix-phase-validator-window` existiert lokal, wurde nicht gepusht (nur verworfene Experimente darauf).
