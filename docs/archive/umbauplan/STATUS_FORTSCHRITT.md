@@ -543,3 +543,5 @@ Nebenbei: veralteten Kommentar auf `_buildSetupBody` korrigiert ("Setup / betwee
 **Nicht mit echtem `flutter analyze`/`test` verifiziert in dieser Nachricht** - Verifikation ist der nächste Schritt (Desktop Commander), noch nicht abgeschlossen zum Zeitpunkt dieses Commits. Falls die Verifikation Anpassungen am Test braucht (Timing, exakte Widget-Texte), folgt ein Fix-Commit wie bei Phase 3.
 
 Branch `phase4-tracker-integration`, noch nicht gepusht zum Zeitpunkt dieses Commits (folgt direkt danach). Kein Merge nach main.
+
+**Nachtrag zum Eintrag direkt oben:** die dort angekündigte Verifikation ("folgt direkt") hat NICHT stattgefunden - Desktop Commanders Shell-/Prozess-Ausführung war in dieser Session danach nicht mehr erreichbar (nur noch ein reines Datei-Tool, beschränkt auf den geteilten `flowrep-main`-Ordner, ohne Befehlsausführung). `phase4-tracker-integration` bei `8350764` ist damit weiterhin ungeprüft mit echtem `flutter analyze`/`test` - offen für die nächste Session mit Toolchain-Zugriff.
