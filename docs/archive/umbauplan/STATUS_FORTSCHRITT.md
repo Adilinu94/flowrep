@@ -563,3 +563,23 @@ Vor Arbeitsbeginn geprüft: `phase4-tracker-integration` auf origin unverändert
 **Verifikationsstatus unverändert ungeklärt:** kein Flutter/Dart-Toolchain in dieser Sandbox, also auch meine beiden nachgebauten Fixes nicht mit echtem `flutter test` geprüft — nur Klammernbalance (Python) OK. Da Fund 3 offen ist, ist auch nach diesem Commit nicht gesichert, dass der Test insgesamt grün läuft, nur dass die zwei hier behandelten Fehlerursachen behoben sein sollten.
 
 Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.
+
+
+---
+
+## 2026-08-03, Claude-106b941b (Desktop Commander, Adis Windows-Maschine, Adi: "weiter, bitte vorher immer prüfen was schon gemacht wurde"): Deadlock+Viewport-Fix von origin real bestätigt, Engine-Kalibrierung nachgerüstet, dritte Ursache eingegrenzt aber nicht gelöst
+
+Vor Arbeitsbeginn geprüft: `phase4-tracker-integration` bewegte sich während der Arbeit zweimal (`7b69471`→`41cabde` von Session 0caf5da8, die wiederum einen Zwischenstand von einer weiteren, eigenständigen Session `ff8d81e1` übernommen hatte) - beide Male vor dem nächsten Schritt neu geholt statt auf altem Stand weitergemacht.
+
+**Von `41cabde` real mit `flutter test` bestätigt (vorher nur als Prosa-Diagnose ohne echten Lauf dokumentiert):** Der Deadlock-Fix (`connect()` erst starten, dann pumpen, dann awaiten) und der Viewport-Fix (`SingleChildScrollView` sprengt 800×600, `tester.view.physicalSize` vergrößert) funktionieren beide - der Test läuft jetzt in ~1s statt in den 10-Minuten-Timeout zu laufen.
+
+**Vierte Ursache gefunden und behoben:** `debugSetHasCalibration(true)` setzt nur das UI-Flag auf dem Notifier, nicht `WorkoutEngine.hasValidCalibration`. Ohne echtes `applyCalibration()` geht die Engine bei Bewegung von `idle` nach `calibrating` (ADR-020/ADR-003 Selbstkalibrierung über mehrere Reps) statt direkt nach `active` - der einzelne simulierte Rep wird als Kalibrierungs-Peak verbraucht, nie gezählt. Fix: `notifier.engine.applyCalibration(peakThreshold: 2.5, minThresholdAboveBaseline: 0.5)` direkt nach `debugSetHasCalibration`. Per echtem Engine-Debug-Log bestätigt: `state=active` ab dem ersten Sample, nicht mehr `calibrating`.
+
+**Trotzdem weiterhin offen, echt geprüft statt geraten:** `repsInCurrentSet` bleibt bei 0, obwohl Log klar einen Peak zeigt (`combined=5.375` → Rückkehr auf `~1.0`) und der Zustand korrekt `active` ist. Drei naheliegende Hypothesen einzeln per Quellcode+Log widerlegt, nicht nur vermutet:
+1. gP-Autorität übernimmt und blockt Combined-Pfad? Nein - `_gpThreshold` bleibt `null` (nie kalibriert), also `_gpIsAuthoritative=false`, `_combinedCountsReps` sollte `true` bleiben.
+2. Ghost Gate (FR-B6) blockt `_commitRep()`? Nein - `GhostRepGate._paused` startet `false` (`allowCounting` per Default `true`), pausiert erst nach 45+s durchgehender Ruhe - in diesem kurzen Testfenster nicht erreichbar.
+3. Debounce/Prominenz-Parameter zu streng? Nein - `fallingDebounce=4` Samples, `prominenceRatio=0.30`; beide bei den beobachteten Signalwerten (Peak ~5.3 ggü. Baseline ~1.03) rechnerisch längst erfüllt.
+
+Tatsächliche Ursache nicht gefunden - bräuchte vermutlich eigene Instrumentierung direkt in `_detectPeak`/`_commitRep` und einen erneuten echten Lauf, nicht weiteres Lesen des bestehenden Codes. Test schlägt weiterhin an derselben Stelle fehl (`expect(repsInCurrentSet, greaterThan(0))`).
+
+Nur die `applyCalibration`-Zeile geändert (11 Zeilen, `flutter analyze` sauber). Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.

@@ -68,6 +68,17 @@ void main() {
 
     // 2. Kalibrierung: Wizard im Mock-Modus nicht erreichbar, Zustand
     // direkt herstellen (siehe Kommentar auf debugSetHasCalibration).
+    // WICHTIG: debugSetHasCalibration setzt nur das UI-Flag - die Engine
+    // selbst hat ohne echte applyCalibration() weiterhin hasValidCalibration
+    // = false und würde bei Bewegung erst in WorkoutState.calibrating (ADR-
+    // 020/ADR-003 "Magic Moment", Selbstkalibrierung über mehrere Reps)
+    // statt direkt in active gehen - der simulierte Einzel-Rep würde dann
+    // als Kalibrierungs-Peak verbraucht, nie als gezählter Rep. Reale,
+    // plausible Werte (Baseline ~1.04, Bewegungs-Peaks ~5-6 laut Log).
+    notifier.engine.applyCalibration(
+      peakThreshold: 2.5,
+      minThresholdAboveBaseline: 0.5,
+    );
     notifier.debugSetHasCalibration(true);
     notifier.debugSetStartCountdownSeconds(1);
     await tester.pump();
