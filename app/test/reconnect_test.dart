@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flowrep/data/providers/sensor_provider.dart';
+import 'package:flowrep/domain/device_event.dart';
 import 'package:flowrep/domain/models/workout_models.dart';
 import 'package:flowrep/domain/repositories/i_workout_repository.dart';
 import 'package:flowrep/domain/workout_engine.dart';
@@ -12,6 +13,7 @@ class ControllableSensorProvider implements ISensorProvider {
   final _connectionController =
       StreamController<SensorConnectionState>.broadcast();
   final _sampleController = StreamController<SensorSample>.broadcast();
+  final _deviceEventController = StreamController<DeviceEvent>.broadcast();
   int connectCalls = 0;
   bool failNextConnect = false;
 
@@ -21,6 +23,9 @@ class ControllableSensorProvider implements ISensorProvider {
 
   @override
   Stream<SensorSample> get samples => _sampleController.stream;
+
+  @override
+  Stream<DeviceEvent> get deviceEvents => _deviceEventController.stream;
 
   @override
   Future<void> connect() async {
@@ -54,6 +59,7 @@ class ControllableSensorProvider implements ISensorProvider {
   void dispose() {
     _connectionController.close();
     _sampleController.close();
+    _deviceEventController.close();
   }
 }
 

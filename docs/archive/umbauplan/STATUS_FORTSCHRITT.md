@@ -427,3 +427,16 @@ Vor Beginn frisch geholt und den tatsächlichen main-Stand geprüft statt der al
 `test/drift_encryption_migration_test.dart` neu angelegt, wie in `migrateToEncryptedIfNeeded`s eigenem Doc-Kommentar referenziert. Testet die reine, extrahierte Funktion direkt (kein Mocking, echte Temp-Files, echtes `package:sqlite3`): Frischinstallation, Marker-bereits-vorhanden-No-op, der eigentliche Kernfall (echte befüllte Klartext-DB → verschlüsselt, mit Backup, Daten erhalten), Idempotenz, zwei Fälle mit Leichen von abgebrochenen vorigen Läufen (`.tmp`/`.pre-encryption-backup`), und ein Fehlerfall (korrupte Quelldatei → Original bleibt unangetastet, kein Marker). Ein Assertion-Detail bewusst reingenommen, weil es genau die im Datei-Header als "am wenigsten verifiziert" benannte Lücke abdeckt: die migrierte Datei muss OHNE Key nicht mehr lesbar sein - sonst würde ein durch einen nicht verlinkten SQLite3MultipleCiphers-Build still ignoriertes `PRAGMA rekey` denselben Test unbemerkt bestehen lassen.
 
 **Nicht mit echtem `flutter test` verifizierbar** (kein Dart/Flutter-Toolchain in dieser Sandbox, siehe `database_key_manager_test.dart` für dieselbe wiederkehrende Einschränkung) - sorgfältig Zeile für Zeile gegen die tatsächliche `migrateToEncryptedIfNeeded`-Implementierung gelesen, aber nicht selbst ausgeführt. Branch bleibt `agent-db-migration-test`, nicht gemergt. Nächster Schritt: mit echtem Flutter-Zugriff laufen lassen - falls speziell die "ohne Key nicht lesbar"-Assertion fehlschlägt, deutet das auf den Build-Hook-Mechanismus selbst (pubspec `hooks:`), nicht auf die Migrationslogik.
+
+
+---
+
+## 2026-08-04, Claude-38f650c4 (Desktop Commander, echter Flutter-Toolchain, Adis Maschine), Nebenbefund aus Recherche-Auftrag: reconnect_test.dart Compile-Fehler behoben
+
+Im Zuge einer Branch-Landschafts-Recherche (siehe separater Eintrag) aufgefallen: `reconnect_test.dart` compiliert seit Commit `2f26b00` (2026-07-24, `deviceEvents` zu `ISensorProvider` hinzugefügt) nicht mehr - `ControllableSensorProvider` (lokaler Mock nur für diese Datei) implementierte den neuen Getter nicht, `MockSensorProvider` (der allgemeine App-Mock) wurde damals korrekt mitgezogen. **11 Tage ohne Testabdeckung für P0-4 (Reconnect-Verhalten).**
+
+Trivialer, risikoarmer Fix nach demselben Muster wie `MockSensorProvider`: `_deviceEventController` + `deviceEvents`-Getter ergänzt, `device_event.dart`-Import ergänzt, `dispose()` schließt den neuen Controller mit. Kein anderer Code angefasst.
+
+**Real verifiziert:** `flutter test test/reconnect_test.dart` → 3/3 grün (unerwarteter Disconnect → isReconnecting; User-Disconnect → kein Auto-Reconnect; Auto-Reconnect ruft nach Delay tatsächlich erneut connect() auf). `flutter analyze test/reconnect_test.dart` → No issues found. Die zugrunde liegende Reconnect-Logik selbst war die ganze Zeit intakt - nur der Mock war veraltet.
+
+Branch `fix-reconnect-test-compile` (von frischem `origin/main`), gepusht. Kein Merge nach main.
