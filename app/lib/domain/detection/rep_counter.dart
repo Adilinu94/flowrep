@@ -76,6 +76,26 @@ class RepCounter {
   final List<double> _recentDurations = []; // Für Online-Adaptation
   final List<double> _recentProminences = []; // Für Online-Adaptation
 
+  // === Ausstehende Phasen-Fenster-Erweiterung ===
+  //
+  // PhaseValidator braucht beide Halbwellen (konzentrisch + exzentrisch) fuer
+  // ein belastbares Verhaeltnis. Das PeakDetector-Fenster endet aber kurz
+  // nach der Falling-Edge-Bestaetigung (Debounce) und enthaelt fast nur die
+  // positive Halbwelle. Fuer Peaks mit negativem Signalanteil wird die
+  // Zaehl-Entscheidung deshalb zurueckgestellt: das Fenster wird Frame fuer
+  // Frame weitergefuehrt, bis die exzentrische Halbwelle abgeschlossen ist
+  // (Signal faellt unter das Fenster-Startminimum und kehrt danach auf >= 0
+  // zurueck) oder ein Sicherheits-Limit erreicht ist. Reine Huellkurven-Peaks
+  // (kein negativer Anteil) durchlaufen denselben Mechanismus, sind aber
+  // sofort "vollstaendig" - Timing dafuer bleibt unveraendert.
+  // Die Peak-ERKENNUNG selbst (PeakDetector) ist davon unberuehrt.
+  PeakEvent? _pendingPeak;
+  List<double>? _pendingWindow;
+  double? _pendingStartMin;
+  bool _pendingWentBelowStartMin = false;
+  int _pendingExtraSamples = 0;
+  static const int _maxExtraPhaseSamples = 120;
+
   /// Erstellt den RepCounter.
   ///
   /// Alle Komponenten werden injiziert (Dependency Injection für Testbarkeit).
@@ -91,12 +111,74 @@ class RepCounter {
   /// [frame]: Verarbeitetes Frame aus der SignalChain.
   /// Rückgabe: [RepResult] mit Zähl-Entscheidung.
   RepResult process(ProcessedFrame frame) {
-    // Schritt 1: Peak-Detection
+    // Schritt 1: Peak-Detection (unveraendert - Fenster-Erweiterung aendert
+    // nichts an Erkennung/Refractory/Timing des PeakDetectors selbst).
     final peak = peakDetector.process(frame);
-    if (peak == null) return RepResult.none;
 
+    if (peak != null) {
+      // Falls noch ein aelteres Fenster offen ist (sehr kurzer Abstand
+      // zwischen zwei Peaks): mit seinem bisherigen Stand abschliessen,
+      // bevor der neue Peak uebernommen wird. Damit geht keine Entscheidung
+      // verloren, sie kann sich aber um einen Frame verschieben.
+      RepResult? finishedOld;
+      if (_pendingPeak != null) {
+        finishedOld = _finalizePending();
+      }
+      _startPending(peak);
+      if (finishedOld != null) return finishedOld;
+      if (_pendingComplete()) return _finalizePending();
+      return RepResult.none;
+    }
+
+    if (_pendingPeak == null) return RepResult.none;
+
+    // Schritt 0: ausstehendes Fenster um dieses Sample weiterfuehren.
+    final value = frame.smoothedGp;
+    _pendingWindow!.add(value);
+    _pendingExtraSamples++;
+    if (value < _pendingStartMin!) _pendingWentBelowStartMin = true;
+
+    if (_pendingComplete()) return _finalizePending();
+    return RepResult.none;
+  }
+
+  /// Beginnt die Fenster-Erweiterung fuer einen frisch erkannten Peak.
+  void _startPending(PeakEvent peak) {
+    _pendingPeak = peak;
+    _pendingWindow = List<double>.from(peak.window);
+    _pendingStartMin = peak.window.reduce((a, b) => a < b ? a : b);
+    _pendingWentBelowStartMin = false;
+    _pendingExtraSamples = 0;
+  }
+
+  /// true, wenn das ausstehende Fenster bereit zur Validierung ist:
+  /// entweder rein positiv (Huellkurve, nichts zu erweitern), oder die
+  /// exzentrische Halbwelle wurde durchlaufen (unter Startminimum gefallen
+  /// und wieder auf >= 0 zurueckgekehrt), oder das Sicherheits-Limit ist
+  /// erreicht (verhindert endloses Warten bei Rauschen/atypischen Signalen).
+  bool _pendingComplete() {
+    final window = _pendingWindow!;
+    final hasNegative = window.any((v) => v < 0);
+    if (!hasNegative) return true;
+    return (_pendingWentBelowStartMin && window.last >= 0) ||
+        _pendingExtraSamples >= _maxExtraPhaseSamples;
+  }
+
+  /// Schliesst das ausstehende Fenster ab und fuehrt Template-Matching,
+  /// Phasen-Validierung und Qualitaetsbewertung darauf aus.
+  RepResult _finalizePending() {
+    final peak = _pendingPeak!;
+    final window = _pendingWindow!;
+    _pendingPeak = null;
+    _pendingWindow = null;
+    return _decide(peak, window);
+  }
+
+  /// Schritte 2-4 der Pipeline (Template/Phase/Qualitaet) auf einem
+  /// (moeglicherweise erweiterten) Fenster.
+  RepResult _decide(PeakEvent peak, List<double> window) {
     // Schritt 2: Template-Matching
-    final matchResult = templateMatcher.match(peak.window);
+    final matchResult = templateMatcher.match(window);
     if (!matchResult.accepted && !matchResult.noTemplate) {
       return RepResult(
         repCounted: false,
@@ -106,7 +188,7 @@ class RepCounter {
     }
 
     // Schritt 3: Phasen-Validierung
-    final phaseResult = phaseValidator.validate(peak.window);
+    final phaseResult = phaseValidator.validate(window);
     if (!phaseResult.valid) {
       return RepResult(
         repCounted: false,
@@ -115,11 +197,12 @@ class RepCounter {
       );
     }
 
-    // Schritt 4: Qualitätsbewertung
+    // Schritt 4: Qualitätsbewertung (durationSamples aus dem tatsaechlich
+    // validierten Fenster, konsistent mit dem, was PhaseValidator gesehen hat)
     final qualityResult = qualityScorer.score(
       correlation: matchResult.noTemplate ? 1.0 : matchResult.correlation,
       prominence: peak.prominence,
-      durationSamples: peak.durationSamples,
+      durationSamples: window.length,
       durationRatio: phaseResult.durationRatio,
     );
 
@@ -133,7 +216,7 @@ class RepCounter {
 
     // === REP GEZÄHLT ===
     _repCount++;
-    _trackForAdaptation(peak);
+    _trackForAdaptation(prominence: peak.prominence, durationSamples: window.length);
 
     return RepResult(
       repCounted: true,
@@ -144,9 +227,9 @@ class RepCounter {
   }
 
   /// Trackt Dauer und Prominenz für Online-Adaptation.
-  void _trackForAdaptation(PeakEvent peak) {
-    _recentDurations.add(peak.durationSamples.toDouble());
-    _recentProminences.add(peak.prominence);
+  void _trackForAdaptation({required double prominence, required int durationSamples}) {
+    _recentDurations.add(durationSamples.toDouble());
+    _recentProminences.add(prominence);
 
     // Begrenze auf letzte 10 Reps
     if (_recentDurations.length > 10) {
@@ -178,6 +261,11 @@ class RepCounter {
     _repCount = 0;
     _recentDurations.clear();
     _recentProminences.clear();
+    _pendingPeak = null;
+    _pendingWindow = null;
+    _pendingStartMin = null;
+    _pendingWentBelowStartMin = false;
+    _pendingExtraSamples = 0;
     peakDetector.reset();
   }
 
