@@ -89,3 +89,17 @@ Nicht dringend: `_useNewPipeline=false` bleibt in Kraft, nichts davon zählt liv
 ---
 
 **Status:** Befunde dokumentiert, Fix vorgeschlagen, **nicht umgesetzt**. Nächster Schritt ist Adi-Entscheidung (analog zu `bfa2669`s "nur dokumentieren").
+
+---
+
+## 7. Nachtrag (2026-08-05, Claude-edbf16cb, claude.ai-Sandbox, kein Flutter-Zugriff)
+
+Review dieses Audits gegen den echten Diff geprüft statt nur gelesen. Beim anschließenden Kollisionscheck (vor dem Schreiben dieser Ergänzung) zeigte sich, dass der Branch sich seit der Erst-Review bereits weiterbewegt hatte (`01d2e9c`, `6654650`) — die folgenden Punkte sind gegen den *aktuellen* Stand geprüft, ein ursprünglich mitgebrachter Befund (fehlende zweite Fundstelle) war dadurch bereits überholt.
+
+**Der in Abschnitt 4 vorgeschlagene Fix ist umgesetzt, vollständig:** Commit `01d2e9c` (Session 38f650c4) hat unabhängig auch die zweite, im Audit-Text nicht genannte Fundstelle erfasst (`RepEvent`-Konstruktion, vormals `exercise_engine.dart:264-265`), nicht nur `onRepConfirmed()` (246-247). Gegengeprüft: `grep -n "lastPeakDurationSamples\|lastPeakProminence" app/lib/domain/exercise_engine.dart` liefert keine Treffer mehr.
+
+**Aber `01d2e9c` ist selbst nicht mit echtem `flutter test` verifiziert.** Laut eigener Commit-Message verlor die Session mitten in der Umsetzung den Flutter-Zugriff, nur Code-Lektüre. Session `e14e4950` (Commit `6654650`) hat `1000004` real gegengetestet und dabei eine echte Abweichung zur Commit-Message gefunden (477/4 behauptet, 455/8 tatsächlich — vier zusätzliche, als vorbestehend bestätigt) — Präzedenzfall dafür, dass "beim Lesen korrekt" hier nachweislich nicht immer mit "real getestet" übereinstimmt. `01d2e9c` liegt zeitlich nach dieser Verifikation (19:19 vs. 07:37 Uhr) und wurde von ihr nicht erfasst. Sollte vor Vertrauen denselben echten Testlauf bekommen wie `1000004`.
+
+**Neuer Befund, bislang nur in `01d2e9c`s Commit-Message erwähnt, hier konsolidiert:** `RepCounter._trackForAdaptation()` führt eine eigene rollierende Mittelwertbildung (`_recentDurations`/`_recentProminences`, letzte 10 Reps) und ruft darüber `qualityScorer.updateExpectations()` auf. `ExerciseEngine._onRepCounted()` ruft dieselbe Methode ein zweites Mal auf, mit Werten aus dem separaten `OnlineAdapter`-EMA — und das immer *danach*, da `_onRepCounted()` erst nach `RepCounter.process()` läuft. Effekt: `RepCounter`s eigene Rolling-Average-Logik wird bei jeder gezählten Rep sofort überschrieben, bevor sie je wirksam wird. Kein Bug (QualityScorer bekommt sinnvolle Werte, nur vom anderen Pfad) — aber in der Wirkung toter Code, der beim isolierten Lesen von `RepCounter` fälschlich als die aktive Anpassungslogik erscheint. Vorbestehend (nicht durch `01d2e9c` verursacht), nicht Teil des hier vorgeschlagenen Fixes.
+
+**Verwandtes Dokument:** `docs/archive/umbauplan/PHASE_VALIDATOR_FENSTER_PROBLEM.md` (Session `e14e4950`) deckt einen Großteil derselben Recherche ab (DirectionalGpShadow-Muster, Pan-Tompkins, `_useNewPipeline`-Fund, externe Bewertung) mit eigenem Empfehlungsabschnitt — hier nicht dupliziert, nur referenziert.

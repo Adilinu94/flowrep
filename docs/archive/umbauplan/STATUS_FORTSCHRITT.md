@@ -518,3 +518,17 @@ gelaufen.** Das explizit NICHT als "verifiziert" im Sinne der Projekt-Konvention
 Nächster Schritt: `flutter test test/exercise_engine_pipeline_test.dart test/rep_counter_test.dart`
 und `flutter analyze` auf `rep_counter.dart`/`exercise_engine.dart` laufen lassen, sobald
 wieder ein echter Flutter-Toolchain-Zugriff besteht (Desktop Commander oder Adi selbst).
+
+---
+
+## 2026-08-05, Claude-edbf16cb (claude.ai-Sandbox, kein Flutter-Zugriff, Adi: "genau anschauen, Verbesserungen/Ergänzungen?" zu PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md)
+
+Audit gegen den echten Diff (`1000004`) geprüft statt nur gelesen, Befund A+B bestätigt. Eigener Fund: Fix-Vorschlag in Abschnitt 4 nannte nur eine von zwei betroffenen Fundstellen (`exercise_engine.dart:264-265`, RepEvent-Konstruktion, fehlte neben 246-247).
+
+Beim Kollisionscheck vor dem Schreiben zeigte sich: Branch hatte sich bereits weiterbewegt (`01d2e9c` von Session 38f650c4 behebt beide Fundstellen bereits, unabhängig; `6654650` von Session e14e4950 verifiziert `1000004` real und findet eine echte Abweichung zur Commit-Message: 477/4 behauptet, 455/8 real, vier zusätzliche als vorbestehend bestätigt).
+
+Nachtrag entsprechend angepasst statt der überholten Erst-Review: bestätigt, dass `01d2e9c` vollständig ist, aber selbst kein echtes `flutter test` hatte (Commit-Message räumt das ein) und dadurch von `e14e4950`s Verifikation zeitlich nicht mehr erfasst wurde (19:19 vs. 07:37 Uhr). Zusätzlich konsolidiert: `01d2e9c`s Commit-Message identifiziert selbst eine Redundanz (`RepCounter._trackForAdaptation()`s eigener `qualityScorer.updateExpectations()`-Aufruf wird vom separaten `OnlineAdapter`-Pfad in `ExerciseEngine` immer überschrieben - kein Bug, aber in der Wirkung toter Code) - bislang nirgends außer dieser Commit-Message dokumentiert, jetzt im Audit-Dokument festgehalten.
+
+Details: `docs/archive/umbauplan/PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md`, Abschnitt 7.
+
+Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox) - Ergänzungen beruhen auf Code-Lektüre und `grep`-Gegenprobe. Nächster Schritt: `01d2e9c` denselben echten Testlauf geben wie `1000004`, sobald Flutter-Zugriff besteht.
