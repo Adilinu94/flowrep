@@ -8,7 +8,7 @@
 
 ## Zusammenfassung
 
-Die gepushte Implementierung (`1000004`) löst das ursprüngliche Zuordnungsproblem sauberer als beide vorab diskutierten Pläne und ist gegen die reale Test-Suite grün. Ein Code-Audit hat zwei neue, von den Tests nicht erfasste Bugs in der Metadaten-Weitergabe an `ExerciseEngine` gefunden (Abschnitt 3). Beide betreffen nicht den Rep-Count selbst; ein minimaler Fix ist vorgeschlagen (Abschnitt 4) — aber nicht angewendet. Umsetzung ist Adi-Entscheidung.
+Die gepushte Implementierung (`1000004`) löst das ursprüngliche Zuordnungsproblem sauberer als beide vorab diskutierten Pläne und ist gegen die reale Test-Suite grün. Ein Code-Audit hat zwei neue, von den Tests nicht erfasste Bugs in der Metadaten-Weitergabe an `ExerciseEngine` gefunden (Abschnitt 3). Beide betreffen nicht den Rep-Count selbst; ein minimaler Fix ist vorgeschlagen (Abschnitt 4) und **inzwischen umgesetzt** (Commit `01d2e9c`) — Details, eine Präzisierung und ein zusätzlicher Befund dazu in Abschnitt 7.
 
 ---
 
@@ -42,7 +42,7 @@ Zwei Plan-Entwürfe (Schritt-0–6-Format) wurden gegeneinander und gegen den Co
 
 ---
 
-## 3. Zwei neue Befunde (❌ offen, durch Tests nicht erfasst)
+## 3. Zwei neue Befunde (🟡 Fix angewendet, noch nicht real getestet — siehe Abschnitt 7 — ursprünglich durch die Tests nicht erfasst)
 
 Die Commit-Message räumt selbst ein: *"eine verzögerte statt sofortige Entscheidung ist für diese Tests unsichtbar"* — genau in dieser Lücke liegen beide folgenden Befunde. Kein Rep-Count ist falsch, kein Test schlägt fehl.
 
@@ -62,7 +62,9 @@ Im Kollisionsfall (`rep_counter.dart:118-127`) läuft `peakDetector.process(fram
 
 ---
 
-## 4. Vorgeschlagener Fix (nicht angewendet)
+## 4. Vorgeschlagener Fix (historisch — inzwischen umgesetzt, siehe Abschnitt 7)
+
+*Ursprünglicher Vorschlag, unverändert stehengelassen als Nachvollzug der Herleitung.*
 
 Geprüft auf Nebenwirkungen: `lastPeakDurationSamples`/`lastPeakProminence` werden nirgends außer `exercise_engine.dart` und `peak_detector.dart` selbst referenziert; `RepResult` hat keine `==`/`toString`-Overrides; kein Test konstruiert `RepResult` direkt.
 
@@ -75,7 +77,7 @@ Löst A und B gleichzeitig, zwei Dateien, keine Änderung an `PeakDetector` nöt
 
 ## 5. Risikoeinordnung
 
-Nicht dringend: `_useNewPipeline=false` bleibt in Kraft, nichts davon zählt live. Aber nicht folgenlos: Für kalibrierte Nutzer läuft die Pipeline im Shadow-Mode mit (Abschnitt 1) — Befund A/B verfälschen dort leise die Adaptations-/Scoring-Diagnostik, die für die spätere Rep-Diff-=-0-Freigabe (B5/G7) relevant ist.
+Nicht dringend: `_useNewPipeline=false` bleibt in Kraft, nichts davon zählt live. Aber nicht folgenlos: Für kalibrierte Nutzer läuft die Pipeline im Shadow-Mode mit (Abschnitt 1) — Befund A/B verfälschen dort leise die Adaptations-/Scoring-Diagnostik, die für die spätere Rep-Diff-=-0-Freigabe (B5/G7) relevant ist. Mit dem Fix (`01d2e9c`) adressiert, siehe Abschnitt 7 für den Verifikationsstand.
 
 ---
 
@@ -84,11 +86,13 @@ Nicht dringend: `_useNewPipeline=false` bleibt in Kraft, nichts davon zählt liv
 - `docs/archive/umbauplan/STATUS_FORTSCHRITT.md` — Session-Historie, u. a. Commit `bfa2669` (Session 7e4b2c91, ursprüngliche Diagnose) und der Eintrag zu diesem Audit.
 - `docs/Version1.0/13_OFFENE_PUNKTE.md` — B5/G7 (`_useNewPipeline`-Freigabe-Bedingungen).
 - `docs/design/DIRECTIONAL_GP_SHADOW_ROLLOUT_2026-07-27.md` — geprüft als möglicher Präzedenzfall für Schwellenwerte, keine übertragbare Tuning-Begründung gefunden.
+- `docs/archive/umbauplan/PHASE_VALIDATOR_FENSTER_PROBLEM.md` (Session e14e4950) — unabhängiger, tieferer Plan-Review und eigene Re-Verifikation von `1000004`.
 - Commit `1000004` (`fix-phase-validator-window`) — auditierte Implementierung.
+- Commit `01d2e9c` — Umsetzung der in Abschnitt 4 vorgeschlagenen Fixes A+B (siehe Abschnitt 7).
 
 ---
 
-**Status:** Befunde dokumentiert, Fix vorgeschlagen, **nicht umgesetzt**. Nächster Schritt ist Adi-Entscheidung (analog zu `bfa2669`s "nur dokumentieren").
+**Status:** Befunde dokumentiert, Fix vorgeschlagen und **umgesetzt** (`01d2e9c`). Noch offen: echter `flutter test`-Lauf gegen die vier Zieldateien — Details und ein zusätzlicher Befund in Abschnitt 7.
 
 ---
 

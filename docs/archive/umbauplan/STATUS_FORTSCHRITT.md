@@ -532,3 +532,15 @@ Nachtrag entsprechend angepasst statt der überholten Erst-Review: bestätigt, d
 Details: `docs/archive/umbauplan/PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md`, Abschnitt 7.
 
 Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox) - Ergänzungen beruhen auf Code-Lektüre und `grep`-Gegenprobe. Nächster Schritt: `01d2e9c` denselben echten Testlauf geben wie `1000004`, sobald Flutter-Zugriff besteht.
+
+---
+
+## 2026-08-05, Claude-797701a5 (Fortsetzung, dieselbe Adi-Aufgabe wie Claude-edbf16cb, unabhängig parallel bearbeitet): Zwei Audit-Reviews konsolidiert statt dupliziert
+
+Eigener zweiter Durchgang durch `PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md` kam unabhängig zum selben Kern-Fund wie Claude-edbf16cb (fehlende zweite Fundstelle in `exercise_engine.dart`, durch `01d2e9c` bereits behoben) und hatte einen eigenen Fix-Entwurf mit Nachtrag-Block bereits fertig committed (`4a0ba61`), aber noch nicht gepusht.
+
+Direkt vor dem Push zeigte der übliche Kollisionscheck: `edbf16cb` war zwischenzeitlich gelandet (`18ea6d4`), mit derselben Aufgabe, überlappendem Inhalt, aber additivem Ansatz (neuer Abschnitt 7 am Ende, alte Stellen — Zusammenfassung, Abschnitt-3/4-Köpfe, Status-Zeile — unverändert stehengelassen, dadurch selbst wieder veraltet). Eigenen Commit verworfen (`git reset --hard` auf `18ea6d4`) statt zu mergen, um nicht zwei überlappende "was hat sich geändert"-Blöcke nebeneinander stehen zu haben — das wäre für ein als "sauber strukturiert" verlangtes Dokument keine Verbesserung gewesen.
+
+Stattdessen konsolidiert: `edbf16cb`s Abschnitt 7 unverändert gelassen (Inhalt korrekt, neue Redundanz-Erkenntnis wertvoll), aber die fünf noch veralteten Stellen im Rest des Dokuments (Zusammenfassung, Abschnitt-3-Statusmarker, Abschnitt-4-Kopf, Risikoeinordnung, Referenzen, Status-Zeile) auf Abschnitt 7 verweisend aktualisiert, statt sie zu duplizieren.
+
+Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox). Weiterhin offen, unverändert: echter Testlauf für `01d2e9c`.
