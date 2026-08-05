@@ -428,9 +428,6 @@ Vor Beginn frisch geholt und den tatsächlichen main-Stand geprüft statt der al
 
 **Nicht mit echtem `flutter test` verifizierbar** (kein Dart/Flutter-Toolchain in dieser Sandbox, siehe `database_key_manager_test.dart` für dieselbe wiederkehrende Einschränkung) - sorgfältig Zeile für Zeile gegen die tatsächliche `migrateToEncryptedIfNeeded`-Implementierung gelesen, aber nicht selbst ausgeführt. Branch bleibt `agent-db-migration-test`, nicht gemergt. Nächster Schritt: mit echtem Flutter-Zugriff laufen lassen - falls speziell die "ohne Key nicht lesbar"-Assertion fehlschlägt, deutet das auf den Build-Hook-Mechanismus selbst (pubspec `hooks:`), nicht auf die Migrationslogik.
 
-
----
-
 ## 2026-08-04, Claude-38f650c4 (claude.ai-Sandbox + Desktop Commander, echter Flutter-Toolchain, Adis Maschine): PhaseValidator-Fenster gefixt (Problem 2)
 
 Übernahme eines Handover-Dokuments aus einer vorherigen Session (Claude-7e4b2c91), das einen Branch `fix-phase-validator-window` mit Änderungen an `peak_detector.dart`/`peak_event.dart`/`rep_counter.dart` beschrieb (Fenster nachträglich vervollständigen). **Dieser Stand war nirgends mehr auffindbar** - weder auf GitHub (Branch existiert nicht, geprüft inkl. Alternativnamen), noch als lokaler Branch/Stash in den elf bekannten `flowrep-*`-Ordnern auf dem Desktop, noch als kürzlich veränderte `peak_detector.dart`/`rep_counter.dart` irgendwo im Dateisystem. Vermutlich durch spätere Nutzung des geteilten `flowrep-main`-Ordners überschrieben - genau das Risiko, vor dem an anderer Stelle schon gewarnt wurde. Komplett neu aufgesetzt (`flowrep-fix-phasevalidator-38f650c4`, von `origin/main` @ `28533ae`, derselbe Stand wie damals).
@@ -444,6 +441,28 @@ Vor Beginn frisch geholt und den tatsächlichen main-Stand geprüft statt der al
 **Real verifiziert** (echtes `flutter test`/`flutter analyze`, diese Maschine, Flutter 3.44.6/Dart 3.12.2): `dsp_verification_test.dart` + `exercise_engine_pipeline_test.dart` + `phase_validator_test.dart` + `rep_counter_test.dart`: 42/42 grün (Szenarien 1/3/4/7 vorher rot, jetzt grün). Volle Suite: 477 Tests, 4 rot = exakt der vorbestehende 11er-Cluster minus der 7 hier gefixten (übrig: ROM-Gate ×2, `p1_assets_structural_test.dart`, `reconnect_test.dart` - alle unangetastet, alle bereits dokumentiert). `flutter analyze`: 17 Issues, alle vorbestehend in Test-Dateien, keins in `lib/`, keins neu.
 
 Branch `fix-phase-validator-window`, gepusht. Kein Merge nach main. Nächster Schritt: Adi entscheidet über Merge-Zeitpunkt (zusammen mit `fix-live-gp-authority-coupling`, da Problem 1 und Problem 2 nachweislich unabhängig sind).
+
+---
+
+## 2026-08-04, Claude-e14e4950 (Fortsetzung Problem 2 nach bfa2669): Umfassende Diagnose- und Recherchedokumentation, plus Kollision mit Claude-38f650c4s parallel gepushtem Fix aufgelöst
+
+Session begann mit "Repo klonen" für Problem 2 (PhaseValidator/DSP-Testcluster). Beim Einstieg zeigte sich: `flowrep-main` (geteilte Kopie) hatte einen neueren Stand als das mitgegebene Handover-Dokument vom Vortag — Commit `bfa2669` (2026-08-03, auf `phase4-tracker-integration`) enthielt bereits die vollständige Diagnose des dort offen gelassenen "Next Move" (`takeCompletedPhaseWindow` scheitert an einem Zuordnungsproblem, nicht an Timing) sowie Adis Entscheidung "nur dokumentieren".
+
+Darauf aufbauend: eigene Recherche (Codebase + extern) zur besten Lösung, dann Bewertung eines von Adi parallel vorgelegten sechsstufigen Umsetzungsplans einer anderen KI-Instanz. Zentrale Funde:
+
+- `RepCounter`-Umbau ist kleiner als angenommen — `WorkoutStateMachine` und `OnlineAdapter` brauchen keine strukturellen Änderungen, nur `RepCounter.process()` selbst.
+- `metrics/directional_gp_shadow.dart` enthält bereits ein getestetes Zustandsmuster (`ready → primary → awaitingReturn → ready`, adaptive Settle/Timeout-Exit-Bedingung), das sich für Option 1 (verzögerte Bestätigung) als Vorbild eignet.
+- Gegen `dsp_verification_test.dart`-Szenarien geprüft: ein fixes Wartefenster (~10–30 Samples, wie im externen Plan geschätzt) wäre für Szenario 4 (100 Samples/Rep) zu kurz — adaptive Exit-Bedingung nötig, nicht fixer Sample-Count.
+- Externe Recherche: Original-Pan-Tompkins hat dieses Zukunfts-Problem strukturell nicht (Search-back/T-Wave-Discrimination schauen rückwärts); ein Kabelzug-Rep-Counting-Patent bestätigt "Zählung am Ende der konzentrischen Phase" als Industriestandard.
+- **Wichtigster Fund:** `workout_engine.dart` — `_useNewPipeline` UND `_shadowMode` stehen fest auf `false`, strukturell abgesichert (`product_path_structural_test.dart`, `cv_structural_test.dart`). Die gesamte hier untersuchte `ExerciseEngine`-Pipeline läuft nirgends live; Legacy (gP-basiert) bleibt autoritativ. Kein Produktionsrisiko in dieser gesamten Arbeit, unabhängig vom Ausgang.
+
+Vollständige Diagnose, Recherche und Bewertung des externen Plans (4 konkrete Korrekturen) stehen in `docs/archive/umbauplan/PHASE_VALIDATOR_FENSTER_PROBLEM.md`. `13_OFFENE_PUNKTE.md` gelesen (Pflichtlektüre laut Bauplan Teil 0, führte zum `_useNewPipeline`-Fund); nichts darin ändert die technischen Schritte.
+
+**Kollision beim Push:** Branch `fix-phase-validator-window` neu von `origin/main` (`28533ae`) erstellt (die alte Version war lokal-only in `flowrep-main` und existiert dort nicht mehr), lokal committet, dann vor dem Push per `git fetch`/`git ls-remote` geprüft wie in Bauplan Punkt 6 vorgeschrieben — dabei zeigte sich, dass zwischenzeitlich Claude-38f650c4 denselben Branchnamen mit einer echten Implementierung gepusht hatte (Commit `1000004`, siehe Eintrag oben). Eigenen Commit auf `origin/fix-phase-validator-window` rebased (ein Konflikt in dieser Datei, manuell aufgelöst: beide Einträge behalten), Doku entsprechend überarbeitet - PHASE_VALIDATOR_FENSTER_PROBLEM.md ist jetzt keine "wartet auf Freigabe"-Doku mehr, sondern Kontext/Recherche-Hintergrund zu einem bereits gepushten (nicht gemergten) Fix, plus unabhängige Verifikation: `flutter test` gegen die 4 Zieldateien lief real, 42/42 grün wie im Commit behauptet; `flutter analyze lib/domain/detection/` sauber. Abweichung gefunden: Commit behauptet 477 Tests/4 rot, eigene volle Suite zeigt 455/8 rot. Vier zusätzliche (drift_encryption_migration_test.dart, error_handler_test.dart, p2_polish_test.dart, widgets/home_screen_test.dart, alles Ladefehler) per Gegenprobe (rep_counter.dart kurzzeitig auf unveränderten main-Stand zurückgesetzt, identischer Fehlschlag) als vorbestehend und fixunabhängig bestätigt. Details in PHASE_VALIDATOR_FENSTER_PROBLEM.md, Abschnitt "Nachtrag".
+
+Offene Fragen für Adi (Details im Dokument): UX-Wahrnehmung der Bestätigungsverzögerung, Priorisierung gegenüber Hardware-Release-Blockern (`13_OFFENE_PUNKTE.md` §1), und ob Claude-38f650c4s Implementierung mit Adis Freigabe erfolgte oder auf Basis des ursprünglichen (durch bfa2669 überholten) Handover-Dokuments ohne Kenntnis von "nur dokumentieren".
+
+Kein Merge nach main.
 
 ---
 
@@ -499,5 +518,3 @@ gelaufen.** Das explizit NICHT als "verifiziert" im Sinne der Projekt-Konvention
 Nächster Schritt: `flutter test test/exercise_engine_pipeline_test.dart test/rep_counter_test.dart`
 und `flutter analyze` auf `rep_counter.dart`/`exercise_engine.dart` laufen lassen, sobald
 wieder ein echter Flutter-Toolchain-Zugriff besteht (Desktop Commander oder Adi selbst).
-
-Kein Merge nach main.
