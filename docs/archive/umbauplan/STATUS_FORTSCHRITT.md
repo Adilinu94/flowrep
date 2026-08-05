@@ -462,3 +462,42 @@ Vorgeschlagener Fix (2 Dateien, minimal, auf Nebenwirkungen geprüft — keine a
 Details, exakte Zeilenverweise, vollständige Herleitung: `docs/archive/umbauplan/PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md`.
 
 **Nicht mit echtem `flutter test` verifiziert** (kein Flutter-Zugriff in dieser Sandbox) — sorgfältig Zeile für Zeile gegen die tatsächliche Implementierung gelesen und den Ausführungspfad manuell durchgespielt, aber nicht selbst ausgeführt. Fix nicht angewendet. Nächster Schritt: Adi-Entscheidung, ob/wann umgesetzt wird.
+
+
+---
+
+## 2026-08-05, Claude-38f650c4 (claude.ai-Sandbox, KEIN Flutter/Dart, KEIN Desktop-Commander-Zugriff mehr in dieser Session): Audit-Befunde A+B umgesetzt — NICHT real verifiziert
+
+Aufbauend auf `PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md` (Session 797701a5): beide dort
+gefundenen Metadaten-Bugs unabhängig am Code nachvollzogen und bestätigt (exakte
+Zeilen/Fundstellen geprüft, nicht nur die Doku übernommen). Dabei eine dritte, vom Audit
+nicht explizit benannte Fundstelle entdeckt: `_repCounter.qualityScorer.updateExpectations()`
+wird direkt nach dem (fehlerhaften) `_onlineAdapter.onRepConfirmed()`-Aufruf ausgeführt und
+überschreibt damit sofort, was `RepCounter._trackForAdaptation()` (mit korrekter Fensterlänge)
+im selben Rep-Zyklus gerade gesetzt hatte. Dieselben zwei Getter speisen zusätzlich das extern
+emittierte `RepEvent`.
+
+**Umgesetzt (Vorschlag aus Abschnitt 4 des Audits, unverändert übernommen):** `RepResult`
+um zwei nullable Felder erweitert (`durationSamples`, `prominence`), befüllt in der
+"REP GEZÄHLT"-Rückgabe von `_decide()` mit denselben Werten, die dort bereits für
+`QualityScorer`/`_trackForAdaptation` berechnet werden. `exercise_engine.dart`: beide
+Lesestellen (`_onlineAdapter.onRepConfirmed()`, `RepEvent`-Konstruktion) von
+`_repCounter.peakDetector.lastPeak*` auf `result.durationSamples!`/`result.prominence!`
+umgestellt. `peak_detector.dart` weiterhin unangetastet.
+
+**Wichtig — Umgebungswechsel mitten in der Session:** Desktop Commander (Shell-Zugriff auf
+Adis Maschine) war ab diesem Punkt nicht mehr verfügbar (`tool_search` liefert nur noch
+reine Dateisystem-Werkzeuge ohne Prozessausführung). Dieser Fix läuft daher über einen
+`git worktree` im claude.ai-Sandbox (kein Flutter/Dart hier, wie immer). **Verifiziert ist
+hier NUR per manueller Code-Lektüre:** Typen von `RepEvent.prominence`/`durationSamples`
+(`double`/`int`, non-nullable) gegen `result.prominence!`/`result.durationSamples!`
+gegengeprüft, `RepResult.none`s `const`-Konstruktor mit den neuen optionalen Feldern
+weiterhin gültig, keine weiteren Lesestellen von `peakDetector.lastPeak*` außerhalb dieser
+beiden Stellen (per `grep` bestätigt) - aber **kein echtes `flutter test`/`flutter analyze`
+gelaufen.** Das explizit NICHT als "verifiziert" im Sinne der Projekt-Konvention markiert.
+
+Nächster Schritt: `flutter test test/exercise_engine_pipeline_test.dart test/rep_counter_test.dart`
+und `flutter analyze` auf `rep_counter.dart`/`exercise_engine.dart` laufen lassen, sobald
+wieder ein echter Flutter-Toolchain-Zugriff besteht (Desktop Commander oder Adi selbst).
+
+Kein Merge nach main.

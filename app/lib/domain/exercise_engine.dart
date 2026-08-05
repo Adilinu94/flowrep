@@ -241,10 +241,13 @@ class ExerciseEngine {
       RepCounted(repNumber: result.repNumber),
     );
 
-    // Online-Adaptation
+    // Online-Adaptation (durationSamples/prominence aus dem RepResult, NICHT
+    // aus peakDetector.lastPeak* - das kann bei erweitertem Fenster
+    // trunkiert sein oder bei Kollisionen bereits den naechsten Peak zeigen,
+    // siehe PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md Befund A/B)
     _onlineAdapter.onRepConfirmed(
-      durationSamples: _repCounter.peakDetector.lastPeakDurationSamples,
-      prominence: _repCounter.peakDetector.lastPeakProminence,
+      durationSamples: result.durationSamples!,
+      prominence: result.prominence!,
       timestampMs: frame.timestampMs,
     );
 
@@ -261,8 +264,8 @@ class ExerciseEngine {
       repNumber: result.repNumber,
       qualityScore: result.qualityScore ?? 0.0,
       correlation: result.correlation,
-      prominence: _repCounter.peakDetector.lastPeakProminence,
-      durationSamples: _repCounter.peakDetector.lastPeakDurationSamples,
+      prominence: result.prominence!,
+      durationSamples: result.durationSamples!,
       timestampMs: frame.timestampMs,
       durationRatio: 0.5, // Wird aus PhaseValidator übernommen
     );
