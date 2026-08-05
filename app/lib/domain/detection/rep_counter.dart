@@ -37,12 +37,27 @@ class RepResult {
   /// Diagnose: Warum wurde die Rep verworfen? (null wenn gezählt).
   final String? rejectionReason;
 
+  /// Fenster-Länge (Samples), auf der validiert/gewertet wurde (null wenn
+  /// nicht gezählt). Kann größer sein als PeakDetectors eigene, trunkierte
+  /// Fensterlänge (siehe PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md, Befund A/B) -
+  /// Konsumenten sollten dieses Feld statt peakDetector.lastPeakDurationSamples
+  /// verwenden.
+  final int? durationSamples;
+
+  /// Prominenz des zugrundeliegenden Peaks (null wenn nicht gezählt). Wird
+  /// hier gespiegelt, damit Konsumenten nicht auf peakDetector.lastPeak*
+  /// zurückgreifen müssen, das bei Kollisionen bereits den nächsten Peak
+  /// zeigen kann (Befund B).
+  final double? prominence;
+
   const RepResult({
     required this.repCounted,
     required this.repNumber,
     this.qualityScore,
     this.correlation,
     this.rejectionReason,
+    this.durationSamples,
+    this.prominence,
   });
 
   /// Konstante für "keine Rep in diesem Frame".
@@ -223,6 +238,8 @@ class RepCounter {
       repNumber: _repCount,
       qualityScore: qualityResult.score,
       correlation: matchResult.noTemplate ? null : matchResult.correlation,
+      durationSamples: window.length,
+      prominence: peak.prominence,
     );
   }
 
