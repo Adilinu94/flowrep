@@ -444,3 +444,21 @@ Vor Beginn frisch geholt und den tatsächlichen main-Stand geprüft statt der al
 **Real verifiziert** (echtes `flutter test`/`flutter analyze`, diese Maschine, Flutter 3.44.6/Dart 3.12.2): `dsp_verification_test.dart` + `exercise_engine_pipeline_test.dart` + `phase_validator_test.dart` + `rep_counter_test.dart`: 42/42 grün (Szenarien 1/3/4/7 vorher rot, jetzt grün). Volle Suite: 477 Tests, 4 rot = exakt der vorbestehende 11er-Cluster minus der 7 hier gefixten (übrig: ROM-Gate ×2, `p1_assets_structural_test.dart`, `reconnect_test.dart` - alle unangetastet, alle bereits dokumentiert). `flutter analyze`: 17 Issues, alle vorbestehend in Test-Dateien, keins in `lib/`, keins neu.
 
 Branch `fix-phase-validator-window`, gepusht. Kein Merge nach main. Nächster Schritt: Adi entscheidet über Merge-Zeitpunkt (zusammen mit `fix-live-gp-authority-coupling`, da Problem 1 und Problem 2 nachweislich unabhängig sind).
+
+---
+
+## 2026-08-05, Claude-797701a5 (claude.ai-Sandbox, kein Flutter-Zugriff, Adi: "schreibe deine wichtigsten Erkenntnisse in ein Dokument"): Audit von `1000004` — zwei Metadaten-Bugs gefunden
+
+Vor Bekanntwerden von `1000004` zwei unabhängige Plan-Entwürfe für Richtung 1 (verzögerte Bestätigung) gegeneinander und gegen den Code geprüft. Zentrale Korrektur dabei: `bfa2669`s tatsächlicher Befund ist ein Zuordnungsproblem (Peak N wird im selben Frame bestätigt wie Peak N−1s Fenster fertig wird), kein simples Verspätungsproblem, wie einer der Entwürfe es beschrieb. Beide Pläne wurden durch die tatsächliche Implementierung überholt.
+
+**Implementierungs-Audit von `1000004`:** Architektur (Fenster-Erweiterung komplett in `RepCounter`, kein `PeakDetector`-Handover) löst das Zuordnungsproblem strukturell sauberer als beide diskutierten Pläne. Signalbasierte Exit-Bedingung (`_pendingComplete()`) robuster als eine feste oder proportionale Verzögerung. Real verifiziert, nichts daran auszusetzen.
+
+**Zwei neue Befunde, durch die Tests nicht erfasst** (Commit-Message selbst: "eine verzögerte statt sofortige Entscheidung ist für diese Tests unsichtbar"): `ExerciseEngine._onRepCounted()` liest Dauer/Prominenz nachträglich aus `PeakDetector.lastPeakDurationSamples`/`.lastPeakProminence` (`exercise_engine.dart:246-247`) statt aus dem tatsächlich validierten Fenster. (A) Das ist immer die trunkierte, nicht die erweiterte Fensterlänge → systematisch zu kurze Dauer bei jeder Rep mit exzentrischer Phase, gemeldet an die adaptive Baseline. (B) Im Kollisionsfall (schneller Rep-Takt) überschreibt `peakDetector.process()` für den neuen Peak diese Felder, bevor der alte Peak sein Ergebnis zurückgibt → komplett falsche Metadaten (Dauer UND Prominenz gehören zum falschen Peak). `RepResult` selbst (Count/Qualität/Korrelation) bleibt in beiden Fällen korrekt.
+
+Kein Rep-Count betroffen, keine Live-Auswirkung (`_useNewPipeline=false`), aber relevant für die Shadow-Diff-Qualität bei kalibrierten Nutzern (`enableShadowMode()` läuft automatisch beim Laden eines Kalibrierungsprofils, `engine_provider.dart:~1397`).
+
+Vorgeschlagener Fix (2 Dateien, minimal, auf Nebenwirkungen geprüft — keine anderen Referenzen auf die betroffenen Getter, keine `RepResult`-Gleichheits-Overrides, kein Test konstruiert `RepResult` direkt): `RepResult` um `durationSamples`/`prominence` erweitern, mit den ohnehin in `_decide()` berechneten Werten befüllen, `ExerciseEngine` von dort statt von `PeakDetector` lesen lassen.
+
+Details, exakte Zeilenverweise, vollständige Herleitung: `docs/archive/umbauplan/PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md`.
+
+**Nicht mit echtem `flutter test` verifiziert** (kein Flutter-Zugriff in dieser Sandbox) — sorgfältig Zeile für Zeile gegen die tatsächliche Implementierung gelesen und den Ausführungspfad manuell durchgespielt, aber nicht selbst ausgeführt. Fix nicht angewendet. Nächster Schritt: Adi-Entscheidung, ob/wann umgesetzt wird.
