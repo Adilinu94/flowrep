@@ -493,3 +493,42 @@ Der Eintrag direkt Ã¼ber diesem hier (Claude-106b941b, Desktop Commander, isol
 
 **Kein Code verÃ¤ndert, keine Doppelarbeit erzeugt.** Branch bleibt `fix-exercise-catalog-5`, dieser Eintrag gepusht, **nicht** nach main gemerged. Nebenbei: diese Datei liegt unter `docs/archive/umbauplan/`, nicht unter dem in Bauplan Teil 0 und im ursprÃ¼nglichen Auftrag genannten `docs/Umbauplan Flowrep/` â€” betrifft also auch den Bauplan selbst, nicht nur meinen Auftragstext.
 
+
+Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). NÃ¤chster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) kÃ¶nnen parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (claude.ai-Sandbox, Adi: "Fange an mit Phase 2"): Expliziter Start-Knopf mit Countdown statt Auto-Arm
+
+Branch `feat-explicit-start-button` von frischem `origin/fix-exercise-catalog-5` (Phase 1 war zu Beginn dieser Session noch nicht auf main). Teil 0, Teil 2.B und Phase 2 aus dem Bauplan komplett gelesen, bevor Code angefasst wurde.
+
+**Wichtigster Fund vor dem Schreiben:** es gab bereits einen "ZÃ¤hlen starten"-Button in `home_screen.dart`, der `startCounting()` direkt (ohne Countdown) aufrief, sichtbar sobald verbunden â€” nicht strikt an Kalibrierung gekoppelt. Der Bauplan-Wortlaut ("erscheint ein Start-Knopf") lieÃŸ vermuten, der Button existiere noch gar nicht; tatsÃ¤chlich fehlten nur zwei Dinge: der Countdown davor und die Kopplung an `hasCalibration`. Kette manuell nachverfolgt statt angenommen: `startCounting()` setzt nur `isCountingActive` (UI-Gate fÃ¼r `_onSample`); der eigentliche idleâ†’active-Ãœbergang in `workout_engine.dart` (Wake-Threshold, ADR-020/ADR-003) ist unverÃ¤ndert und wird von M5 BtnA identisch genutzt â€” musste also nicht angefasst werden.
+
+**Umgesetzt:** `beginStartCountdown()`/`_cancelStartCountdown()` in `engine_provider.dart`, 1:1 nach dem Muster des bestehenden Pausen-Timers (`_restTimer`/`_startRestTimer`) gebaut, inkl. `debugSetStartCountdownSeconds()` fÃ¼r schnelle Tests. `startCounting()` rÃ¤umt jetzt auch einen noch laufenden Countdown auf (z.B. wenn M5 BtnA wÃ¤hrend des Countdowns gedrÃ¼ckt wird). `autoArmAfterCalib`-Default in `user_prefs_store.dart` und `engine_provider.dart` von an auf aus gedreht â€” bestehende, bereits gespeicherte Nutzerwerte bleiben unangetastet (`_loadBool` greift nur, wenn der Key noch nie gesetzt wurde, das ist kein neuer Mechanismus, nur genutzt). Neues Widget `start_countdown_button.dart` ersetzt den alten Button optisch 1:1, zeigt bei laufendem Countdown Text statt Button. Zwei Stellen mit jetzt falschem "Default an"-Text korrigiert (`settings_screen.dart`, zwei Doc-Kommentare in `engine_provider.dart`).
+
+**Bewusste Auslegungsentscheidung, nicht stillschweigend:** `enabled` des Buttons an `uiState.hasCalibration` gekoppelt (vorher nur an `isConnected`) â€” das ist strenger als der bisherige Code, aber genau das, was Phase 2 wÃ¶rtlich verlangt ("nur aktiv/sichtbar wenn kalibriert").
+
+**Bewusst nicht angefasst:** `docs/Version1.0/13_OFFENE_PUNKTE.md`, obwohl dort ebenfalls "(default on)"/"(Default an)" steht â€” das ist ein datiertes Audit-Snapshot-Dokument (Stand 2026-07-24), kein lebendiges Spec; rÃ¼ckwirkendes Ã„ndern wÃ¼rde die Historie verfÃ¤lschen.
+
+Bestandstests an den neuen Default angepasst (`user_prefs_store_test.dart` 2 Stellen, `quick_wins_audit_test.dart` 1 Test). Neuer kombinierter Test `start_countdown_test.dart` (Provider mit echtem `Future.delayed`-Timer + Widget-Tests): deckt explizit alle vier in Phase 2 geforderten FÃ¤lle ab, insbesondere dass nach Countdown-Ende `isCountingActive` tatsÃ¤chlich `true` wird (echter Beleg fÃ¼r den Aufruf, nicht nur Rendering-Check). `home_screen_test.dart` (4 Tests) gegengeprÃ¼ft: alle bleiben im getrennten Zustand, erreichen den geÃ¤nderten Codepfad nicht â€” keine Kollision zu erwarten. Alle Tests im Repo per `grep` nach `reloadCalibration`/Auto-Arm-AbhÃ¤ngigkeiten durchsucht: keine weiteren Treffer auÃŸer den beiden angepassten.
+
+**Nicht mit echtem `flutter analyze`/`flutter test` verifiziert** â€” kein Flutter/Dart-Toolchain in dieser Sandbox. Ersatzweise: jede geÃ¤nderte Datei komplett gegengelesen, alle Referenzen per `grep`/`git log -- <pfad>` nachverfolgt statt angenommen, Dartdoc-Querverweis auf eine nicht importierte Klasse vorab entfernt.
+
+Commit `42aa1c2` auf Branch `feat-explicit-start-button`, gepusht und gegen `origin` verifiziert (Hash-Match), **nicht** nach main gemerged. NÃ¤chster Schritt laut Bauplan: Phase 3 (Gewicht/KG eintragen), gleiches Muster.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "Du bist doch mit Desktopcommander verbunden, kannst du bitte die Tests machen"): Erster echter Toolchain-Lauf fÃ¼r Phase 1+2
+
+Bisher stand in jedem Eintrag "nicht mit echtem `flutter analyze`/`flutter test` verifiziert, kein Toolchain in der Sandbox". Das Ã¤ndert sich mit diesem Eintrag zum ersten Mal â€” Adi hat auf Desktop Commander verwiesen, das direkt auf seiner Windows-Maschine lÃ¤uft (Flutter 3.44.6, Dart 3.12.2, echt installiert). Frischer Klon nach dem etablierten Namensmuster (`flowrep-verify-phase1-2-f2c0b46b` auf dem Desktop, PAT nur fÃ¼r den Klon verwendet, danach sofort per `git remote set-url` entfernt), Branch `feat-explicit-start-button` ausgecheckt (enthÃ¤lt Phase 1 + Phase 2).
+
+**`flutter analyze` (roh, vor Codegen):** 49 Fehler, fast alle "Target of URI hasn't been generated: drift_database.g.dart" â€” kein Bug, sondern der fehlende `build_runner`-Schritt (die generierte Drift-Datei ist kein Git-Artefakt). Nach `dart run build_runner build`: alle 32 drift-Fehler weg. Verbleibend: 17 vorbestehende Fundstellen (Lints/Infos + ein echter, aber vorbestehender Fehler in `reconnect_test.dart`, `ISensorProvider.deviceEvents` fehlt in einer Mock-Klasse) â€” **keine davon in einer meiner Phase-1/2-Dateien.**
+
+**`flutter test` (voller Lauf):** ist an genau diesem `reconnect_test.dart`-Compile-Fehler abgestÃ¼rzt, bevor alle Dateien durchlaufen waren. Dabei aber ein **echter Bug in meiner eigenen Arbeit** aufgedeckt: eine dritte Stelle in `user_prefs_store_test.dart` (Zeile ~216, Test "default remains true without stored value"), die beim `autoArmAfterCalib`-Default-Flip in Phase 2 Ã¼bersehen wurde â€” mein `grep` hatte damals nur einen Dateiausschnitt geprÃ¼ft statt der ganzen Datei, zwei von drei Stellen erwischt. Direkt auf Adis Maschine gefixt (`edit_block`), mit `flutter test test/user_prefs_store_test.dart test/quick_wins_audit_test.dart` bestÃ¤tigt (18/18 grÃ¼n), danach identisch in die Sandbox Ã¼bertragen, commitet (`151a346`) und gepusht â€” mit ehrlicher Commit-Message, dass der Fund Ã¼ber die echte Toolchain kam, nicht Ã¼ber weiteres Lesen.
+
+Danach den Rest der Suite ohne die eine kaputte Datei laufen lassen (64 Dateien explizit aufgelistet): **475 von 485 grÃ¼n.** Die 10 verbleibenden Fehler (`dsp_verification_test.dart`, `exercise_engine_pipeline_test.dart`, `workout_engine_test.dart`, `p1_assets_structural_test.dart`) nicht einfach als "nicht meins" behauptet, sondern bewiesen: `git diff --stat origin/main origin/feat-explicit-start-button -- <je Datei>` liefert fÃ¼r jede betroffene Test- und Implementierungsdatei einen **leeren Diff** â€” byte-identisch zu main, also zweifelsfrei vorbestehend (DSP/ROM-Gate-Themen, eine Fundstelle referenziert explizit "Product-Owner-Entscheidung 2026-07-25", also vor Phase 1/2).
+
+**Ergebnis:** Phase 1 + 2 sind jetzt tatsÃ¤chlich mit echter Toolchain verifiziert, nicht nur plausibel gemacht. Branch `feat-explicit-start-button` bei `151a346`, weiterhin nicht gemergt.
+
+**Nebenbefund beim `git fetch` danach:** `feat-weight-entry` ist inzwischen auf `origin` erschienen (Phase 3 der parallelen Session), und `fix-exercise-catalog-5` hat einen neuen Commit (`a55af51..26aeadb`) von jemand anderem erhalten. Beides hier nur vermerkt, nicht geprÃ¼ft oder angefasst â€” das ist ein eigener nÃ¤chster Schritt.
+

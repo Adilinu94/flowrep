@@ -39,6 +39,10 @@ const double kMinThresholdAboveBaseline = 0.10;
 /// Default rest timer duration (seconds).
 const int kDefaultRestDurationSeconds = 90;
 
+/// Default countdown before the explicit start button actually starts
+/// counting (Bauplan Phase 2 / Teil 2.B).
+const int kDefaultStartCountdownSeconds = 3;
+
 /// Reconnection: max attempts.
 const int kMaxReconnectAttempts = 10;
 
