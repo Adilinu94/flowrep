@@ -40,6 +40,9 @@ class WorkoutUiState {
   final String selectedExerciseId;
   final bool hasCalibration;
 
+  // Gewicht (kg) für den aktuellen/nächsten Satz (Bauplan Phase 3)
+  final double? pendingWeightKg;
+
   // Manuelle Korrektur (SPEC §5.1.4 / P0-1)
   final bool showCorrectionDialog;
   final int? correctionSetCountedReps;
@@ -112,6 +115,7 @@ class WorkoutUiState {
     this.startCountdownSecondsRemaining = 3,
     this.selectedExerciseId = 'bicep_curl',
     this.hasCalibration = false,
+    this.pendingWeightKg,
     this.showCorrectionDialog = false,
     this.correctionSetCountedReps,
     this.correctionSetUserReps,
@@ -169,6 +173,8 @@ class WorkoutUiState {
     int? startCountdownSecondsRemaining,
     String? selectedExerciseId,
     bool? hasCalibration,
+    double? pendingWeightKg,
+    bool clearPendingWeightKg = false,
     bool? showCorrectionDialog,
     int? correctionSetCountedReps,
     int? correctionSetUserReps,
@@ -232,6 +238,9 @@ class WorkoutUiState {
           startCountdownSecondsRemaining ?? this.startCountdownSecondsRemaining,
       selectedExerciseId: selectedExerciseId ?? this.selectedExerciseId,
       hasCalibration: hasCalibration ?? this.hasCalibration,
+      pendingWeightKg: clearPendingWeightKg
+          ? null
+          : (pendingWeightKg ?? this.pendingWeightKg),
       showCorrectionDialog:
           showCorrectionDialog ?? this.showCorrectionDialog,
       correctionSetCountedReps:

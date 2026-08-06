@@ -119,6 +119,7 @@ class SessionSummaryDialog extends StatelessWidget {
                 'Satz ${i + 1} — '
                 'Engine ${setList[i].countedReps}'
                 '${setList[i].correctedReps != null ? ' · Korrigiert ${setList[i].correctedReps}' : ''}'
+                '${setList[i].weightKg != null ? ' · ${setList[i].weightKg} kg' : ''}'
                 ' — Peaks',
                 style: Theme.of(context).textTheme.labelMedium,
               ),
