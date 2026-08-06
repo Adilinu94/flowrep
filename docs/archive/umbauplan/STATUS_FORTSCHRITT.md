@@ -544,3 +544,25 @@ Direkt vor dem Push zeigte der übliche Kollisionscheck: `edbf16cb` war zwischen
 Stattdessen konsolidiert: `edbf16cb`s Abschnitt 7 unverändert gelassen (Inhalt korrekt, neue Redundanz-Erkenntnis wertvoll), aber die fünf noch veralteten Stellen im Rest des Dokuments (Zusammenfassung, Abschnitt-3-Statusmarker, Abschnitt-4-Kopf, Risikoeinordnung, Referenzen, Status-Zeile) auf Abschnitt 7 verweisend aktualisiert, statt sie zu duplizieren.
 
 Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox). Weiterhin offen, unverändert: echter Testlauf für `01d2e9c`.
+
+---
+
+## 2026-08-06, Claude-573db12a (Desktop Commander, Adis Maschine): 01d2e9c echt verifiziert — 4 Zieldateien grün, volle Suite wie erwartet
+
+Vor Arbeit `git fetch origin --prune` (neue Branches `docs-branch-audit-2026-08-04`, `fix-phase-validator-window`, `fix-reconnect-test-compile` geholt), Bauplan Teil 0 (`origin/bauplan-finale-app:docs/design/BAUPLAN_FINALE_APP_2026-08-01.md`) und `STATUS_FORTSCHRITT.md` gelesen, Branch `fix-phase-validator-window` ausgecheckt. Git-Identität `Claude (Session: 573db12a)` gesetzt.
+
+**Verifikation wie beauftragt, mit echtem Flutter-Zugriff (Flutter 3.44.6 / Dart 3.12.2, `${env:ProgramFiles(x86)}` gesetzt):**
+- `flutter test test/dsp_verification_test.dart test/exercise_engine_pipeline_test.dart test/phase_validator_test.dart test/rep_counter_test.dart`: **42/42 grün** — deckt exakt die von `1000004` gefixten Szenarien ab, keine Regression in den 4 Zieldateien.
+- `flutter test` (volle Suite): **477 Tests, 4 rot** — exakt die erwarteten 4 vorbestehenden, kein neuer Fehler:
+  - `test/p1_assets_structural_test.dart` (CI workflow fehlt)
+  - `test/reconnect_test.dart` (lädt nicht: `ISensorProvider.deviceEvents` fehlt im Mock)
+  - `test/workout_engine_test.dart` — ROM-Gate ×2 (`prominenceMin` below-floor / omitted)
+- `flutter analyze`: **18 Issues, 1 error** — derselbe `reconnect_test.dart`-Fehler plus vorbestehende Infos/Warnings, nichts Neues in `lib/`, kein neuer `lib/`-Fehler durch `01d2e9c`.
+
+**Einordnung:** `01d2e9c` (RepResult trägt `durationSamples`/`prominence`, behebt Audit-Befund A+B) war bisher nur per Code-Lektüre geprüft (Commit-Message sagte das ehrlich). Jetzt **echt mit `flutter test` verifiziert** — braucht keinen weiteren Code-Fix. Abweichung aus Session `e14e4950` (455/8 behauptet vs 477/4 real bei `1000004`) hier nicht reproduziert — volle Suite zeigt hier 477/4 wie in `1000004` behauptet; möglich Umgebungsabhängigkeit (anderer Runner / SQLite-Cipher-Build).
+
+Geprüft gegen echte Audits (`PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md`, `PHASE_VALIDATOR_FENSTER_PROBLEM.md`) statt übernommen — Aussagen zu Befund A/B und Kollisionspfad am echten Code nachvollziehbar.
+
+**Wichtig für Priorisierung (wie beauftragt geprüft):** `AUDIT_FULL_REPO_IMPROVEMENTS.md` stuft Problem 2 als **P2, Gate G7** ein, `_useNewPipeline=true` sogar erst P3 — nicht releaseblockierend. Echter Blocker laut `docs/hardware/PLAN_HW_TEST_AKTUELL.md` sind die **P0-Kurzchecks A1–A5 (~5–10 Min am Gerät)**, nicht Problem 2 weiter zu vertiefen.
+
+Kein Merge nach main. Branch bleibt `fix-phase-validator-window`.
