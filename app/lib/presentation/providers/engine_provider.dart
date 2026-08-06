@@ -1050,7 +1050,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   /// `_openCalibrationWizard` in home_screen.dart requires a
   /// [BleSensorProvider] (returns immediately for [MockSensorProvider]),
   /// and [_loadCalibration] - the only place in this file that sets
-  /// `hasCalibration: true` - itself returns immediately when [isMock].
+  /// `hasCalibration` - itself returns immediately when [isMock].
   /// Phase 4 Bauplan Schritt 3/4 finding (2026-08-02): this is a
   /// pre-existing characteristic, not something introduced by Phase 1-4.
   @visibleForTesting
@@ -1401,6 +1401,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
     state = state.copyWith(errorText: null);
     try {
       await _sensorProvider.connect();
+      // Foreground-Service laeuft ab Verbindungsaufbau, nicht erst ab
+      // startCounting() - schuetzt auch Kalibrierung/Satzpausen vor dem
+      // Verbindungsabbruch, den Android bei gesperrtem Screen sonst macht.
+      unawaited(_fgService.start());
     } catch (e) {
       state = state.copyWith(
         isConnected: false,
@@ -1413,6 +1417,7 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
   Future<void> disconnect() async {
     _userInitiatedDisconnect = true; // Kein Auto-Reconnect
     _cancelReconnect();
+    unawaited(_fgService.stop());
     await _sensorProvider.disconnect();
   }
 
@@ -1459,7 +1464,10 @@ class EngineNotifier extends StateNotifier<WorkoutUiState> {
       // chosenSignal for non-migrated profiles.
       state = state.copyWith(
         calibratedThreshold: profile.theta,
-        hasCalibration: true,
+        // Strikt: ein migriertes/geliehenes Profil (migratedFrom != 0) zaehlt
+        // nicht als Kalibrierung fuer DIESE Uebung - Start-Button bleibt aus,
+        // bis echt fuer diese Uebung kalibriert wurde (Adi-Entscheidung).
+        hasCalibration: profile.migratedFrom == 0,
       );
       final axis = profile.migratedFrom == 0 ? profile.rotationAxis : null;
       final bias = profile.migratedFrom == 0 ? profile.gyroBias : null;

@@ -83,6 +83,17 @@ void main() {
       await notifier.endSession();
       expect(notifier.debugFgService.isRunning, isFalse);
     });
+
+    test('connect starts FGS; disconnect stops it (P0-1: bleibt auch '
+        'ausserhalb des Zaehlens verbunden, z.B. waehrend Kalibrierung/Satzpause)',
+        () async {
+      expect(notifier.debugFgService.isRunning, isFalse);
+      await notifier.connect();
+      expect(notifier.debugFgService.isRunning, isTrue);
+
+      await notifier.disconnect();
+      expect(notifier.debugFgService.isRunning, isFalse);
+    });
   });
 
   group('P0-5 structural wiring', () {

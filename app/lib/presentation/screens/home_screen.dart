@@ -465,12 +465,6 @@ class HomeScreen extends ConsumerWidget {
               child: const Text('Wiederholung simulieren (Mock)'),
             ),
           if (!notifier.isMock) ...[
-            ElevatedButton(
-              onPressed: notifier.toggleDummyStream,
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-              child: const Text('Dummy Stream', style: TextStyle(fontSize: 12)),
-            ),
-            const SizedBox(height: 12),
             ElevatedButton.icon(
               onPressed: () => _openCalibrationWizard(context, notifier),
               icon: const Icon(Icons.tune),

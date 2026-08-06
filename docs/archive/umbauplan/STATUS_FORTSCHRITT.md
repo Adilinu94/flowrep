@@ -852,3 +852,18 @@ Details, exakte Zeilenverweise, vollständige Herleitung aller drei Befunde: sie
 
 Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox) - reiner Dateitransfer plus Zusammenfassung, keine neue Code- oder Testaussage. Weiterhin offen: Befund C beheben oder bewusst zurückstellen (Adi-Entscheidung), Row-Grifftyp-Frage (laut Adi aktuell unwichtig, zurückgestellt).
 
+
+---
+
+## 2026-08-06, Claude-edbf16cb (claude.ai-Sandbox, kein Flutter-Zugriff, Adi: Hardware-Test-Befunde)
+
+Adi hat den P0-Hardware-Test gemacht (siehe vorherige Empfehlung) und dabei vier reale Probleme gefunden. Auf "strikt, Kalibrierung immer notwendig, kümmere dich um alle Punkte" umgesetzt:
+
+1. **Verbindungsabbruch bei gesperrtem Handy/Hintergrund:** Erste Ferndiagnose war ungenau ("Foreground Service wird nie gestartet") - Korrektur nach genauerem Suchen: er WIRD gestartet, aber nur waehrend `startCounting()`/`stopCounting()`/`endSession()`, nicht waehrend der ganzen Verbindung. Zwischen Saetzen, waehrend Kalibrierung oder Uebungsauswahl war die Verbindung also ungeschuetzt. Fix: `_fgService.start()` zusaetzlich in `connect()`, `_fgService.stop()` zusaetzlich in `disconnect()` (rein additiv, bestehende startCounting/stopCounting/endSession-Aufrufe unveraendert, idempotent). Test ergaenzt in `foreground_service_test.dart`.
+2. **"Sensor unruhig, M5 neu starten":** Kein Code-Fix - das ist ein bewusst gebauter Waechter (SensorHealthMonitor) fuer eine bekannte Hardware-Eigenart (haengender Gyro-Wert trotz Ruhe). Erwartung: tritt seltener auf, sobald Punkt 1 weniger Verbindungsabbrueche verursacht, aber ursaechlich getrennte Sache.
+3. **Start-Button ohne echte Kalibrierung fuer die Uebung:** `_loadCalibration()` setzte `hasCalibration: true` allein dadurch, dass IRGENDEIN Profil geladen wurde - auch migrierte/geliehene (`migratedFrom != 0`). Ein bereits vorhandenes Feld `needsRecalibration` existierte dafuer, wurde aber nirgends abgefragt. Fix (Adi-Entscheidung: strikt): `hasCalibration: profile.migratedFrom == 0`. Kein Test ergaenzt - haette einen echten/Fake-BleSensorProvider gebraucht, konnte ich ohne Flutter-Lauf nicht verlaesslich pruefen. Reine 1-Zeilen-Bedingungsaenderung, per Lektuere verifiziert.
+4. **Dummy-Stream-Button entfernt** aus home_screen.dart (war unconditional sichtbar bei echter BLE-Verbindung, kein Debug-Flag). `toggleDummyStream()`-Methoden selbst (engine_provider.dart, ble_sensor_provider.dart) bewusst NICHT entfernt - Adi fragte nach dem Button, nicht der Faehigkeit; koennte spaeter wieder hinter einem echten Debug-Schalter auftauchen.
+
+Nicht mit echtem `flutter test`/`flutter analyze` verifiziert (kein Flutter-Zugriff in dieser Sandbox) - nur Code-Lektuere, Klammernbalance-Check auf allen drei geaenderten Dateien (sauber), und Pruefung bestehender Tests auf Kollision (foreground_service_test.dart, calibration_engine_integration_test.dart, exercise_registry_test.dart, quick_wins_audit_test.dart, workout_engine_test.dart - keiner bricht durch diese Aenderung, wurde einzeln nachgelesen).
+
+Naechster Schritt: mit Desktop Commander/echtem Flutter-Zugriff testen, v.a. `foreground_service_test.dart` (neuer Test) und die betroffenen Widget-Tests fuer home_screen.dart, falls es welche gibt.
