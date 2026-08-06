@@ -810,3 +810,27 @@ wieder ein echter Flutter-Toolchain-Zugriff besteht (Desktop Commander oder Adi 
 
 Kein Merge nach main.
 
+---
+
+## 2026-08-06, Claude-573db12a (Desktop Commander, Adis Maschine): Alle 7 fertigen Teile nach main zusammengeführt, echt verifiziert
+
+Auf Adis "Ja leg los" alle bereitstehenden, geprüften Branches in empfohlener Reihenfolge nach `main` zusammengeführt (jeweils frisch `git fetch origin --prune`, Merge lokal, `STATUS_FORTSCHRITT.md`-Konflikte manuell beide Seiten behalten). Kein Force-Push, keine parallelen Kollisionen.
+
+**Reihenfolge (P0->P2, live->Bauplan->P2-shadow):**
+1. `fix-reconnect-test-compile` (1570d31, 1 File, trivial) - Fast-forward, kein Konflikt.
+2. `fix-exercise-catalog-5` (c709ddc, Phase 1, 5 Übungen) - Main-Basis für Phase 2+3, Konflikt nur in `STATUS_FORTSCHRITT.md`, beide Seiten behalten, Commit f49cb58. Verifiziert: 480 Tests/10 rot, alle 10 vorbestehend (4x dsp_verification Szenario 1/3/4/7, 3x pipeline, 2x ROM-Gate, 1x p1_assets), kein neuer Fehler durch Phase 1.
+3. `fix-live-gp-authority-coupling` (4656f4b, Problem 1 live) - cherry-pick nur workout_engine.dart (16 Zeilen), bewusst minimal (Handover-Rep darf Combined zählen wenn gpRepCount==0). Kein Merge des ganzen Branches (hätte 1191 Zeilen inkl. Bauplan-Phase 2-4 zurückgerollt).
+4. `feat-explicit-start-button` (Phase 2, Start-Knopf mit Countdown) - Merge 415c50a, Konflikt nur STATUS.
+5. `feat-weight-entry` (Phase 3, KG-Eingabe) - Merge 6fb4931, Konflikte in `home_screen.dart` (Start-Knopf vs Gewicht an selber Stelle, beide behalten: Gewicht->StartCountdownButton, entspricht phase4-Tracker-Resolution) + STATUS. Engine_provider Auto-Merge.
+6. `phase4-tracker-integration` - Merge 3f14ed2, Konflikte home_screen.dart + STATUS (nur doppelte Klammer korrigiert).
+7. `fix-phase-validator-window` (P2, heute 42/42 grün) - cherry-pick 1000004 (0381eb7, rep_counter Fenster-Verlängerung) + 01d2e9c (99f9123, RepResult duration/prominence) einzeln, beide STATUS-Konflikte beide Seiten behalten.
+
+**Home_screen-Fix nach Merge:** Doppelter `StartCountdownButton` + unabgeschlossene Klammer aus gewicht+phase4 Auflösungen korrigiert (Commit 5f47222), danach echt verifiziert.
+
+**Echte Verifikation auf main (Flutter 3.44.6/Dart 3.12.2):**
+- `flutter analyze`: 16 Issues, 0 Fehler (nur vorbestehende Infos/Warnings, kein neuer lib-Fehler).
+- `flutter test` (volle Suite): **510 Tests, 3 rot** - exakt der vorbestehende, dokumentierte Cluster (p1_assets_structural, 2x ROM-Gate prominenceMin). Keine dsp/pipeline-Fehler mehr (durch fix-phase-validator-window jetzt grün). Zeigt dass die Merges korrekt sind.
+- `flutter test` 4 Zieldateien + reconnect + phase4_tracker_flow: **45/45 grün**.
+
+`main` jetzt 40 Commits vor `origin/main`, bereit zum Push. Kein Merge nach main offen (alle 7 erledigt). Nächster Schritt: Push, danach P0-Hardware-Kurzchecks A1-A5 (PLAN_HW_TEST_AKTUELL.md, 5-10 Min am Gerät) statt weiter Code - Problem 2 ist P2/G7, nicht releaseblockierend.
+
