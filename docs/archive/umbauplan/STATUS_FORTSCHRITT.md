@@ -495,6 +495,37 @@ Der Eintrag direkt Ã¼ber diesem hier (Claude-106b941b, Desktop Commander, isol
 
 
 Commit `c709ddc` auf Branch `fix-exercise-catalog-5`, gepusht, **nicht** nach main gemerged (wie vorgeschrieben). NÃ¤chster Schritt laut Bauplan: Phase 2 (expliziter Start-Knopf) und Phase 3 (Gewichts-Eingabe) kÃ¶nnen parallel auf diesem Branch aufbauen, sobald er gemerged ist oder direkt davon abgezweigt wird.
+---
+
+## 2026-08-02, Claude-0caf5da8 (claude.ai-Sandbox, Adi: "Phase 3 vollstÃ¤ndig gemÃ¤ÃŸ Bauplan-Schritt 8/10"): Schritt 8 (History-Anzeige) + fehlender Widget-Test ergÃ¤nzt
+
+Vor Arbeitsbeginn `git fetch origin --prune`: main-HEAD (`969865a`) unverÃ¤ndert, `feat-weight-entry` zum Startzeitpunkt nicht weiter fortgeschritten als der zitierte Stand der parallelen Desktop-Commander-Session (`c5f4b80` aktuellster Commit). Bauplan Phase 3 im Original gelesen statt Paraphrase Ã¼bernommen â€” 11 Schritte bestÃ¤tigt, "8/10" bezieht sich auf die Schritte 8 und 10, nicht auf einen Bruch.
+
+**Schritt 8:** `session_summary_dialog.dart` hatte die Gewichtsanzeige bereits (Append-Stil `' Â· $weightKg kg'` pro Satz). `history_screen.dart` war unverÃ¤ndert (leerer Diff bestÃ¤tigt) â€” dort ergÃ¤nzt, exakt im selben Append-Stil. Eigene Entscheidung, weil `history_screen.dart` anders als der Dialog auf Session-Ebene aggregiert: Gewicht wird nur gezeigt, wenn alle SÃ¤tze einer Session dasselbe Gewicht haben, sonst keine kg-Angabe in der Karte â€” kein neues Spannen-/Volumen-Konzept erfunden (Bauplan: "kein neues Layout-Konzept"). Falls Adi lieber eine Spanne oder das letzte Satzgewicht will: eine Zeile in `_SessionCard.build` Ã¤ndern, kein struktureller Umbau.
+
+**Schritt 10:** `weight_entry_test.dart` hatte Modell-, Provider- und Export-Tests, aber keinen `testWidgets()` fÃ¼r `WeightInputField`. Neue Gruppe ergÃ¤nzt (3 Tests): Initialwert im Feld, `onChanged` liefert geparsten `double`, Komma wird zu Punkt normalisiert â€” deckt exakt ab, was `_handleChanged` in `weight_input_field.dart` tatsÃ¤chlich tut.
+
+**Nicht mit echtem `flutter analyze`/`test` verifiziert** â€” kein Flutter/Dart-Toolchain in dieser Sandbox, Desktop Commander (Schritt 3) ist in dieser Session nicht verfÃ¼gbar. Ersatzweise: Klammernbalance-Check (Python) auf beiden geÃ¤nderten Dateien OK, jede Zeile manuell gegen bestehenden Code gelesen, keine vorhandenen Tests fÃ¼r `history_screen.dart` gefunden, die brechen kÃ¶nnten (`grep`: 0 Treffer). Bitte mit echtem Flutter-Zugriff nachholen, insbesondere die 3 neuen `testWidgets()`.
+
+**Nachtrag zu `c5f4b80`:** Der Commit dokumentiert ausfÃ¼hrlich, was `flutter analyze` fand und behob, erwÃ¤hnt aber an keiner Stelle, ob `flutter test` gelaufen ist. Damit ist unbelegt, ob `drift_migration_test.dart` (173 Zeilen) und die Ã¼brigen Phase-3-Tests seit den dortigen Ã„nderungen (u. a. `raw.close()` statt `raw.dispose()`) tatsÃ¤chlich grÃ¼n sind â€” nur `analyze`, kein `test`, ist dort dokumentiert.
+
+**Nebenbefund:** `feat-weight-entry` wurde von `fix-exercise-catalog-5` vor dessen letzten zwei Commits (`bc05d9c`, `26aeadb`, beide reine Status-Doku) abgezweigt â€” funktional ohne Bedeutung, der VollstÃ¤ndigkeit halber erwÃ¤hnt.
+
+Kein Merge nach main. Branch bleibt `feat-weight-entry`, gepusht.
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "weiter, bitte vorher immer prÃ¼fen, was schon gemacht wurde. Fange dann mit Phase 3 an"): Erste echte Toolchain-Verifikation von feat-weight-entry â€” keine Doppelarbeit
+
+Vor jedem eigenen Code-Versuch erst geprÃ¼ft, was hier bereits steht (Diff komplett gelesen, nicht nur Commit-Messages, gegen Bauplan Phase 3 Schritt fÃ¼r Schritt abgeglichen, `history_screen.dart` selbst nachgeprÃ¼ft statt der Behauptung "keine Pro-Satz-Ansicht" zu vertrauen â€” stimmt). Ergebnis: Umsetzung ist vollstÃ¤ndig und sauber, alle 11 Schritte aus dem Bauplan abgedeckt. Deshalb kein eigener, konkurrierender Code â€” stattdessen mit Desktop Commander verifiziert, was laut den vorherigen EintrÃ¤gen hier noch fehlte.
+
+**Wichtig:** weder `c5f4b80` noch `2549d7c8` hatten echtes `flutter test` â€” nur `flutter analyze` bzw. einen manuellen Klammernbalance-Check als Ersatz (siehe die beiden EintrÃ¤ge direkt darÃ¼ber). Das hier ist also der erste echte Testlauf, keine Doppelverifikation.
+
+Frischer Klon (`flowrep-verify-phase3-f2c0b46b`), `feat-weight-entry` bei `2549d7c8` (exakt der Stand mit `history_screen`-Anzeige und `raw.close()`-Fix). `dart run build_runner build`: 292 Outputs, sauber. `flutter analyze`: 17 Fehler â€” exakt dieselben 17 vorbestehenden wie auf `feat-explicit-start-button` (nichts Neues, keine der Gewichts-Dateien betroffen). `flutter test test/weight_entry_test.dart test/drift_migration_test.dart`: **13/13 grÃ¼n**, inklusive des im Testfile selbst als riskantesten Teil geflaggten Migrationstests (hand-rekonstruiertes v1-Schema) â€” funktioniert beim ersten echten Lauf. ZusÃ¤tzlich die beiden tatsÃ¤chlich angefassten Bestandstests direkt geprÃ¼ft: `home_screen_test.dart` + `session_summary_test.dart` â€” 5/5 grÃ¼n.
+
+**Nebenbefund (nur vermerkt, nicht behoben):** Sobald `feat-explicit-start-button` (Phase 2) und `feat-weight-entry` (Phase 3) zusammengefÃ¼hrt werden, treffen sich beide exakt an derselben Stelle in `home_screen.dart::_buildSetupBody` â€” der alte Direkt-Button, den Phase 2 durch `StartCountdownButton` ersetzt hat, ist in Phase 3 noch die EinfÃ¼gestelle fÃ¼r `WeightInputField`. Rein mechanischer Konflikt (Reihenfolge der beiden Widgets), keine Logik-Kollision â€” voraussichtlich Phase-4-Thema ("alles zur Tracker-Seite zusammenfÃ¼hren").
+
+Kein Code geÃ¤ndert, keine Doppelarbeit erzeugt. Kein Merge nach main. Branch bleibt `feat-weight-entry`.
 
 ---
 
@@ -590,4 +621,121 @@ Kein Code geÃ¤ndert, keine Doppelarbeit erzeugt. Kein Merge nach main. Branch 
 Keine dieser Dateien wurde in Phase 1 oder Phase 3 berÃ¼hrt (`workout_engine.dart`, DSP-Pipeline, CI-Workflow-Datei - alles auÃŸerhalb beider Fenster). Nicht selbst gefixt, nur vermerkt. Deckt sich mit dem unabhÃ¤ngigen Fund von Claude-f2c0b46b direkt darÃ¼ber ("dieselben 17 vorbestehenden [Analyzer-Meldungen] wie auf feat-explicit-start-button").
 
 Branch `feat-weight-entry` bleibt offen, **nicht** nach main gemerged. Isolierter Verify-Klon (`flowrep-phase3-verify`) bleibt auf dem Windows-Rechner liegen, falls die nÃ¤chste Session direkt weiterverifizieren will, statt neu zu klonen.
+
+
+---
+
+## 2026-08-02, Claude-f2c0b46b (Desktop Commander auf Adis Maschine, Adi: "wurde schon gemacht, bitte Ã¼berprÃ¼fen" â†’ C:\Users\adini\Desktop\flowrep-verify-phase3-106b941b): Phase 4 zu Ende gefÃ¼hrt statt neu gebaut
+
+Auf origin war nichts zu Phase 4 zu finden (alle Branches, main, offene PRs via `gh pr list` geprÃ¼ft â€” nichts). Erst nach Adis Pfadhinweis gefunden: lokaler, nie gepushter Branch `phase4-tracker-integration` (Session 106b941b), 5 Commits vor `feat-weight-entry`, mit bereits erledigtem Merge von `feat-explicit-start-button` (Commit `a3ff5bf`, echte Konflikte nur in `home_screen.dart` und dieser Datei, beide sauber aufgelÃ¶st) plus einer unfertigen, nicht committeten Ã„nderung im Arbeitsverzeichnis.
+
+Diese unfertige Ã„nderung geprÃ¼ft statt blind Ã¼bernommen (`git diff`), war inhaltlich sinnvoll (StartCountdownButton zusÃ¤tzlich an `hasCalibration` gekoppelt, konsistent mit `WeightInputField` direkt daneben) und fertig genug zum Committen â€” daher committet (`a925f3e`, eigene Session-Signatur, da Fortsetzung fremder Arbeit) statt eigenen konkurrierenden Code zu schreiben.
+
+**Verifiziert, nicht nur Ã¼bernommen:** `dart run build_runner build` sauber, `flutter analyze` â†’ 17 Fehler, exakt dieselben vorbestehenden wie Ã¼berall sonst, nichts Neues. `flutter test` auf den acht relevantesten Dateien aus Phase 1+2+3 zusammen (genau wegen der Integrationsstelle in `home_screen.dart`) â†’ **64/64 grÃ¼n**.
+
+Branch `phase4-tracker-integration` zum ersten Mal auf `origin` gepusht (war vorher nur lokal auf Adis Maschine). Kein Merge nach main.
+
+---
+
+## 2026-08-02, Claude-e82988e3 (claude.ai-Sandbox, Adi: "Das war letzter Stand andere KI, mach das weiter"): Phase 4 Schritt 3 zu Ende gefÃ¼hrt + Schritt 4 (Integrationstest)
+
+Ãœbernommen genau da, wo die vorige Session aufgehÃ¶rt hatte (Bauplan Phase 4, Schritt 3: manuelle ZustandsÃ¼bergangs-Kette, im Code nachvollzogen statt angenommen). `git fetch` zuerst: main unverÃ¤ndert (`969865a`), `phase4-tracker-integration` bei `94c27b6`, keine neuen Commits seit dem Ã¼bergebenen Stand.
+
+**Schritt 3 zu Ende gefÃ¼hrt - zwei Funde, keiner davon selbst â€žrepariert", beide brauchen eine Entscheidung bzw. sind nur zur Kenntnis:**
+
+**1. Kein Countdown fÃ¼r Satz 2, 3, ... innerhalb einer Session (braucht Adis Entscheidung).** `isCountingActive` wird nur in `stopCounting()` und `endSession()` zurÃ¼ckgesetzt, NICHT in `_onSetCompleted()` - eine Session bleibt vom ersten Start-Knopf-Druck bis "Training beenden" durchgehend `isCountingActive: true`. `home_screen.dart` schaltet auf Basis von genau diesem Flag zwischen `_buildSetupBody` (mit Start-Knopf) und `_buildActiveSetBody` um (Zeile 138) - das war der Punkt, an dem die vorige Session unsicher blieb, ob der Start-Knopf wÃ¤hrend der ZÃ¤hlung noch drÃ¼ckbar bleibt. Klarstellung: nein, er existiert dann gar nicht mehr im Baum (robuster als nur Ã¼ber `enabled:` gegated). Aber das bedeutet auch: fÃ¼r Satz 2+ gibt es **keinen neuen Start-Knopf und keinen neuen Countdown** - `workout_engine.dart`s `idle`-State-Handler (Zeile ~705-737) geht bei ausreichend starkem Bewegungssignal automatisch auf `active`/`calibrating`, exakt derselbe Mechanismus, der vor Phase 2 die kritisierte Auto-Arm-Logik war. Das steht im Widerspruch zum Wortlaut der bestÃ¤tigten Produktentscheidung "ein Countdown mit Vibration geht **jedem** Satz voraus" - aktuell gilt das nur fÃ¼r den ersten Satz einer Session. **Nicht selbst entschieden/geÃ¤ndert** - das ist eine Architekturfrage (ist "jeder Satz" wÃ¶rtlich gemeint, oder war die Sorge eigentlich nur "keine Fehlstarts beim Reinkommen in die App"?), die Adi beantworten sollte, keine VerdrahtungslÃ¼cke, die sich nebenbei mitfixen lÃ¤sst.
+
+**2. Kalibrierungs-Wizard im Mock-Modus nicht erreichbar (vorbestehend, nicht durch Phase 1-4 verursacht, nur zur Kenntnis).** `_openCalibrationWizard()` bricht sofort ab, wenn kein `BleSensorProvider` vorliegt; der einzige Ort im ganzen Provider, der `hasCalibration: true` setzt (`_loadCalibration()`), bricht ebenfalls sofort ab bei `isMock`. FÃ¼r den Integrationstest unten war deshalb ein neuer Test-Hook nÃ¶tig (`debugSetHasCalibration()`, analog zu den bestehenden `debugSetRestDurationSeconds`/`debugSetStartCountdownSeconds`).
+
+Nebenbei: veralteten Kommentar auf `_buildSetupBody` korrigiert ("Setup / between-sets layout" stimmte nicht mehr, seit Rest-Timer und Korrektur-Dialog in `_buildActiveSetBody` verlagert wurden - Fund 1 direkt im Code dokumentiert, nicht nur hier).
+
+**Schritt 4 (Integrationstest):** erst bestehende Muster angesehen wie vorgeschrieben - `home_screen_test.dart` (Riverpod-Overrides + `MockSensorProvider`-Setup) und `calibration_engine_integration_test.dart` (Cross-Component ohne Wizard-UI) als Vorlage kombiniert. Neu: `app/test/widgets/phase4_tracker_flow_test.dart` - ein `testWidgets()`-Test Ã¼ber den kompletten Ablauf: verbinden â†’ Gewicht eintragen â†’ Start-Knopf â†’ Countdown â†’ zÃ¤hlen (echter Tap auf den Mock-Rep-Button, nicht direkter Methodenaufruf) â†’ Satz beenden â†’ Korrektur bestÃ¤tigen (inkl. PrÃ¼fung, dass das eingetragene Gewicht wirklich am gespeicherten Satz landet) â†’ Satz 2 startet nachweislich ohne neuen Knopfdruck (Fund 1 direkt als Testassertion verankert, kein Blindflug) â†’ Training beenden inkl. BestÃ¤tigungsdialog. Rein Ã¼ber Provider-State-Assertions (`notifier.state.*`, `notifier.debugCompletedSets`) statt nur Text-Suche, wo es auf Fakten statt Optik ankommt.
+
+**Nicht mit echtem `flutter analyze`/`test` verifiziert in dieser Nachricht** - Verifikation ist der nÃ¤chste Schritt (Desktop Commander), noch nicht abgeschlossen zum Zeitpunkt dieses Commits. Falls die Verifikation Anpassungen am Test braucht (Timing, exakte Widget-Texte), folgt ein Fix-Commit wie bei Phase 3.
+
+Branch `phase4-tracker-integration`, noch nicht gepusht zum Zeitpunkt dieses Commits (folgt direkt danach). Kein Merge nach main.
+
+**Nachtrag zum Eintrag direkt oben:** die dort angekÃ¼ndigte Verifikation ("folgt direkt") hat NICHT stattgefunden - Desktop Commanders Shell-/Prozess-AusfÃ¼hrung war in dieser Session danach nicht mehr erreichbar (nur noch ein reines Datei-Tool, beschrÃ¤nkt auf den geteilten `flowrep-main`-Ordner, ohne BefehlsausfÃ¼hrung). `phase4-tracker-integration` bei `8350764` ist damit weiterhin ungeprÃ¼ft mit echtem `flutter analyze`/`test` - offen fÃ¼r die nÃ¤chste Session mit Toolchain-Zugriff.
+
+
+---
+
+## 2026-08-03, Claude-0caf5da8 (claude.ai-Sandbox, Adi: Zwischenstand einer Desktop-Commander-Session mit zwei bestÃ¤tigten, aber nur lokal existierenden Fixes fÃ¼r `phase4_tracker_flow_test.dart`): zwei Fixes nachgebaut und gepusht, dritten offen gelassen
+
+Vor Arbeitsbeginn geprÃ¼ft: `phase4-tracker-integration` auf origin unverÃ¤ndert seit `7b69471` (die beiden im Zwischenstand beschriebenen Fixes lagen laut dortiger Aussage ausschlieÃŸlich im isolierten Klon `C:\Users\adini\Desktop\flowrep-verify-phase4-ff8d81e1`, nie gepusht) â€” bestÃ¤tigt.
+
+**Ãœbernommen (Diagnose als plausibel bewertet, Fix selbst nachgebaut - kein Diff vom Original vorhanden, nur die Prosa-Beschreibung):**
+
+1. Deadlock in `phase4_tracker_flow_test.dart`: `await notifier.connect()` awaitet direkt ein echtes `Future.delayed(2s)` in `sensor_provider.dart`; in der fake-async-Zone von `testWidgets` lÃ¤uft die Uhr aber erst bei `pump()` weiter â†’ endloses HÃ¤ngen. Fix: `connect()` erst starten (`final connectFuture = notifier.connect();`), dann pumpen, dann `connectFuture` awaiten.
+2. Hit-Test-Fehler: `home_screen.dart` steckt in einem `SingleChildScrollView`, sprengt den 800Ã—600-Standard-Testviewport; `tap()` scrollt nicht automatisch. Fix: `tester.view.physicalSize`/`devicePixelRatio` einmalig am Testanfang vergrÃ¶ÃŸert (800Ã—2400) statt an acht Tap-Stellen `ensureVisible()`.
+
+**Bewusst NICHT angefasst:** der dritte, im Zwischenstand selbst als unbestÃ¤tigt markierte Verdacht (`repsInCurrentSet` bleibt 0 nach simuliertem Rep, evtl. weil die simulierte Bewegung schon wÃ¤hrend `calibrating` statt erst bei `active` lÃ¤uft) â€” das war zum Zeitpunkt des Tool-Limits noch nicht verifiziert, nicht mal von der Session mit echtem Flutter-Zugriff. Selbst zu raten wÃ¤re eine Vermutung auf einer unbestÃ¤tigten Vermutung. Bleibt offen fÃ¼r die nÃ¤chste Session mit Toolchain-Zugriff.
+
+**Verifikationsstatus unverÃ¤ndert ungeklÃ¤rt:** kein Flutter/Dart-Toolchain in dieser Sandbox, also auch meine beiden nachgebauten Fixes nicht mit echtem `flutter test` geprÃ¼ft â€” nur Klammernbalance (Python) OK. Da Fund 3 offen ist, ist auch nach diesem Commit nicht gesichert, dass der Test insgesamt grÃ¼n lÃ¤uft, nur dass die zwei hier behandelten Fehlerursachen behoben sein sollten.
+
+Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.
+
+
+---
+
+## 2026-08-03, Claude-106b941b (Desktop Commander, Adis Windows-Maschine, Adi: "weiter, bitte vorher immer prÃ¼fen was schon gemacht wurde"): Deadlock+Viewport-Fix von origin real bestÃ¤tigt, Engine-Kalibrierung nachgerÃ¼stet, dritte Ursache eingegrenzt aber nicht gelÃ¶st
+
+Vor Arbeitsbeginn geprÃ¼ft: `phase4-tracker-integration` bewegte sich wÃ¤hrend der Arbeit zweimal (`7b69471`â†’`41cabde` von Session 0caf5da8, die wiederum einen Zwischenstand von einer weiteren, eigenstÃ¤ndigen Session `ff8d81e1` Ã¼bernommen hatte) - beide Male vor dem nÃ¤chsten Schritt neu geholt statt auf altem Stand weitergemacht.
+
+**Von `41cabde` real mit `flutter test` bestÃ¤tigt (vorher nur als Prosa-Diagnose ohne echten Lauf dokumentiert):** Der Deadlock-Fix (`connect()` erst starten, dann pumpen, dann awaiten) und der Viewport-Fix (`SingleChildScrollView` sprengt 800Ã—600, `tester.view.physicalSize` vergrÃ¶ÃŸert) funktionieren beide - der Test lÃ¤uft jetzt in ~1s statt in den 10-Minuten-Timeout zu laufen.
+
+**Vierte Ursache gefunden und behoben:** `debugSetHasCalibration(true)` setzt nur das UI-Flag auf dem Notifier, nicht `WorkoutEngine.hasValidCalibration`. Ohne echtes `applyCalibration()` geht die Engine bei Bewegung von `idle` nach `calibrating` (ADR-020/ADR-003 Selbstkalibrierung Ã¼ber mehrere Reps) statt direkt nach `active` - der einzelne simulierte Rep wird als Kalibrierungs-Peak verbraucht, nie gezÃ¤hlt. Fix: `notifier.engine.applyCalibration(peakThreshold: 2.5, minThresholdAboveBaseline: 0.5)` direkt nach `debugSetHasCalibration`. Per echtem Engine-Debug-Log bestÃ¤tigt: `state=active` ab dem ersten Sample, nicht mehr `calibrating`.
+
+**Trotzdem weiterhin offen, echt geprÃ¼ft statt geraten:** `repsInCurrentSet` bleibt bei 0, obwohl Log klar einen Peak zeigt (`combined=5.375` â†’ RÃ¼ckkehr auf `~1.0`) und der Zustand korrekt `active` ist. Drei naheliegende Hypothesen einzeln per Quellcode+Log widerlegt, nicht nur vermutet:
+1. gP-AutoritÃ¤t Ã¼bernimmt und blockt Combined-Pfad? Nein - `_gpThreshold` bleibt `null` (nie kalibriert), also `_gpIsAuthoritative=false`, `_combinedCountsReps` sollte `true` bleiben.
+2. Ghost Gate (FR-B6) blockt `_commitRep()`? Nein - `GhostRepGate._paused` startet `false` (`allowCounting` per Default `true`), pausiert erst nach 45+s durchgehender Ruhe - in diesem kurzen Testfenster nicht erreichbar.
+3. Debounce/Prominenz-Parameter zu streng? Nein - `fallingDebounce=4` Samples, `prominenceRatio=0.30`; beide bei den beobachteten Signalwerten (Peak ~5.3 ggÃ¼. Baseline ~1.03) rechnerisch lÃ¤ngst erfÃ¼llt.
+
+TatsÃ¤chliche Ursache nicht gefunden - brÃ¤uchte vermutlich eigene Instrumentierung direkt in `_detectPeak`/`_commitRep` und einen erneuten echten Lauf, nicht weiteres Lesen des bestehenden Codes. Test schlÃ¤gt weiterhin an derselben Stelle fehl (`expect(repsInCurrentSet, greaterThan(0))`).
+
+Nur die `applyCalibration`-Zeile geÃ¤ndert (11 Zeilen, `flutter analyze` sauber). Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht.
+
+---
+
+## 2026-08-03, Claude-ff8d81e1 (Desktop Commander, Adis Windows-Maschine, Adi: "Weiter"): Fund 5 - echte Ursache fÃ¼r repsInCurrentSet=0 identifiziert, nicht gelÃ¶st
+
+Vor Arbeitsbeginn geprÃ¼ft: `phase4-tracker-integration` bewegte sich seit dem zuletzt bekannten eigenen Stand (`7b69471`) um drei Commits (`41cabde`, `f36e3e5`, `6b0eb8d`) - alle drei einzeln per Commit-Diff verifiziert, nicht nur den Zusammenfassungen vertraut. Eigener, zwischenzeitlich beendeter Desktop-Commander-Prozess neu gestartet, isolierter Klon per `git fetch`+`reset --hard` synchronisiert statt neu geklont (Dependencies/build_runner unverÃ¤ndert seit dem letzten Lauf).
+
+**Ursache fÃ¼r das seit Fund 4 offene "reps bleiben bei 0" gefunden**, per temporÃ¤rer Instrumentierung direkt in `_detectPeak` (nach dem Lauf wieder entfernt, nicht in diesem Commit enthalten):
+
+    PEAK-DECISION #130 excursionPeak=6.288 preMin=4.044 excursion=2.244
+    prominence=0.440 prominenceRejects=false combinedCountsReps=false
+    gpAuth=true gyroMagAuth=false lastCountedRepSample=null
+
+`combinedCountsReps=false`, obwohl der Test `applyCalibration()` ganz ohne `chosenSignal` aufruft (der `case null:`-Zweig setzt `_gyroMagCountsReps=false` korrekt, selbst nachvollzogen - das war nicht die LÃ¼cke). TatsÃ¤chliche Ursache: die als "Shadow only â€” never `_commitRep`" dokumentierte Slow-Rep-Erkennung (`shadow slow-rep #1 peak=48.9 Î¸=15.2` im Log) setzt trotzdem live `_gpThreshold`, wodurch `_gpIsAuthoritative` unabhÃ¤ngig von jeder expliziten `chosenSignal`-Wahl auf `true` springt. Das schaltet den kombinierten Pfad ab (`_combinedCountsReps = !gpAuth && !gyroMagAuth`), aber der gP-Pfad zÃ¤hlt den Rep seinerseits auch nicht (`gpReps=0` im Log direkt danach) - vermutlich weil die Slow-Rep-Schwelle nur fÃ¼r die Schatten-Diagnose gedacht war, nicht als scharfe ZÃ¤hlschwelle fÃ¼r `_detectPeakSigned`.
+
+**Bewusst nicht selbst entschieden/gefixt:** Betrifft die Kern-ZÃ¤hllogik, nicht nur Phase 4, und wÃ¼rde vermutlich auch auf echter Hardware bei einer einzelnen langsamen Wiederholung auftreten, nicht nur im Mock-Test - eine Architekturfrage mit realen Auswirkungen auf die ZÃ¤hlgenauigkeit, keine, die nebenbei in einem Integrationstest-Branch entschieden wird. Zwei sichtbare Optionen, nicht abschlieÃŸend: (a) Shadow-Erkennung darf `_gpThreshold`/`_gpIsAuthoritative` nicht setzen, nur eigene Diagnose-Felder; (b) sobald Shadow-Erkennung `_gpIsAuthoritative` auf true setzt, muss `_detectPeakSigned` mit dieser Schwelle auch tatsÃ¤chlich zÃ¤hlen. Adi entscheidet.
+
+Kein Merge nach main. Branch bleibt `phase4-tracker-integration`, gepusht. Instrumentierung war rein diagnostisch und wieder entfernt - dieser Commit Ã¤ndert nur diese Dokumentation.
+
+---
+
+## 2026-08-03, Claude-7e4b2c91 (Fortsetzung, Adi: "Kümmere dich um die PhaseValidator-Frage" → dann "Nur dokumentieren"): PhaseValidator-Defekt vollständig vermessen, Lösungsrichtung dokumentiert, bewusst KEIN Umbau
+
+Aufgabe war die PhaseValidator-Frage aus dem letzten Eintrag. Nach dem Befund "Policy-Grenzen 0.15/0.85 verwerfen jede Sinus-Rep" sollte geprüft werden, ob das ein Validator-Bug, ein Detektions-Fenster-Bug oder eine zu strenge Policy ist. Ergebnis: **keines von dreien allein — es ist eine strukturelle Zeitverschiebung zwischen Detektions- und Validierungs-Fenster.** Bewusst kein Fix gebaut (Adi: "Nur dokumentieren"), hier die komplette, echt vermessene Diagnose mit allen Zahlen.
+
+**Vor Arbeit geprüft:** `git fetch`, main unverändert (`28533ae`), keine parallele Branch mit PhaseValidator-/DSP-Fix. Branch `fix-phase-validator-window` von `origin/main` erstellt, alle Experimente darauf verworfen (Arbeitsbaum am Ende sauber, nichts gepusht außer Doku).
+
+**Vermessen (temporäre Diagnose-Tests, alle danach gelöscht, nicht committed):**
+- `PhaseValidator().validate()` auf das vom PeakDetector gelieferte Fenster einer idealen Sinus-Rep (Amplitude 250°/s, 50 Samples, wie `dsp_verification_test.dart`): **24 pos / 3 neg → ratio 0.89, verworfen** ("asymmetrisch [0.15, 0.85]"). Bei 5 Reps: 5× ratio 0.89–0.94, alle verworfen.
+- Derselbe Validator auf die **volle** Sinus-Rep (alle 50 Samples): **25 pos / 24 neg → ratio 0.51, gültig.** Die Policy-Grenzen 0.15/0.85 sind also für eine echte, vollständige Rep **korrekt** — sie verwerfen nur das verstümmelte Fenster.
+- Grund der Verstümmelung: `PeakDetector.process()` schließt das Detektionsfenster bei `θ×0.5` + `_fallingDebounce=4` Samples. Das ist für Pan-Tompkins-Peak-Timing **richtig** (Peak-Zeitpunkt präzise), enthält aber nur ~3 Samples der negativen Halbwelle. Die restlichen ~22 Samples der exzentrischen Phase liegen zu diesem Zeitpunkt **in der Zukunft** — das Fenster kann zum Detektionszeitpunkt physikalisch nicht vollständig sein.
+
+**Was das für Problem 2 bedeutet:** Die 4 DSP-Fehlschläge (Szenario 1/3/4/7) und 3 Pipeline-Fehlschläge sind **nicht** "Tests zu streng" und **nicht** "Policy falsch", sondern der PhaseValidator bekommt strukturell das falsche Fenster. Die Policy-Grenzen von c956607 (0.15/0.85) haben diesen vorbestehenden Fenster-Fehler erst **sichtbar** gemacht — vorher (0.05/0.99) war er unsichtbar, weil 0.89 noch durchging. Der eigentliche Defekt ist älter als die Policy.
+
+**Lösungsrichtungen (nicht umgesetzt, Reihenfolge = Empfehlung):**
+1. **Verzögerte Bestätigung (strukturell sauber):** Der RepCounter markiert eine erkannte Rep als "pending", wartet ~25 Samples (0.5s), bis die exzentrische Halbwelle gelaufen ist, und bestätigt die Rep erst dann mit dem vollständigen Fenster. PhaseValidator-Grenzen bleiben 0.15/0.85, Policy unangetastet. Größter Umbau (Peak-Bestätigung wird asynchron, betrifft RepCounter/StateMachine/OnlineAdapter), aber einzige Lösung, die die echte Phasen-Asymmetrie misst statt sie zu schätzen.
+2. **Validator misst am Gesamtpuffer:** RepCounter hält einen Ringpuffer aller Frames und übergibt dem PhaseValidator zusätzlich das Fenster "Rising-Edge bis aktueller Frame". Weniger invasiv, aber mischt Detektions- und Validierungs-Verantwortung und misst die Gegenphase ebenfalls nur teilweise (Peak 1 wird im selben Frame detektiert, in dem Peak 0s Gegenphase endet — Zuordnungsproblem, echt getestet und gescheitert).
+3. **Grenzen zurückdrehen (0.05/0.99):** Macht die Suite sofort grün, revidiert aber die dokumentierte Product-Owner-Policy "Überzählen > Unterzählen" und lässt den Fenster-Defekt bestehen. Keine Lösung, nur Rücknahme der Sichtbarkeit.
+
+**Bewusst NICHT gemacht:** Jeglicher Umbau von PeakDetector/RepCounter/PhaseValidator (Adi: "Nur dokumentieren"). Die nachträgliche Fenster-Vervollständigung (`takeCompletedPhaseWindow`) wurde echt implementiert, getestet und wieder verworfen, weil sie am Zuordnungsproblem scheitert (Peak N wird im selben Frame detektiert, in dem Peak N−1s Gegenphase endet — das vervollständigte Fenster lässt sich nicht eindeutig zuordnen). Nichts davon ist im Repo.
+
+**Offen für Adi:** Richtungsentscheidung (1/2/3) für die DSP-/Pipeline-Suite. Die 2 ROM-Gate-Fehler in `workout_engine_test.dart` sind ein getrennter Mechanismus (Live-gP-ROM-Gate aus c956607, bezieht sich auf `_prominenceOverride`, nicht auf den PhaseValidator) und hiervon unberührt. `reconnect_test.dart` und `p1_assets_structural_test.dart` ebenfalls getrennt.
+
+Kein Merge nach main. Branch `fix-phase-validator-window` existiert lokal, wurde nicht gepusht (nur verworfene Experimente darauf).
 

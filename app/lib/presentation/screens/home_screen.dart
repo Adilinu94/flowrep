@@ -253,7 +253,14 @@ class HomeScreen extends ConsumerWidget {
     );
   }
 
-  /// Setup / between-sets layout (connection, calib, history, debug).
+  /// Setup layout (connection, calib, weight, start) - shown only while
+  /// `!isCountingActive`. NOT shown between sets within an active session:
+  /// isCountingActive stays true across sets (only stopCounting()/
+  /// endSession() reset it, not _onSetCompleted()), so subsequent sets
+  /// render via [_buildActiveSetBody] the whole time. Corrected 2026-08-02
+  /// (Phase 4 Schritt 3) - this comment previously said "between-sets",
+  /// which stopped being true once the rest timer/correction flow moved
+  /// into [_buildActiveSetBody].
   Widget _buildSetupBody(
     BuildContext context,
     WorkoutUiState uiState,
@@ -392,17 +399,12 @@ class HomeScreen extends ConsumerWidget {
                 onChanged: notifier.setWeightForCurrentSet,
               ),
             ),
-          SizedBox(
-            width: double.infinity,
-            height: 56,
-            child: ElevatedButton.icon(
-              onPressed: notifier.startCounting,
-              icon: const Icon(Icons.play_circle_outline, size: 28),
-              label: const Text('Zählen starten', style: TextStyle(fontSize: 18)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.green.shade700,
-                foregroundColor: Colors.white,
-              ),
+          if (uiState.hasCalibration)
+            StartCountdownButton(
+              enabled: uiState.hasCalibration,
+              isCountdownActive: uiState.isStartCountdownActive,
+              secondsRemaining: uiState.startCountdownSecondsRemaining,
+              onPressed: notifier.beginStartCountdown,
             ),
           ),
           if (uiState.lastCompletedSetCount != null) ...[
@@ -657,4 +659,5 @@ class HomeScreen extends ConsumerWidget {
     return 'Getrennt';
   }
 }
+
 
