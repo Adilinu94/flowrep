@@ -834,3 +834,21 @@ Auf Adis "Ja leg los" alle bereitstehenden, geprüften Branches in empfohlener R
 
 `main` jetzt 40 Commits vor `origin/main`, bereit zum Push. Kein Merge nach main offen (alle 7 erledigt). Nächster Schritt: Push, danach P0-Hardware-Kurzchecks A1-A5 (PLAN_HW_TEST_AKTUELL.md, 5-10 Min am Gerät) statt weiter Code - Problem 2 ist P2/G7, nicht releaseblockierend.
 
+---
+
+## 2026-08-06, Claude-797701a5 (Fortsetzung, Adi: "Problem-2-Audit-Dokumentation auf main"): Audit-Historie nachgezogen — Cherry-Pick hatte nur Code, nicht die Doku mitgenommen
+
+Der Merge oben (573db12a) hat `1000004`/`01d2e9c` als Code-Cherry-Picks (`0381eb7`/`99f9123`) nach main gebracht, aber die zugehörige Analyse-/Audit-Historie blieb auf `fix-phase-validator-window` zurück. Auf Adis Bitte nachgezogen: `docs/archive/umbauplan/PHASE_VALIDATOR_FIX_AUDIT_2026-08-05.md` und `docs/archive/umbauplan/PHASE_VALIDATOR_FENSTER_PROBLEM.md` (Session e14e4950s unabhängiger Plan-Review) in ihrer aktuellsten Fassung von `origin/fix-phase-validator-window` (Commit `6894038`) nach main kopiert — reiner Dateitransfer, keine inhaltliche Änderung.
+
+**Kurzfassung des Inhalts für main-Leser ohne den Feature-Branch-Kontext:**
+
+- Zwei unabhängige Pläne für Richtung 1 (verzögerte Bestätigung) geprüft, beide durch die tatsächliche Implementierung (`1000004`, jetzt `0381eb7` auf main) überholt.
+- Code-Audit fand zwei durch Tests nicht erfasste Bugs in der Metadaten-Weitergabe an `ExerciseEngine` (Befund A: systematisch zu kurze Dauer bei jeder Rep mit exzentrischer Phase; Befund B: im Kollisionsfall komplett falsche Metadaten). Beide behoben durch `01d2e9c` (jetzt `99f9123` auf main). **Real verifiziert** (Eintrag von Claude-38f650c4, `912d8a5` auf dem Feature-Branch): `flutter test` 42/42 grün auf den vier Zieldateien.
+- **Neuer, noch offener Befund C** (Session Claude-93e3aa2c, 06.08.): `TemplateExtractor.extract()` (Kalibrierung) sammelt weiterhin aus `PeakEvent.window` (trunkiert), während `RepCounter._decide()` `TemplateMatcher.match()` jetzt das erweiterte Fenster übergibt (`rep_counter.dart:181`). Nach identischem Resampling auf 64 Samples strukturell unterschiedliche Kurvenformen (Template ~89/11, Laufzeit-Fenster ~50/50) — NCC-Score dürfte für sonst valide Reps sinken, sobald ein echtes Template aktiv ist. Wie A/B unsichtbar in den Tests (kein Szenario setzt ein Template). Kein Live-Risiko (`_useNewPipeline=false`), aber jetzt Teil des main-Codes, nicht mehr nur Feature-Branch-Historie. Vorgeschlagener Minimal-Fix (nicht angewendet): `rep_counter.dart:181` zurück auf `peak.window`.
+
+Details, exakte Zeilenverweise, vollständige Herleitung aller drei Befunde: siehe die beiden kopierten Dokumente.
+
+`fix-phase-validator-window` bewusst noch nicht gelöscht — enthält weiterhin die vollständige Diskussions-/Konsolidierungshistorie (mehrere Sessions, mehrere Kollisions-Auflösungen) über das hier Zusammengefasste hinaus.
+
+Nicht mit echtem `flutter test` verifiziert (kein Flutter-Zugriff in dieser Sandbox) - reiner Dateitransfer plus Zusammenfassung, keine neue Code- oder Testaussage. Weiterhin offen: Befund C beheben oder bewusst zurückstellen (Adi-Entscheidung), Row-Grifftyp-Frage (laut Adi aktuell unwichtig, zurückgestellt).
+
