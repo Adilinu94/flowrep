@@ -386,11 +386,6 @@ class HomeScreen extends ConsumerWidget {
                 textAlign: TextAlign.center,
               ),
             ),
-          StartCountdownButton(
-            enabled: uiState.hasCalibration,
-            isCountdownActive: uiState.isStartCountdownActive,
-            secondsRemaining: uiState.startCountdownSecondsRemaining,
-            onPressed: notifier.beginStartCountdown,
           if (uiState.hasCalibration)
             Padding(
               padding: const EdgeInsets.only(bottom: 16),
@@ -406,7 +401,6 @@ class HomeScreen extends ConsumerWidget {
               secondsRemaining: uiState.startCountdownSecondsRemaining,
               onPressed: notifier.beginStartCountdown,
             ),
-          ),
           if (uiState.lastCompletedSetCount != null) ...[
             const SizedBox(height: 8),
             TextButton.icon(
