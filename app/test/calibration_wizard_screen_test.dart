@@ -135,4 +135,26 @@ void main() {
 
     expect(result, isFalse);
   });
+
+  testWidgets(
+      'Briefing zeigt übungsspezifischen Instruktionstext '
+      '(EXERCISE_BIOMECHANICAL_PRIORS_2026-07-28)', (tester) async {
+    final samplesController = StreamController<SensorSample>();
+    addTearDown(samplesController.close);
+
+    await tester.pumpWidget(MaterialApp(
+      home: CalibrationWizardScreen(
+        samples: samplesController.stream,
+        exerciseId: 'scott_curl',
+        deviceId: 'test-device',
+        prepareCountdownSeconds: 5,
+      ),
+    ));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // scott_curl-spezifischer Instruktionstext (kExerciseCatalog) muss im
+    // Briefing sichtbar sein, nicht nur der generische Workflow-Text.
+    expect(find.textContaining('Oberarm bleibt fest'), findsOneWidget);
+  });
 }

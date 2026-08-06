@@ -198,5 +198,77 @@ void main() {
       expect(metadata.muscleGroup, 'Arme');
       expect(metadata.requiresCalibration, isTrue);
     });
+
+    test('bicep_curl hat biomechanische Felder befüllt (eingelenkig)', () {
+      final metadata = kExerciseCatalog['bicep_curl']!;
+      expect(metadata.jointDescription, 'Ellbogen (Flexion)');
+      expect(metadata.isMultiJoint, isFalse);
+      expect(metadata.expectedRomDegrees, isNotNull);
+      expect(metadata.expectedRomDegrees!.$1, lessThan(metadata.expectedRomDegrees!.$2));
+      expect(metadata.instructionText, isNotEmpty);
+    });
+
+    test('scott_curl hat dieselbe ROM-Größenordnung wie bicep_curl '
+        '(gleiches Gelenk), aber eigenen Instruktionstext', () {
+      final curl = kExerciseCatalog['bicep_curl']!;
+      final scott = kExerciseCatalog['scott_curl']!;
+      expect(scott.isMultiJoint, isFalse);
+      expect(scott.expectedRomDegrees, curl.expectedRomDegrees);
+      expect(scott.instructionText, isNot(equals(curl.instructionText)));
+      expect(scott.instructionText, contains('Oberarm'));
+    });
+
+    test('alle 3 Hammer-Strength-Übungen sind mehrgelenkig und im Katalog',
+        () {
+      for (final id in [
+        'hs_lat_pulldown',
+        'hs_incline_press',
+        'hs_row',
+      ]) {
+        final metadata = kExerciseCatalog[id];
+        expect(metadata, isNotNull, reason: '$id fehlt im Katalog');
+        expect(metadata!.isMultiJoint, isTrue,
+            reason: '$id sollte mehrgelenkig sein');
+        expect(metadata.jointDescription, isNotEmpty);
+        expect(metadata.instructionText, isNotEmpty);
+      }
+    });
+
+    test('Hammer-Strength-Übungen ohne recherchierte ROM-Gradzahl haben '
+        'bewusst null statt einer erfundenen Zahl', () {
+      // Nur hs_lat_pulldown hat ein recherchiertes Tempo (aus generischer
+      // Latzug-Recherche übernommen); die ROM-Gradzahl fehlt bei allen 3.
+      for (final id in [
+        'hs_lat_pulldown',
+        'hs_incline_press',
+        'hs_row',
+      ]) {
+        expect(kExerciseCatalog[id]!.expectedRomDegrees, isNull,
+            reason: '$id: keine ROM-Gradzahl recherchiert, sollte null sein');
+      }
+    });
+
+    test('kExerciseCatalog enthält genau 5 Übungen (1 bestehend + 4 neu)',
+        () {
+      expect(kExerciseCatalog.length, 5);
+      expect(
+        kExerciseCatalog.keys,
+        containsAll([
+          'bicep_curl',
+          'hs_lat_pulldown',
+          'hs_incline_press',
+          'hs_row',
+          'scott_curl',
+        ]),
+      );
+    });
+
+    test('jede Übung im Katalog hat eine eindeutige, nicht-leere '
+        'instructionText', () {
+      final texts = kExerciseCatalog.values.map((m) => m.instructionText);
+      expect(texts.every((t) => t.isNotEmpty), isTrue);
+      expect(texts.toSet().length, kExerciseCatalog.length,
+          reason: 'Instruktionstexte sollten sich unterscheiden');
+    });
   });
 }

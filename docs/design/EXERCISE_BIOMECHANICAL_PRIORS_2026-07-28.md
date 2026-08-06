@@ -19,22 +19,25 @@ Statt freien Textnamen: **Auswahl aus 5 vordefinierten Übungen**, jede mit
 recherchiertem biomechanischem Profil. Ziele (von Adi vorgegeben): bessere
 Guided-Calibration-Ergebnisse, genauere Anweisungen an den Nutzer.
 
-## 2. Die 5 Übungen — konkret von Adi vorgegeben (2026-07-28, zweite Runde)
+## 2. Die 4 Übungen — konkret von Adi vorgegeben (2026-07-28, zweite Runde, präzisiert 2026-07-31)
 
 Ersetzt die erste, selbst vorgeschlagene Auswahl (Trizeps-Extension/Seitheben/
 Schulterdrücken/Latzug) vollständig. Bizeps-Curl bleibt zusätzlich bestehen
-(bereits produktiv, nicht Teil dieser 5) — macht 6 Übungen im Katalog insgesamt.
+(bereits produktiv, nicht Teil dieser 4) — macht 5 Übungen im Katalog insgesamt.
+Ursprünglich waren es 5 neue (inkl. Hammer Strength Horizontal Bench Press) —
+auf Nachfrage von Adi präzisiert: nur diese 4, Horizontal Bench Press entfällt
+(siehe Ende von Abschnitt 3 für die kurz zusammengefasste Recherche dazu, für
+den Fall dass sie später doch dazukommt).
 
 | Übung | Gelenk(e) | Bewegungsmuster | Maschinen-Typ |
 |---|---|---|---|
 | Bizeps-Curl (bestehend) | Ellbogen (Flexion) | Zug, eingelenkig | Freihantel |
 | Hammer Strength Iso-Lateral Front Lat Pulldown | Schulter + Ellbogen | Zug, mehrgelenkig, vertikal, Untergriff | konvergierend/divergierend |
-| Hammer Strength Iso-Lateral Incline Press | Schulter + Ellbogen | Druck, mehrgelenkig, steil nach oben-vorne | konvergierend/divergierend |
+| Hammer Strength Iso-Lateral Incline Press | Schulter + Ellbogen | Druck, mehrgelenkig, diagonal nach oben-vorne | konvergierend/divergierend |
 | Hammer Strength Iso-Lateral Row | Schulter + Ellbogen | Zug, mehrgelenkig, horizontal, brustgestützt | konvergierend/divergierend |
 | Scott Curls / Preacher Curls | Ellbogen (Flexion) | Zug, eingelenkig, Oberarm fixiert | Freihantel/Kabel/Maschine |
-| Hammer Strength Iso-Lateral Horizontal Bench Press | Schulter + Ellbogen | Druck, mehrgelenkig, horizontal | konvergierend/divergierend |
 
-**Neue Kategorie, die die erste Fassung nicht hatte:** vier der 5 sind
+**Neue Kategorie, die die erste Fassung nicht hatte:** drei der 4 sind
 Hammer-Strength-Maschinen mit **konvergierender/divergierender, iso-lateraler**
 Armführung — jede Seite bewegt sich unabhängig, aber entlang einer vom
 Maschinen-Hebelmechanismus fest vorgegebenen Bahn (Life Fitness/Hammer
@@ -96,23 +99,35 @@ dieser Planung.
   Unterarms/Handgelenks im Raum gegenüber einem Standard-Latzug.
 - Konvergierende/divergierende Armbahn: die Griffe bewegen sich beim Ziehen
   aufeinander zu, beim Loslassen auseinander — maschinengeführte Bahn, nicht
-  frei.
+  frei. Konkreter als "konvergierend/divergierend" beschreibt der Hersteller
+  wörtlich, dass die Griffe sich "back, up, and out" bewegen — kein einfacher
+  vertikaler Zug, sondern ein gekrümmter, mehrdimensionaler Bogen. Zwei
+  unabhängige Quellen (Life Fitness selbst, ein Händler) beschreiben die
+  Bewegungsbahn als Lücke zwischen Schulterdrücken und Incline Press.
 - Herstellerbeschreibung nennt explizit "natürlichen, ergonomischen
   Bewegungspfad", ausgelegt für kontrollierte Zugbewegungen.
 - Signal: vermutlich weiterhin Mischung aus Rotation und Translation wie beim
   generischen Latzug (Hand bleibt am Griff, Hauptbewegung an Schulter+Ellbogen),
-  aber durch die feste Maschinenbahn potenziell konsistenter als am freien
-  Kabelzug — unverifiziert (Abschnitt 4.4).
+  aber durch die feste, zusätzlich gekrümmte Maschinenbahn eher noch weniger
+  eindeutig einachsig als der generische Latzug — unverifiziert (Abschnitt 4.4).
 
 ### Hammer Strength Iso-Lateral Incline Press
-- Mehrgelenkig: Schulterabduktion/-flexion + Ellbogenextension, sitzend.
-- Herstellerbeschreibung: liegt bewegungstechnisch zwischen Schulterdrücken und
-  Incline Press, Bahn ähnelt einem "Frontal-Military-Press" — steiler/mehr
-  nach oben-vorne als ein klassischer Incline Press.
+- Mehrgelenkig: Schulterabduktion/-flexion + Ellbogenextension, sitzend,
+  aufrechter Rumpf.
+- **Korrektur:** eine frühere Fassung dieses Abschnitts beschrieb hier die Bahn
+  als "zwischen Schulterdrücken und Incline Press, ähnlich Frontal-Military-
+  Press" — das ist die Herstellerbeschreibung der separaten, steileren **Super**
+  Incline Press-Variante, nicht dieser (regulären) Incline Press. Hersteller
+  nennt für die reguläre Variante explizit einen "more traditional incline
+  angle", ausdrücklich im Gegensatz zur steileren Super-Incline-Variante.
+  Konkreten Gradwert nennt keine geprüfte Herstellerquelle für die reguläre
+  Variante — allgemeine Konvention für "traditionelle" Schrägbänke liegt bei
+  ca. 30–45°, nicht Hammer-Strength-spezifisch bestätigt.
 - Griffe zwischen neutralem und Obergriff positioniert (Herstellerangabe).
 - Konvergierend/divergierend wie die anderen Hammer-Strength-Maschinen.
-- Signal: Druckbewegung, ähnlich Schulterdrücken-Charakteristik aus der ersten
-  Dokumentfassung, aber steilere/andere Bahnrichtung — eigene Beobachtung nötig.
+- Signal: Druckbewegung, mehrgelenkig, diagonal — eigene Bewegungsebene
+  (weder rein vertikal wie Schulterdrücken noch rein horizontal wie
+  klassisches Bankdrücken).
 
 ### Hammer Strength Iso-Lateral Row
 - Mehrgelenkig: Schulter-Retraktion + Ellbogenflexion, **horizontal** (im
@@ -148,15 +163,15 @@ dieser Planung.
   Raum — guter zweiter Testfall neben double_bump, ob das System zwei
   Curl-Varianten anhand der Ruhelage sauber trennt statt zu verwechseln.
 
-### Hammer Strength Iso-Lateral Horizontal Bench Press
-- Mehrgelenkig: Schulterhorizontaladduktion + Ellbogenextension, **horizontal**
-  (Gegenstück zur Incline Press oben), sitzend mit **5°-geneigtem Sitz** für
-  Positionierung "wie auf einer echten Flachbank" (Herstellerangabe).
-- Konvergierend/divergierende Druckbahn — Herstellerbeschreibung betont
-  explizit den Unterschied zur Langhantel: "eine Langhantel zwingt beide Arme
-  als eine Einheit, hier bewegt sich jeder Arm unabhängig."
-- Signal: Druckbewegung wie Incline Press, aber horizontal statt steil-nach-
-  oben — eigene Bahnrichtung, dritte Druckvariante neben Incline Press.
+### Hammer Strength Iso-Lateral Horizontal Bench Press — recherchiert, dann nicht gebraucht
+
+Auf Nachfrage entfernt (Adi, 2026-07-31) — für den Fall dass sie später doch
+dazukommt: sitzend, aufrechter Rumpf wie die Incline Press (trotz des Namens
+keine liegende Übung), 5°-geneigter Sitz, gleicher Griff wie Incline Press.
+Einziger belegter Unterschied zur Incline Press war der Lehnenwinkel — damit
+vermutlich das am schwersten von der Incline Press unterscheidbare Paar im
+ganzen Katalog. Falls sie doch noch dazukommt: diese Ähnlichkeit zuerst gegen
+echte Kalibrierungsdaten beider Übungen prüfen, nicht ungeprüft übernehmen.
 
 ## 4. Wie das in die Architektur passt
 
@@ -170,7 +185,7 @@ class Exercises extends Table {
   TextColumn get displayName => text()();
   TextColumn get templateId => text()(); // NEU: 'bicep_curl' | 'hs_lat_pulldown'
                                           //      | 'hs_incline_press' | 'hs_row'
-                                          //      | 'scott_curl' | 'hs_bench_press'
+                                          //      | 'scott_curl'
   DateTimeColumn get createdAt => dateTime()();
 }
 ```
@@ -235,7 +250,7 @@ als ursprünglich in Abschnitt 3 eingeschätzt.
    einen zusätzlichen (immer noch billigen) Schritt. Start mit `varianzAnteil`,
    da bereits vorhanden; Wechsel zur präziseren Metrik bleibt offen.
 3. **`isMultiJoint` steuert `knownSetCount` statt nur Nachprüfung**: mehrgelenkige
-   Übungen (die 4 Hammer-Strength-Maschinen) bekommen mehr Kalibrierungs-Reps (z.B. 8
+   Übungen (die 3 Hammer-Strength-Maschinen) bekommen mehr Kalibrierungs-Reps (z.B. 8
    statt 5) — mehr Rohdaten für die unveränderte `_axisAnalysis`, kein Eingriff
    in die Achsen-Mathematik selbst. Mildert direkt das Problem aus Abschnitt 3
    (mehr Shots → geringere Prior-Abhängigkeit, laut Burzer et al. selbst).
@@ -258,9 +273,27 @@ zeigt. Diese Übersetzung ist unverifiziert. Deshalb, passend zum in ADR-022
 (`docs/archive/umbauplan/02_ARCHITECTURE_DECISION_RECORDS.md`) verankerten
 Grundsatz "erst simulieren/beobachten, dann scharf schalten" — dort konkret zu
 Testmethodik, hier sinngemäß übertragen: die erste echte Kalibrierung jeder
-neuen Übung (v.a. die 4 Hammer-Strength-Maschinen) manuell gegen diese Erwartungswerte
+neuen Übung (v.a. die 3 Hammer-Strength-Maschinen) manuell gegen diese Erwartungswerte
 und gegen `varianzAnteil` prüfen, bevor das Plausibilisierungs-Flag für diese
 Übung scharf geschaltet wird. Bis dahin: Template vorhanden, Warnung deaktiviert.
+
+Zwei zusätzliche offene Punkte aus dem Gespräch mit Adi (2026-07-31):
+- **Sensor-Seite:** standardmäßig rechtes Handgelenk, aber wechselbar. Für die
+  Achsenfindung selbst egal (`_axisAnalysis` läuft pro Kalibrierung neu,
+  unabhängig von der Seite), betrifft aber Iso-Lateral-Maschinen konkret: wird
+  eine Seite alternierend/einarmig trainiert (Iso-Lateral erlaubt das laut
+  Hersteller explizit), zählt der Sensor nur die Seite, auf der er sitzt. Reine
+  Kalibrierungsfrage, keine UX-Entscheidung.
+- **Row-Griff offen:** die Iso-Lateral Row bietet je nach Modell mehrere
+  Griffoptionen (neutral/parallel vs. Ober-/Untergriff). Adi noch nicht gefragt,
+  welchen er nutzt — beeinflusst die Handgelenk-Orientierung relativ zur
+  Zugrichtung, wäre vor der ersten echten Kalibrierung gut zu wissen.
+
+Größter verbleibender Hebel insgesamt: echte `CsvSessionRecorder`-Aufnahmen von
+Adi an diesen Maschinen (Tool existiert bereits, produktiv nutzbar) — würde die
+hier recherchierten Literaturwerte durch echte Zahlen ersetzen statt nur zu
+ergänzen. Weitere Web-Recherche bringt an diesem Punkt vermutlich nicht mehr
+viel Neues.
 
 ## 5. Beispiel-Instruktionstexte (Entwurf, nicht final)
 
@@ -277,9 +310,6 @@ und gegen `varianzAnteil` prüfen, bevor das Plausibilisierungs-Flag für diese
 - **Scott Curls / Preacher Curls**: „Sensor am Handgelenk. Oberarm bleibt
   fest auf dem Polster liegen, nur der Unterarm bewegt sich — kein Schwung
   aus dem Körper."
-- **Hammer Strength Horizontal Bench Press**: „Sensor am Handgelenk. Griffe
-  gerade nach vorne drücken, bis die Arme fast gestreckt sind, dann
-  kontrolliert zurück."
 
 ## 6. Änderung an `UMBAUPLAN_MULTI_EXERCISE_2026-07-28.md`
 
