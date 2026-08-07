@@ -5,6 +5,17 @@
 **Basis:** `FLOWREP_DROPSYNC_FUSION_FRAGEN_ANTWORTEN_2026-08-07.md`  
 **Ziel:** Eine Gym App. Offline, Apple like poliert, 4 Tabs. Sensor optional, Musik und Timer greifen exakt ineinander. Drop landet auf die Sekunde bei Go.
 
+**Verbundene Dokumente (Pläne verweisen aufeinander):**
+
+| Dokument | Rolle |
+|---|---|
+| [`FLOWREP_DROPSYNC_FUSION_FRAGEN_ANTWORTEN_2026-08-07.md`](FLOWREP_DROPSYNC_FUSION_FRAGEN_ANTWORTEN_2026-08-07.md) | Alle Entscheidungen (5 Basis + 45 Grilling) |
+| [`WISSEN_POWERAMP_OFFTRACK_2026-08-07.md`](WISSEN_POWERAMP_OFFTRACK_2026-08-07.md) | Konzepte aus öffentlicher Doku (Audio Engine, Workout Mixing) |
+| [`OFFTRACK_AUDIO_UMBAUHANDBUCH.md`](../../../OFFTRACK_AUDIO_UMBAUHANDBUCH.md) | Technische Ausarbeitung Audio: Transitionen, Clock, Waveform, Analyse (liegt im DropSync-Repo) |
+| [`UI_UX_UMBAUHANDBUCH_TRAIN_MUSIC_DROPSYNC.md`](../../../UI_UX_UMBAUHANDBUCH_TRAIN_MUSIC_DROPSYNC.md) | Technische Ausarbeitung UI: Workout Console, Rest Console, Marker-Editor (liegt im DropSync-Repo) |
+
+**Geltungsordnung:** Dieses Design-Dokument ist die oberste Referenz für Produktentscheidungen. Die beiden Handbücher setzen es technisch um und dürfen es nicht widersprechen.
+
 ---
 
 ## 1. Vision und Prinzipien
